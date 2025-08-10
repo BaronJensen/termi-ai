@@ -26,5 +26,7 @@ contextBridge.exposeInMainWorld('cursovable', {
   sendCursorInput: (opts) => ipcRenderer.invoke('cursor-input', opts),
   sendCursorSignal: (opts) => ipcRenderer.invoke('cursor-signal', opts),
   getTerminalStatus: () => ipcRenderer.invoke('terminal-status'),
-  forceTerminalCleanup: () => ipcRenderer.invoke('terminal-cleanup')
+  forceTerminalCleanup: () => ipcRenderer.invoke('terminal-cleanup'),
+  getWorkingDirectory: () => ipcRenderer.invoke('get-working-directory'),
+  setWorkingDirectory: (path) => ipcRenderer.invoke('set-working-directory', path)
 });

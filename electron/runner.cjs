@@ -85,8 +85,9 @@ function startCursorAgent(message, apiKey, onLog, options = {}) {
   let lastActivity = Date.now();
   
   const wait = new Promise((resolve, reject) => {
-    const args = ['-p', message];
+    const args = ['-p',  '--output-format="stream-json"',  `${message}. Avoid running build tools or scripts, we are already running the project.`];
     if (onLog) onLog('info', `Running: cursor-agent ${args.map(a => (a.includes(' ') ? '"'+a+'"' : a)).join(' ')}`);
+    if (onLog) onLog('info', `Working directory: ${options.cwd || process.cwd()}`);
     const env = { ...process.env, ...(apiKey ? { OPENAI_API_KEY: apiKey } : {}) };
     env.PATH = ensureDarwinPath(env.PATH);
     const resolved = resolveCommandPath('cursor-agent', env.PATH) || 'cursor-agent';
@@ -226,7 +227,7 @@ function startCursorAgent(message, apiKey, onLog, options = {}) {
     }
 
     // Idle timeout - kill process if no output for extended period
-    const idleTimeoutMs = 30000; // 30 seconds
+    const idleTimeoutMs = 300000; // 5 minutes - increased for long-running commands
     idleTimeoutId = setInterval(() => {
       if (settled) return;
       const timeSinceActivity = Date.now() - lastActivity;
@@ -235,10 +236,10 @@ function startCursorAgent(message, apiKey, onLog, options = {}) {
         cleanup();
         resolve({ type: 'raw', output: buffer, idle_timeout: true });
       }
-    }, 5000); // Check every 5 seconds
+    }, 10000); // Check every 10 seconds - less frequent checking
 
     // Overall timeout support
-    const timeoutMs = typeof options.timeoutMs === 'number' ? options.timeoutMs : 180000; // 3 min default
+    const timeoutMs = typeof options.timeoutMs === 'number' ? options.timeoutMs : 900000; // 15 min default - increased for long-running commands
     if (timeoutMs > 0) {
       timeoutId = setTimeout(() => {
         if (settled) return;

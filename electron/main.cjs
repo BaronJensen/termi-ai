@@ -90,7 +90,10 @@ function createMenu() {
                 properties: ['openDirectory']
               });
               if (!res.canceled && res.filePaths.length > 0) {
-                win.webContents.send('folder-selected', res.filePaths[0]);
+                const folderPath = res.filePaths[0];
+                lastViteFolder = folderPath; // Set the working directory immediately
+                win.webContents.send('folder-selected', folderPath);
+                updateMenuStatus(); // Update menu to show new working directory
               }
             }
           }
@@ -331,7 +334,10 @@ app.whenReady().then(() => {
         env: process.env
       });
       
-      ptyInstance.write('echo "PTY test successful"\r');
+      // Wait a bit for shell to be ready, then send test command
+      setTimeout(() => {
+        ptyInstance.write('echo "PTY test successful"\r');
+      }, 1000);
       
       let testOutput = '';
       ptyInstance.onData((data) => {
@@ -342,13 +348,20 @@ app.whenReady().then(() => {
         }
       });
       
-      // Kill test after 5 seconds
+      // Kill test after 15 seconds
       setTimeout(() => {
         if (!ptyInstance.killed) {
           ptyInstance.kill();
-          console.log('⚠️  PTY test timed out');
+          console.log('⚠️  PTY test timed out - but continuing anyway');
         }
-      }, 5000);
+      }, 15000);
+      
+      // Also handle PTY errors gracefully
+      ptyInstance.onExit(({ exitCode }) => {
+        if (exitCode !== 0) {
+          console.log('⚠️  PTY test exited with code', exitCode, '- but continuing anyway');
+        }
+      });
       
     } catch (err) {
       console.error('❌ PTY test failed:', err.message);
@@ -500,6 +513,19 @@ ipcMain.handle('cursor-run', async (_e, { message, apiKey, cwd, runId: clientRun
   const runId = clientRunId || `${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
   const workingDir = cwd || lastViteFolder || process.cwd();
   
+  // Verify the working directory exists and is accessible
+  try {
+    const fs = require('fs');
+    if (!fs.existsSync(workingDir)) {
+      throw new Error(`Working directory does not exist: ${workingDir}`);
+    }
+    if (!fs.statSync(workingDir).isDirectory()) {
+      throw new Error(`Working directory is not a directory: ${workingDir}`);
+    }
+  } catch (err) {
+    throw new Error(`Invalid working directory: ${err.message}`);
+  }
+  
   // Clean up any existing process with this runId
   const existingProc = agentProcs.get(runId);
   if (existingProc) {
@@ -515,6 +541,7 @@ ipcMain.handle('cursor-run', async (_e, { message, apiKey, cwd, runId: clientRun
     agentProcs.delete(runId);
   }
   
+  console.log(`🚀 Starting cursor-agent in directory: ${workingDir}`);
   const { child, wait } = startCursorAgent(message, apiKey, (level, line) => {
     try { if (win && !win.isDestroyed()) win.webContents.send('cursor-log', { runId, level, line, ts: Date.now() }); } catch {}
   }, { cwd: workingDir });
@@ -563,6 +590,27 @@ ipcMain.handle('cursor-run', async (_e, { message, apiKey, cwd, runId: clientRun
   const enriched = { ...resultJson, message, runId };
   history.push(enriched);
   return enriched;
+});
+
+ipcMain.handle('get-working-directory', async () => {
+  return lastViteFolder || process.cwd();
+});
+
+ipcMain.handle('set-working-directory', async (_e, path) => {
+  try {
+    const fs = require('fs');
+    if (!fs.existsSync(path)) {
+      throw new Error(`Directory does not exist: ${path}`);
+    }
+    if (!fs.statSync(path).isDirectory()) {
+      throw new Error(`Path is not a directory: ${path}`);
+    }
+    lastViteFolder = path;
+    updateMenuStatus();
+    return { success: true, path };
+  } catch (err) {
+    throw new Error(`Failed to set working directory: ${err.message}`);
+  }
 });
 
 ipcMain.handle('cursor-input', async (_e, { runId, data }) => {

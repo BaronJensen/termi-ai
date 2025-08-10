@@ -7,7 +7,7 @@ function Bubble({ who, children }) {
     dangerouslySetInnerHTML={{ __html: marked.parse(children || '') }} />;
 }
 
-export default function Chat({ apiKey, cwd }) {
+export default function Chat({ apiKey, cwd, timeoutMinutes = 15 }) {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
@@ -74,6 +74,13 @@ export default function Chat({ apiKey, cwd }) {
   async function send() {
     const text = input.trim();
     if (!text) return;
+    
+    // Check if working directory is selected
+    if (!cwd) {
+      alert('Please select a working directory first using the "Change" button above.');
+      return;
+    }
+    
     setInput('');
     setMessages(m => [...m, { who: 'user', text }]);
     setBusy(true);
@@ -81,55 +88,86 @@ export default function Chat({ apiKey, cwd }) {
       // Prepare streaming message and subscribe to logs for this run
       const runId = `${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
       runIdRef.current = runId;
-      // Show working directory info before the first agent stream
-      setMessages(m => [...m, { who: 'assistant', text: `Running in: \`${(cwd || '(default)')}\`` }]);
-      // Create a streaming assistant bubble (code fence)
+      // Create streaming assistant message
       let streamIdx;
       setMessages(m => {
         streamIdx = m.length;
         streamIndexRef.current = streamIdx;
-        return [...m, { who: 'assistant', text: '```\n' }];
+        return [...m, { who: 'assistant', text: '🤔 Thinking...' }];
       });
+      
+      // Track accumulated assistant text
+      let accumulatedText = '';
+      
       // Subscribe to log stream for this run
       unsubRef.current = window.cursovable.onCursorLog((payload) => {
         if (!payload || payload.runId !== runIdRef.current) return;
-        // Append incoming line(s) to the streaming bubble
-        setMessages((m) => {
-          const idx = streamIndexRef.current;
-          if (idx < 0 || idx >= m.length) return m;
-          const updated = [...m];
-          const curr = updated[idx];
-          const add = payload.line || '';
-          updated[idx] = { ...curr, text: curr.text + add };
-          return updated;
-        });
+        
+        try {
+          // Parse each line as JSON
+          const lines = payload.line.split('\n').filter(line => line.trim());
+          
+          for (const line of lines) {
+            try {
+              const parsed = JSON.parse(line);
+              
+              // Handle assistant messages - accumulate text content
+              if (parsed.type === 'assistant' && parsed.message && parsed.message.content) {
+                for (const content of parsed.message.content) {
+                  if (content.type === 'text' && content.text) {
+                    accumulatedText += content.text;
+                    
+                    // Update the streaming message with accumulated text
+                    setMessages(m => {
+                      const idx = streamIndexRef.current;
+                      if (idx >= 0 && idx < m.length) {
+                        const updated = [...m];
+                        updated[idx] = { ...updated[idx], text: accumulatedText };
+                        return updated;
+                      }
+                      return m;
+                    });
+                  }
+                }
+              }
+              
+                    // Stop streaming when we get a result
+      if (parsed.type === 'result') {
+        // Don't show the final result message since we already have the streamed text
+        // If we didn't get any assistant content, show a fallback message
+        if (!accumulatedText.trim()) {
+          setMessages(m => {
+            const idx = streamIndexRef.current;
+            if (idx >= 0 && idx < m.length) {
+              const updated = [...m];
+              updated[idx] = { ...updated[idx], text: 'No response content received from cursor-agent.' };
+              return updated;
+            }
+            return m;
+          });
+        }
+        return;
+      }
+            } catch (parseError) {
+              // Skip lines that aren't valid JSON
+              continue;
+            }
+          }
+        } catch (error) {
+          console.error('Error processing log line:', error);
+        }
       });
 
-      const res = await window.cursovable.runCursor({ message: text, apiKey: apiKey || undefined, cwd: cwd || undefined, runId });
-      // Persisted in main; we also show it in UI
-      if (res.type === 'result') {
-        // Replace streaming bubble with final markdown
-        setMessages(m => {
-          const idx = streamIndexRef.current;
-          if (idx >= 0 && idx < m.length) {
-            const updated = [...m];
-            updated[idx] = { who: 'assistant', text: res.result };
-            return updated;
-          }
-          return [...m, { who: 'assistant', text: res.result }];
-        });
-      } else {
-        // Close code fence and render raw output
-        setMessages(m => {
-          const idx = streamIndexRef.current;
-          if (idx >= 0 && idx < m.length) {
-            const updated = [...m];
-            const curr = updated[idx];
-            updated[idx] = { ...curr, text: curr.text + '\n```' };
-            return updated;
-          }
-          return [...m, { who: 'assistant', text: '```\n' + (res.output || JSON.stringify(res)) + '\n```' }];
-        });
+      const res = await window.cursovable.runCursor({ 
+        message: text, 
+        apiKey: apiKey || undefined, 
+        cwd: cwd || undefined, 
+        runId,
+        timeoutMs: timeoutMinutes * 60 * 1000 // Convert minutes to milliseconds
+      });
+      // We just need to ensure the process completed successfully
+      if (res.type === 'error') {
+        throw new Error(res.error || 'Unknown error occurred');
       }
     } catch (e) {
       console.error('Cursor agent error:', e);
@@ -160,21 +198,6 @@ export default function Chat({ apiKey, cwd }) {
       await checkTerminalStatus();
     } finally {
       if (unsubRef.current) { try { unsubRef.current(); } catch {} unsubRef.current = null; }
-      // Ensure code fence is closed if we were streaming raw
-      setMessages(m => {
-        const idx = streamIndexRef.current;
-        if (idx >= 0 && idx < m.length) {
-          const updated = [...m];
-          const curr = updated[idx];
-          // Close fence if it's still open
-          if (curr.text && curr.text.endsWith('```\n')) return m;
-          if (curr.text && !curr.text.trim().endsWith('```')) {
-            updated[idx] = { ...curr, text: curr.text + (curr.text.endsWith('\n') ? '' : '\n') + '```' };
-            return updated;
-          }
-        }
-        return m;
-      });
       streamIndexRef.current = -1;
       runIdRef.current = null;
       setBusy(false);
@@ -183,6 +206,54 @@ export default function Chat({ apiKey, cwd }) {
 
   return (
     <>
+      {/* Working directory header */}
+      <div className="working-dir-header" style={{
+        padding: '8px 12px',
+        margin: '8px 0',
+        backgroundColor: '#f0f0f0',
+        borderRadius: '4px',
+        fontSize: '12px',
+        fontFamily: 'monospace',
+        border: '1px solid #ddd',
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center'
+      }}>
+        <div>
+          <strong>Working Directory:</strong> 
+          <span style={{ color: !cwd ? '#ff4444' : 'inherit', fontWeight: !cwd ? 'bold' : 'normal' }}>
+            {cwd || '⚠️ NO DIRECTORY SELECTED'}
+          </span> | 
+          <strong>Timeout:</strong> {timeoutMinutes === 0 ? 'No limit' : `${timeoutMinutes} min`}
+        </div>
+        <button 
+          onClick={async () => {
+            try {
+              const folderPath = await window.cursovable.selectFolder();
+              if (folderPath) {
+                await window.cursovable.setWorkingDirectory(folderPath);
+                // Force a re-render by updating the cwd prop
+                window.location.reload();
+              }
+            } catch (err) {
+              console.error('Failed to set working directory:', err);
+              alert(`Failed to set working directory: ${err.message}`);
+            }
+          }}
+          style={{
+            fontSize: '10px',
+            padding: '2px 6px',
+            backgroundColor: '#007acc',
+            color: 'white',
+            border: 'none',
+            borderRadius: '3px',
+            cursor: 'pointer'
+          }}
+        >
+          Change
+        </button>
+      </div>
+      
       {/* Debug panel */}
       {terminalStatus && (
         <div className="debug-panel" style={{ 
@@ -222,14 +293,17 @@ export default function Chat({ apiKey, cwd }) {
       </div>
       <div className="input">
         <textarea
-          placeholder="Ask the CTO agent… (we'll run: cursor-agent -p --output-format=json)"
+          placeholder={!cwd ? 'Please select a working directory first...' : `Ask the CTO agent… (timeout: ${timeoutMinutes === 0 ? 'no limit' : `${timeoutMinutes} min`})`}
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => {
             if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') send();
           }}
+          disabled={!cwd}
         />
-        <button onClick={send} disabled={busy}>Send</button>
+        <button onClick={send} disabled={busy || !cwd} style={{ opacity: !cwd ? 0.5 : 1 }}>
+          {!cwd ? 'Select Directory First' : 'Send'}
+        </button>
       </div>
     </>
   );

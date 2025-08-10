@@ -13,6 +13,7 @@ export default function App() {
   const [viteLogs, setViteLogs] = useState([]);
   const [cursorLogs, setCursorLogs] = useState([]);
   const [consoleLogs, setConsoleLogs] = useState([]);
+  const [timeoutMinutes, setTimeoutMinutes] = useState(15); // Default 15 minutes
   const webviewRef = useRef(null);
   const viteLogScroller = useRef(null);
   const cursorLogScroller = useRef(null);
@@ -253,9 +254,24 @@ export default function App() {
       <div className="panel chat">
         <div className="header">
           <input placeholder="Optional API key (exported as OPENAI_API_KEY)" value={apiKey} onChange={e => setApiKey(e.target.value)} style={{flex: 1}}/>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px' }}>
+            <label>Timeout:</label>
+            <select 
+              value={timeoutMinutes} 
+              onChange={e => setTimeoutMinutes(Number(e.target.value))}
+              style={{ padding: '2px 4px', fontSize: '11px' }}
+            >
+              <option value={5}>5 min</option>
+              <option value={10}>10 min</option>
+              <option value={15}>15 min</option>
+              <option value={30}>30 min</option>
+              <option value={60}>60 min</option>
+              <option value={0}>No limit</option>
+            </select>
+          </div>
           <button className="secondary" onClick={async () => { await window.cursovable.clearHistory(); location.reload(); }}>Clear</button>
         </div>
-        <Chat apiKey={apiKey} cwd={folder} />
+        <Chat apiKey={apiKey} cwd={folder} timeoutMinutes={timeoutMinutes} />
       </div>
     </div>
   )
