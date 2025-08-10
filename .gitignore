@@ -1,0 +1,82 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# OS misc
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Node / JavaScript
+node_modules/
+logs/
+*.log
+npm-debug.log*x
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+*.tsbuildinfo
+.eslintcache
+.cache/
+coverage/
+.next/
+.nuxt/
+.svelte-kit/
+.vite/
+.turbo/
+dist/
+build/
+out/
+storybook-static/
+
+# Lockfiles (keep tracked) — intentionally NOT ignored
+# package-lock.json
+yarn.lock
+# pnpm-lock.yaml
+# bun.lockb
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.python-version
+.venv/
+venv/
+env/
+.env/
+.mypy_cache/
+.pytest_cache/
+.pyre/
+.dmypy.json
+.coverage
+.coverage.*
+htmlcov/
+pip-wheel-metadata/
+pip-log.txt
+
+# Editors/IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*.sw?
+*.orig
+
+# Env files
+.env
+.env.*
+!.env.example
+
+# Supabase (CLI internals)
+supabase/.branches/
+supabase/.temp/
+supabase/.cache/
+# Keep migrations tracked
+!supabase/migrations/
+
+# Temporary files
+*.tmp
+.tmp/
+tmp/
+temp/
