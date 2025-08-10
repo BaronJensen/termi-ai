@@ -873,3 +873,70 @@ ipcMain.handle('history-clear', async () => {
   history.clear();
   return [];
 });
+
+// Detect project metadata from a folder
+ipcMain.handle('project-detect', async (_e, folderPath) => {
+  try {
+    if (!folderPath) throw new Error('No folder provided');
+    if (!fs.existsSync(folderPath) || !fs.statSync(folderPath).isDirectory()) {
+      throw new Error('Folder does not exist or is not a directory');
+    }
+
+    const result = {
+      hasPackageJson: false,
+      packageJson: null,
+      hasIndexHtml: false,
+      indexHtmlPath: null,
+      scripts: {},
+      name: null,
+      description: null,
+    };
+
+    const pkgPath = path.join(folderPath, 'package.json');
+    if (fs.existsSync(pkgPath) && fs.statSync(pkgPath).isFile()) {
+      try {
+        const raw = fs.readFileSync(pkgPath, 'utf8');
+        const json = JSON.parse(raw);
+        result.hasPackageJson = true;
+        result.packageJson = json;
+        result.scripts = json.scripts || {};
+        result.name = json.name || null;
+        result.description = json.description || null;
+      } catch (err) {
+        // If parse fails, still mark file existence but no data
+        result.hasPackageJson = true;
+      }
+    }
+
+    // Look for index.html in common locations
+    const candidatePaths = [
+      'index.html',
+      path.join('public', 'index.html'),
+      path.join('src', 'index.html')
+    ];
+    for (const rel of candidatePaths) {
+      const full = path.join(folderPath, rel);
+      if (fs.existsSync(full) && fs.statSync(full).isFile()) {
+        result.hasIndexHtml = true;
+        result.indexHtmlPath = full;
+        break;
+      }
+    }
+
+    // Determine project type
+    let projectType = null;
+    if (result.hasPackageJson) {
+      // Heuristic: if vite-related scripts exist
+      const scripts = result.scripts || {};
+      const values = Object.values(scripts).join(' ').toLowerCase();
+      if (values.includes('vite')) projectType = 'vite';
+      else projectType = 'node';
+    } else if (result.hasIndexHtml) {
+      projectType = 'html';
+    }
+
+    return { ok: true, data: { ...result, projectType } };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});

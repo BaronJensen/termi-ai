@@ -23,6 +23,7 @@ contextBridge.exposeInMainWorld('cursovable', {
     ipcRenderer.on('cursor-log', listener);
     return () => ipcRenderer.removeListener('cursor-log', listener);
   },
+  detectProject: (folderPath) => ipcRenderer.invoke('project-detect', folderPath),
   sendCursorInput: (opts) => ipcRenderer.invoke('cursor-input', opts),
   sendCursorSignal: (opts) => ipcRenderer.invoke('cursor-signal', opts),
   getTerminalStatus: () => ipcRenderer.invoke('terminal-status'),
