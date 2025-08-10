@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>cursovable</title>
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' 'unsafe-eval' http: https: data: blob: filesystem:; img-src 'self' data: blob: *; media-src 'self' data: blob: *; style-src 'self' 'unsafe-inline' https:; font-src 'self' data: https:; connect-src * data: blob:; frame-src *; child-src *; frame-ancestors *;" />
+    <style>
+      html, body, #root { height: 100%; margin: 0; }
+      body { font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji"; background: #0b0d12; color: #e6e6e6; }
+      .app { display: grid; grid-template-columns: 1.2fr 1fr; gap: 12px; height: 100%; padding: 12px; box-sizing: border-box; }
+      .panel { background: #0f141c; border: 1px solid #1d2633; border-radius: 14px; overflow: hidden; display: flex; flex-direction: column; }
+      .header { padding: 10px 12px; border-bottom: 1px solid #1d2633; display: flex; gap: 8px; align-items: center; }
+      .header input, .header select { background: #0b0f16; border: 1px solid #27354a; color: #d6dee8; padding: 8px 10px; border-radius: 10px; outline: none; }
+      .header button { background: #3c6df0; color: white; border: none; padding: 8px 12px; border-radius: 10px; cursor: pointer; }
+      .header button.secondary { background: #1e2a3d; }
+      .iframe-wrap { flex: 1; background: #0a0d13; }
+      iframe, webview { width: 100%; height: 100%; border: 0; background: white; }
+      .chat { display: flex; flex-direction: column; height: 100%; }
+      .messages { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 12px; }
+      .bubble { background: #0b1018; border: 1px solid #1a2331; border-radius: 12px; padding: 12px; white-space: pre-wrap; }
+      .bubble.user { background: #172033; border-color: #2d3d57; }
+      .input { display: flex; gap: 8px; padding: 12px; border-top: 1px solid #1d2633; }
+      .input textarea { flex: 1; resize: none; height: 64px; background: #0b0f16; border: 1px solid #27354a; color: #d6dee8; padding: 10px; border-radius: 10px; outline: none; }
+      .debug-panel { border-top: 1px solid #1d2633; background: #0b0f16; }
+      .debug-panel .tabs { display: flex; gap: 4px; padding: 6px; border-bottom: 1px solid #1d2633; }
+      .debug-panel .tabs button { background: #1e2a3d; color: #c9d5e1; border: 1px solid #2b3b53; padding: 6px 8px; border-radius: 8px; cursor: pointer; }
+      .debug-panel .tabs button.active { background: #3c6df0; color: white; border-color: #3c6df0; }
+      .debug-panel .terminal { height: 220px; overflow: hidden; }
+      .debug-panel .term-scroll { height: 100%; overflow: auto; padding: 8px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size: 12px; }
+      .debug-panel .ln { white-space: pre-wrap; color: #d6dee8; }
+      .debug-panel .ln.stderr { color: #ff8a80; }
+      .debug-panel .ln.error { color: #ff8a80; }
+      .debug-panel .ln.stdout { color: #cde3ff; }
+      .debug-panel .ln.info { color: #cde3ff; }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
