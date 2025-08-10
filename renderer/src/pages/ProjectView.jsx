@@ -2,13 +2,14 @@ import React, { useState } from 'react';
 import Chat from '../components/Chat.jsx';
 import { getProject, updateProject } from '../store/projects';
 
-export default function ProjectView({ projectId, onBack }) {
+export default function ProjectView({ projectId, onBack, initialMessage }) {
   const project = getProject(projectId);
   const [folder, setFolder] = useState(project?.path || null);
   const [timeoutMinutes, setTimeoutMinutes] = useState(15);
   const [apiKey, setApiKey] = useState('');
   const [previewUrl, setPreviewUrl] = useState(null);
   const [isStarting, setIsStarting] = useState(false);
+  const [isInstalling, setIsInstalling] = useState(false);
   const projectType = project?.runningConfig?.projectType || 'vite';
 
   if (!project) {
@@ -55,6 +56,19 @@ export default function ProjectView({ projectId, onBack }) {
           <button className="secondary" onClick={onBack}>Back</button>
           <input style={{minWidth: '280px'}} value={folder || ''} placeholder="No folder selected" readOnly />
           <button onClick={startPreview} disabled={!folder || isStarting}>{projectType === 'html' ? 'Run HTML Server' : 'Run Preview'}</button>
+          <button className="secondary" disabled={!folder || isInstalling} onClick={async () => {
+            try {
+              if (!folder) return alert('Select a folder first');
+              setIsInstalling(true);
+              const res = await window.cursovable.installPackages({ folderPath: folder, manager: 'yarn' });
+              if (!res || !res.ok) throw new Error(res?.error || 'Install failed');
+              await startPreview();
+            } catch (e) {
+              alert(e.message || String(e));
+            } finally {
+              setIsInstalling(false);
+            }
+          }}>{isInstalling ? 'Installing…' : 'Install deps'}</button>
           <button className="secondary" onClick={stopPreview}>Stop</button>
         </div>
         <div className="iframe-wrap">
@@ -85,7 +99,7 @@ export default function ProjectView({ projectId, onBack }) {
         </div>
 
         {/** Default chat instance; session id derived from assistant response for reconnecting later */}
-        <Chat apiKey={apiKey} cwd={folder} timeoutMinutes={timeoutMinutes} />
+        <Chat apiKey={apiKey} cwd={folder} timeoutMinutes={timeoutMinutes} initialMessage={initialMessage} />
       </div>
     </div>
   );

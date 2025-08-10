@@ -3,7 +3,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import Bubble from './Chat/Bubble';
 import ToolCallIndicator from './Chat/ToolCallIndicator';
 
-export default function Chat({ apiKey, cwd, timeoutMinutes = 15 }) {
+export default function Chat({ apiKey, cwd, timeoutMinutes = 15, initialMessage }) {
   // Add CSS animations and styles
   useEffect(() => {
     const style = document.createElement('style');
@@ -877,8 +877,8 @@ export default function Chat({ apiKey, cwd, timeoutMinutes = 15 }) {
     }
   }, [messages, busy]);
 
-  async function send() {
-    const text = input.trim();
+  async function send(textOverride) {
+    const text = (typeof textOverride === 'string' ? textOverride : input).trim();
     if (!text) return;
     
     // Check if working directory is selected
@@ -893,7 +893,7 @@ export default function Chat({ apiKey, cwd, timeoutMinutes = 15 }) {
       return;
     }
     
-    setInput('');
+    if (typeof textOverride !== 'string') setInput('');
     // Reset textarea height
     const textarea = document.querySelector('.input textarea');
     if (textarea) {
@@ -1055,6 +1055,21 @@ export default function Chat({ apiKey, cwd, timeoutMinutes = 15 }) {
                       
                       return newMessages;
                     });
+
+                    // After first response: try installing packages then auto-run preview
+                    try {
+                      const status = await window.cursovable.getWorkingDirectory();
+                      const cwdPath = status || (typeof cwd === 'string' ? cwd : null);
+                      if (cwdPath) {
+                        try {
+                          await window.cursovable.installPackages({ folderPath: cwdPath, manager: 'yarn' });
+                        } catch (e) {
+                          console.warn('Auto install failed:', e);
+                        }
+                      }
+                    } catch (e) {
+                      console.warn('Working directory lookup failed:', e);
+                    }
                   } else {
                     // If we didn't get any assistant content, show a fallback message
                     setMessages(m => {
@@ -1263,6 +1278,15 @@ export default function Chat({ apiKey, cwd, timeoutMinutes = 15 }) {
       setBusy(false);
     }
   }
+
+  // Auto-send initial message once when cwd and initialMessage are present
+  const hasAutoSentRef = useRef(false);
+  useEffect(() => {
+    if (!hasAutoSentRef.current && initialMessage && cwd) {
+      hasAutoSentRef.current = true;
+      send(initialMessage);
+    }
+  }, [initialMessage, cwd]);
 
   return (
     <>

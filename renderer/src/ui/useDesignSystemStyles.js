@@ -61,6 +61,66 @@ export default function useDesignSystemStyles() {
       .ds-modal-body { padding: 16px; }
       .ds-modal-footer { padding: 16px; border-top: 1px solid var(--ds-border); display: flex; gap: 10px; justify-content: flex-end; }
       .ds-label { font-size: 12px; color: #a8c0ff; margin-bottom: 6px; }
+
+      /* Hero styles */
+      .ds-hero {
+        position: relative;
+        padding: 48px 24px 56px;
+        border-radius: 18px;
+        overflow: hidden;
+        background: radial-gradient(1000px 400px at 50% -200px, rgba(60,109,240,0.35), transparent 60%),
+                    linear-gradient(180deg, #0b0d12 0%, #0f141c 50%, #0b1018 100%);
+        border: 1px solid var(--ds-border);
+        box-shadow: 0 30px 80px rgba(0,0,0,0.45);
+        display: flex; flex-direction: column; align-items: center; gap: 10px;
+      }
+      .ds-hero-title {
+        font-size: clamp(28px, 6.2vw, 56px);
+        line-height: 1.1;
+        font-weight: 800;
+        color: #eaf1ff;
+        text-align: center;
+        letter-spacing: -0.02em;
+      }
+      .ds-hero-title .accent { color: #f97316; filter: drop-shadow(0 4px 12px rgba(249,115,22,.35)); }
+      .ds-hero-subtitle { color: #c9d5e1; opacity: .85; text-align: center; font-size: 14px; margin-top: 4px; }
+      .ds-hero-bar {
+        margin-top: 18px;
+        width: min(980px, 96%);
+        display: grid; grid-template-columns: 1fr auto auto; gap: 10px; align-items: center;
+        padding: 12px; border-radius: 18px;
+        background: rgba(7,10,16,0.8);
+        border: 1px solid #243246;
+        box-shadow: inset 0 1px 0 rgba(255,255,255,0.06), 0 8px 28px rgba(0,0,0,0.35);
+        backdrop-filter: blur(6px);
+      }
+      .ds-hero-bar .ds-input { height: 48px; font-size: 14px; background: #0b0f16; }
+      .ds-hero-bar .ds-select { height: 48px; min-width: 160px; }
+      .ds-hero-bar .ds-button { height: 48px; min-width: 120px; }
+
+      /* Compact controls */
+      .ds-button.compact { height: 36px; padding: 0 12px; border-radius: 10px; font-size: 13px; }
+      .ds-select.compact {
+        width: auto;
+        height: 32px;
+        min-width: 120px;
+        padding: 4px 10px;
+        border-radius: 8px;
+        font-size: 12px;
+      }
+
+      /* Hero one-line textarea */
+      .ds-textarea.hero-one-line {
+        height: 48px;
+        resize: none;
+        overflow-x: auto;
+        overflow-y: hidden;
+        white-space: nowrap;
+        line-height: 48px;
+        padding-top: 0; padding-bottom: 0;
+      }
+
+      .icon-inline { display: inline-flex; align-items: center; gap: 6px; }
     `;
     document.head.appendChild(style);
     return () => document.head.removeChild(style);

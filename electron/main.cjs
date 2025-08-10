@@ -1006,3 +1006,46 @@ ipcMain.handle('project-detect', async (_e, folderPath) => {
     return { ok: false, error: err.message };
   }
 });
+
+// Install packages via yarn/pnpm/npm in a given folder
+ipcMain.handle('packages-install', async (_e, { folderPath, manager = 'yarn' }) => {
+  try {
+    if (!folderPath) throw new Error('No folderPath provided');
+    if (!fs.existsSync(folderPath) || !fs.statSync(folderPath).isDirectory()) {
+      throw new Error('Folder does not exist or is not a directory');
+    }
+    const cmd = manager === 'npm' ? 'npm' : manager === 'pnpm' ? 'pnpm' : 'yarn';
+    const args = manager === 'npm' ? ['install'] : ['install'];
+    const child = spawn(cmd, args, { cwd: folderPath, shell: process.platform === 'win32', env: process.env });
+    return await new Promise((resolve) => {
+      child.on('exit', (code) => {
+        if (code === 0) resolve({ ok: true });
+        else resolve({ ok: false, error: `${cmd} ${args.join(' ')} exited with code ${code}` });
+      });
+      child.on('error', (err) => resolve({ ok: false, error: err.message }));
+    });
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
+// Create a new project scaffold directory with project-setup.md
+ipcMain.handle('project-create', async (_e, { parentDir, projectName, template, prompt }) => {
+  try {
+    if (!parentDir || !projectName) throw new Error('Missing parentDir or projectName');
+    if (!fs.existsSync(parentDir) || !fs.statSync(parentDir).isDirectory()) {
+      throw new Error('Parent directory does not exist or is not a directory');
+    }
+    const safeName = projectName.replace(/[^a-zA-Z0-9-_]/g, '-');
+    const targetDir = path.join(parentDir, safeName);
+    if (fs.existsSync(targetDir)) {
+      throw new Error('Target folder already exists');
+    }
+    fs.mkdirSync(targetDir, { recursive: true });
+    const md = `# Project Setup\n\n- Name: ${projectName}\n- Template: ${template}\n- Created: ${new Date().toISOString()}\n\n## Prompt\n\n${prompt || ''}\n`;
+    fs.writeFileSync(path.join(targetDir, 'project-setup.md'), md, 'utf8');
+    return { ok: true, path: targetDir };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});

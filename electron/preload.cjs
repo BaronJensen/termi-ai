@@ -26,6 +26,8 @@ contextBridge.exposeInMainWorld('cursovable', {
   detectProject: (folderPath) => ipcRenderer.invoke('project-detect', folderPath),
   startHtml: (opts) => ipcRenderer.invoke('html-start', opts),
   stopHtml: () => ipcRenderer.invoke('html-stop'),
+  createProjectScaffold: (opts) => ipcRenderer.invoke('project-create', opts),
+  installPackages: (opts) => ipcRenderer.invoke('packages-install', opts),
   sendCursorInput: (opts) => ipcRenderer.invoke('cursor-input', opts),
   sendCursorSignal: (opts) => ipcRenderer.invoke('cursor-signal', opts),
   getTerminalStatus: () => ipcRenderer.invoke('terminal-status'),

@@ -282,7 +282,7 @@ function LegacyApp() {
 export default function App() {
   const [route, setRoute] = useState({ name: 'dashboard', params: {} });
   if (route.name === 'project') {
-    return <ProjectView projectId={route.params.id} onBack={() => setRoute({ name: 'dashboard', params: {} })} />
+    return <ProjectView projectId={route.params.id} initialMessage={route.params.initialMessage} onBack={() => setRoute({ name: 'dashboard', params: {} })} />
   }
-  return <Dashboard onOpenProject={(id) => setRoute({ name: 'project', params: { id } })} />
+  return <Dashboard onOpenProject={(id, initialMessage) => setRoute({ name: 'project', params: { id, initialMessage } })} />
 }
