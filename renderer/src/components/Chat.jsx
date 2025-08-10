@@ -130,6 +130,7 @@ export default function Chat({ apiKey, cwd, timeoutMinutes = 15 }) {
         transition: all 0.2s ease;
         min-height: fit-content;
         height: auto;
+        font-size: 13px;
       }
       
       .bubble.assistant {
@@ -330,8 +331,9 @@ export default function Chat({ apiKey, cwd, timeoutMinutes = 15 }) {
       /* Markdown content styles */
       .markdown-content {
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-        line-height: 1.6;
+        line-height: 1.55;
         color: #e6e6e6;
+        font-size: 13px;
       }
       
       .markdown-content h1,
