@@ -50,15 +50,10 @@ function NewProjectModal({ onClose, onCreate }) {
         return;
       }
 
-      // Choose default script
+      // Choose default script strictly from package.json based on detection
       const scripts = data.scripts || {};
-      const pickScript = () => {
-        if (scripts.dev) return 'npm run dev';
-        if (scripts.start) return 'npm start';
-        const viteKey = Object.keys(scripts).find((k) => String(scripts[k]).toLowerCase().includes('vite'));
-        if (viteKey) return `npm run ${viteKey}`;
-        return 'npm run dev';
-      };
+      const defaultKey = data.defaultScriptKey || null;
+      const defaultCmd = defaultKey ? `npm run ${defaultKey}` : '';
 
       setDraft((d) => ({
         ...d,
@@ -67,7 +62,7 @@ function NewProjectModal({ onClose, onCreate }) {
         description: data.description || d.description,
         runningConfig: {
           projectType: data.projectType || d.runningConfig.projectType,
-          runningScript: pickScript(),
+          runningScript: defaultCmd,
         },
       }));
 
@@ -159,25 +154,34 @@ function NewProjectModal({ onClose, onCreate }) {
             <Input placeholder="Optional description" value={draft.description} onChange={(e) => setDraft({ ...draft, description: e.target.value })} />
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <Label>Project Type</Label>
-            <Select
-              value={draft.runningConfig.projectType}
-              onChange={(e) => setDraft({ ...draft, runningConfig: { ...draft.runningConfig, projectType: e.target.value } })}
-            >
-              <option value="vite">Vite</option>
-              <option value="html">HTML</option>
-              <option value="node">Node</option>
-            </Select>
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <Label>Run Script</Label>
-            <Input
-              placeholder="npm run dev"
-              value={draft.runningConfig.runningScript}
-              onChange={(e) => setDraft({ ...draft, runningConfig: { ...draft.runningConfig, runningScript: e.target.value } })}
-            />
-          </div>
+          {draft.runningConfig.projectType !== 'html' && (
+            <>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <Label>Project Type</Label>
+                <Select
+                  value={draft.runningConfig.projectType}
+                  onChange={(e) => setDraft({ ...draft, runningConfig: { ...draft.runningConfig, projectType: e.target.value } })}
+                >
+                  <option value="vite">Vite</option>
+                  <option value="next">Next</option>
+                  <option value="node">Node</option>
+                  <option value="html">HTML</option>
+                </Select>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <Label>Run Script</Label>
+                <Select
+                  value={draft.runningConfig.runningScript}
+                  onChange={(e) => setDraft({ ...draft, runningConfig: { ...draft.runningConfig, runningScript: e.target.value } })}
+                >
+                  <option value="">Select script…</option>
+                  {Object.keys(detected?.scripts || {}).map((key) => (
+                    <option key={key} value={`npm run ${key}`}>{key} — {String(detected.scripts[key])}</option>
+                  ))}
+                </Select>
+              </div>
+            </>
+          )}
         </div>
       )}
     </Modal>

@@ -24,6 +24,7 @@ function loadPTY() {
 }
 
 const { startVite, stopVite } = require('./viteRunner.cjs');
+const { startHtmlServer } = require('./htmlServer.cjs');
 const { runCursorAgent, startCursorAgent } = require('./runner.cjs');
 const { HistoryStore } = require('./historyStore.cjs');
 
@@ -37,6 +38,7 @@ if (process.env.RENDERER_URL) {
 
 let win;
 let viteProcess = null;
+let htmlServerRef = null; // { stop, urlPromise }
 let lastViteFolder = null;
 const agentProcs = new Map(); // runId -> childRef
 let persistentTerminal = null; // Always-available terminal session
@@ -487,6 +489,11 @@ ipcMain.handle('vite-start', async (_e, { folderPath, manager }) => {
   if (viteProcess) {
     try { await stopVite(viteProcess); } catch (e) {}
   }
+  // Stop internal HTML server if running
+  if (htmlServerRef && htmlServerRef.stop) {
+    try { htmlServerRef.stop(); } catch {}
+    htmlServerRef = null;
+  }
   const { child, urlPromise } = startVite(folderPath, manager || 'yarn', (level, line) => {
     try { if (win && !win.isDestroyed()) win.webContents.send('vite-log', { level, line, ts: Date.now() }); } catch {}
   });
@@ -502,6 +509,38 @@ ipcMain.handle('vite-stop', async () => {
     await stopVite(viteProcess);
     viteProcess = null;
     updateMenuStatus(); // Update menu after stopping Vite
+  }
+  return true;
+});
+
+// Start/Stop internal HTML server for plain HTML projects
+ipcMain.handle('html-start', async (_e, { folderPath }) => {
+  if (!folderPath) throw new Error('No folderPath provided');
+  // Stop vite if running
+  if (viteProcess) {
+    try { await stopVite(viteProcess); } catch {}
+    viteProcess = null;
+  }
+  // Stop existing html server
+  if (htmlServerRef && htmlServerRef.stop) {
+    try { htmlServerRef.stop(); } catch {}
+    htmlServerRef = null;
+  }
+  const server = startHtmlServer(folderPath, (level, line) => {
+    try { if (win && !win.isDestroyed()) win.webContents.send('vite-log', { level, line, ts: Date.now() }); } catch {}
+  });
+  htmlServerRef = server;
+  lastViteFolder = folderPath;
+  const url = await server.urlPromise;
+  updateMenuStatus();
+  return { url };
+});
+
+ipcMain.handle('html-stop', async () => {
+  if (htmlServerRef && htmlServerRef.stop) {
+    try { htmlServerRef.stop(); } catch {}
+    htmlServerRef = null;
+    updateMenuStatus();
   }
   return true;
 });
@@ -890,6 +929,7 @@ ipcMain.handle('project-detect', async (_e, folderPath) => {
       scripts: {},
       name: null,
       description: null,
+      defaultScriptKey: null,
     };
 
     const pkgPath = path.join(folderPath, 'package.json');
@@ -926,11 +966,37 @@ ipcMain.handle('project-detect', async (_e, folderPath) => {
     // Determine project type
     let projectType = null;
     if (result.hasPackageJson) {
-      // Heuristic: if vite-related scripts exist
       const scripts = result.scripts || {};
       const values = Object.values(scripts).join(' ').toLowerCase();
-      if (values.includes('vite')) projectType = 'vite';
+      const deps = (result.packageJson.dependencies || {});
+      const devDeps = (result.packageJson.devDependencies || {});
+      const allDeps = { ...deps, ...devDeps };
+
+      const hasNext = 'next' in allDeps || values.includes('next');
+      const hasVite = 'vite' in allDeps || values.includes('vite');
+
+      if (hasNext) projectType = 'next';
+      else if (hasVite) projectType = 'vite';
       else projectType = 'node';
+
+      // Pick default development script key
+      const lower = Object.fromEntries(Object.entries(scripts).map(([k, v]) => [k, String(v).toLowerCase()]));
+      const keys = Object.keys(lower);
+
+      const findFirst = (predicate) => keys.find((k) => predicate(k, lower[k]));
+
+      if (projectType === 'vite') {
+        result.defaultScriptKey = (lower.dev && lower.dev.includes('vite')) ? 'dev' :
+          findFirst((_k, v) => v.includes('vite') && (v.includes('dev') || v.includes('serve'))) ||
+          (lower.dev ? 'dev' : null);
+      } else if (projectType === 'next') {
+        result.defaultScriptKey = lower.dev && (lower.dev.includes('next') || lower.dev.includes('next dev')) ? 'dev' :
+          findFirst((_k, v) => v.includes('next dev') || v.includes('next')) ||
+          (lower.dev ? 'dev' : null);
+      } else {
+        // Generic node app: prefer dev, fall back to start
+        result.defaultScriptKey = lower.dev ? 'dev' : (lower.start ? 'start' : null);
+      }
     } else if (result.hasIndexHtml) {
       projectType = 'html';
     }

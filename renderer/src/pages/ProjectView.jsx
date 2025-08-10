@@ -9,6 +9,7 @@ export default function ProjectView({ projectId, onBack }) {
   const [apiKey, setApiKey] = useState('');
   const [previewUrl, setPreviewUrl] = useState(null);
   const [isStarting, setIsStarting] = useState(false);
+  const projectType = project?.runningConfig?.projectType || 'vite';
 
   if (!project) {
     return (
@@ -23,7 +24,13 @@ export default function ProjectView({ projectId, onBack }) {
     if (!folder) return alert('Select a folder first');
     setIsStarting(true);
     try {
-      const { url } = await window.cursovable.startVite({ folderPath: folder, manager: 'yarn' });
+      let urlObj;
+      if (projectType === 'html') {
+        urlObj = await window.cursovable.startHtml({ folderPath: folder });
+      } else {
+        urlObj = await window.cursovable.startVite({ folderPath: folder, manager: 'yarn' });
+      }
+      const { url } = urlObj;
       setPreviewUrl(url);
     } catch (e) {
       alert(e.message || String(e));
@@ -33,7 +40,11 @@ export default function ProjectView({ projectId, onBack }) {
   }
 
   async function stopPreview() {
-    await window.cursovable.stopVite();
+    if (projectType === 'html') {
+      await window.cursovable.stopHtml();
+    } else {
+      await window.cursovable.stopVite();
+    }
     setPreviewUrl(null);
   }
 
@@ -43,14 +54,16 @@ export default function ProjectView({ projectId, onBack }) {
         <div className="header">
           <button className="secondary" onClick={onBack}>Back</button>
           <input style={{minWidth: '280px'}} value={folder || ''} placeholder="No folder selected" readOnly />
-          <button onClick={startPreview} disabled={!folder || isStarting}>Run Preview</button>
+          <button onClick={startPreview} disabled={!folder || isStarting}>{projectType === 'html' ? 'Run HTML Server' : 'Run Preview'}</button>
           <button className="secondary" onClick={stopPreview}>Stop</button>
         </div>
         <div className="iframe-wrap">
           {previewUrl ? (
             <webview src={previewUrl} style={{width:'100%', height:'100%'}} allowpopups="true" disablewebsecurity="true" webpreferences="contextIsolation, javascript=yes, webSecurity=no, allowRunningInsecureContent=yes" partition="persist:default"/>
           ) : (
-            <div style={{padding: 18, opacity: .7}}>Click “Run Preview” to start your project.</div>
+            <div style={{padding: 18, opacity: .7}}>
+              {projectType === 'html' ? 'Click “Run HTML Server” to serve your static site with live reload.' : 'Click “Run Preview” to start your project.'}
+            </div>
           )}
         </div>
       </div>
