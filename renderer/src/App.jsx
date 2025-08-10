@@ -17,6 +17,7 @@ export default function App() {
   const viteLogScroller = useRef(null);
   const cursorLogScroller = useRef(null);
   const consoleLogScroller = useRef(null);
+  const [agentInput, setAgentInput] = useState('');
 
   async function chooseFolder() {
     const fp = await window.cursovable.selectFolder();
@@ -55,7 +56,14 @@ export default function App() {
         return next.length > 1000 ? next.slice(-1000) : next;
       });
     });
-    return () => { unsubV && unsubV(); unsubC && unsubC(); };
+    const unsubF = window.cursovable.folderSelected((folderPath) => {
+      setFolder(folderPath);
+    });
+    return () => { 
+      unsubV && unsubV(); 
+      unsubC && unsubC(); 
+      unsubF && unsubF();
+    };
   }, []);
 
   // Auto scroll logs
@@ -83,6 +91,31 @@ export default function App() {
     el.addEventListener('console-message', onConsole);
     return () => { el.removeEventListener('console-message', onConsole); };
   }, [previewUrl]);
+
+  // Check terminal status periodically
+  useEffect(() => {
+    const checkStatus = async () => {
+      try {
+        const status = await window.cursovable.getTerminalStatus();
+        const statusEl = document.getElementById('terminal-status');
+        if (statusEl) {
+          statusEl.textContent = `${status.terminalType} (PTY: ${status.hasPty ? 'Yes' : 'No'})`;
+          statusEl.style.color = status.hasPersistentTerminal ? '#4ade80' : '#f87171';
+        }
+      } catch (err) {
+        console.error('Failed to get terminal status:', err);
+        const statusEl = document.getElementById('terminal-status');
+        if (statusEl) {
+          statusEl.textContent = 'Error';
+          statusEl.style.color = '#f87171';
+        }
+      }
+    };
+    
+    checkStatus();
+    const interval = setInterval(checkStatus, 2000);
+    return () => clearInterval(interval);
+  }, []);
 
   return (
     <div className="app">
@@ -131,11 +164,79 @@ export default function App() {
                 </div>
               )}
               {activeTab==='cursor' && (
-                <div className="term-scroll" ref={cursorLogScroller}>
-                  {cursorLogs.map((l, i) => (
-                    <div key={i} className={`ln ${l.level || 'info'}`}>[{new Date(l.ts).toLocaleTimeString()}] {l.line}</div>
-                  ))}
-                </div>
+                <>
+                  <div className="term-scroll" ref={cursorLogScroller}>
+                    {cursorLogs.map((l, i) => (
+                      <div key={i} className={`ln ${l.level || 'info'}`}>[{new Date(l.ts).toLocaleTimeString()}] {l.line}</div>
+                    ))}
+                  </div>
+                  <div className="agent-input">
+                    <div style={{color: '#cde3ff', fontSize: '11px', marginBottom: '4px'}}>
+                      Terminal Console: {cursorLogs.length > 0 ? `(${cursorLogs.length} logs)` : '(No logs yet)'}
+                      {cursorLogs.length > 0 && (
+                        <span style={{marginLeft: '10px', color: '#ff8a80'}}>
+                          Active: {cursorLogs[cursorLogs.length - 1]?.runId === 'persistent' ? 'Persistent Terminal' : `Agent (${cursorLogs[cursorLogs.length - 1]?.runId || 'none'})`}
+                        </span>
+                      )}
+                    </div>
+                    <div style={{color: '#cde3ff', fontSize: '10px', marginBottom: '8px', opacity: 0.7}}>
+                      Status: <span id="terminal-status">Checking...</span>
+                    </div>
+                    <input
+                      value={agentInput}
+                      onChange={(e) => setAgentInput(e.target.value)}
+                      placeholder="Type input for agent and press Enter"
+                      onKeyDown={async (e) => {
+                        if (e.key === 'Enter') {
+                          const last = cursorLogs[cursorLogs.length - 1];
+                          const runId = last?.runId;
+                          console.log('Sending input, runId:', runId, 'input:', agentInput);
+                          // Always send input - persistent terminal will handle it if no agent running
+                          await window.cursovable.sendCursorInput({ runId, data: agentInput + '\n' });
+                          setAgentInput('');
+                        }
+                        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'c') {
+                          const last = cursorLogs[cursorLogs.length - 1];
+                          const runId = last?.runId;
+                          console.log('Sending SIGINT, runId:', runId);
+                          // Always send signal - persistent terminal will handle it if no agent running
+                          await window.cursovable.sendCursorSignal({ runId, signal: 'SIGINT' });
+                        }
+                      }}
+                    />
+                    <button onClick={async () => {
+                      const last = cursorLogs[cursorLogs.length - 1];
+                      const runId = last?.runId;
+                      console.log('Send button clicked, runId:', runId, 'input:', agentInput);
+                      // Always send input - persistent terminal will handle it if no agent running
+                      await window.cursovable.sendCursorInput({ runId, data: agentInput + '\n' });
+                      setAgentInput('');
+                    }}>Send</button>
+                    <button className="secondary" onClick={async () => {
+                      const last = cursorLogs[cursorLogs.length - 1];
+                      const runId = last?.runId;
+                      console.log('Ctrl+C button clicked, runId:', runId);
+                      // Always send signal - persistent terminal will handle it if no agent running
+                      await window.cursovable.sendCursorSignal({ runId, signal: 'SIGINT' });
+                    }}>Ctrl+C</button>
+                    <button className="secondary" onClick={async () => {
+                      console.log('Starting persistent terminal...');
+                      try {
+                        // Send a dummy input to trigger persistent terminal creation
+                        const result = await window.cursovable.sendCursorInput({ runId: null, data: '\n' });
+                        console.log('Terminal start result:', result);
+                        
+                        // Wait a moment and check status
+                        setTimeout(async () => {
+                          const status = await window.cursovable.getTerminalStatus();
+                          console.log('Terminal status after start:', status);
+                        }, 500);
+                      } catch (err) {
+                        console.error('Failed to start terminal:', err);
+                      }
+                    }}>Start Terminal</button>
+                  </div>
+                </>
               )}
               {activeTab==='console' && (
                 <div className="term-scroll" ref={consoleLogScroller}>
@@ -154,7 +255,7 @@ export default function App() {
           <input placeholder="Optional API key (exported as OPENAI_API_KEY)" value={apiKey} onChange={e => setApiKey(e.target.value)} style={{flex: 1}}/>
           <button className="secondary" onClick={async () => { await window.cursovable.clearHistory(); location.reload(); }}>Clear</button>
         </div>
-        <Chat apiKey={apiKey} />
+        <Chat apiKey={apiKey} cwd={folder} />
       </div>
     </div>
   )

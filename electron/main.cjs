@@ -1,12 +1,30 @@
 
-const { app, BrowserWindow, ipcMain, dialog, session } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, session, Menu } = require('electron');
 const path = require('path');
 const { spawn } = require('child_process');
 const fs = require('fs');
 const os = require('os');
 
+// PTY module - will be loaded lazily when needed
+let pty = null;
+let ptyLoadAttempted = false;
+
+function loadPTY() {
+  if (ptyLoadAttempted) return pty;
+  ptyLoadAttempted = true;
+  
+  try {
+    pty = require('node-pty');
+    console.log('✅ node-pty loaded successfully');
+    return pty;
+  } catch (err) {
+    console.warn('node-pty not available, terminal features will be limited:', err.message);
+    return null;
+  }
+}
+
 const { startVite, stopVite } = require('./viteRunner.cjs');
-const { runCursorAgent } = require('./runner.cjs');
+const { runCursorAgent, startCursorAgent } = require('./runner.cjs');
 const { HistoryStore } = require('./historyStore.cjs');
 
 // Dev: allow insecure localhost and certificate errors (must be set before ready)
@@ -19,6 +37,9 @@ if (process.env.RENDERER_URL) {
 
 let win;
 let viteProcess = null;
+let lastViteFolder = null;
+const agentProcs = new Map(); // runId -> childRef
+let persistentTerminal = null; // Always-available terminal session
 const history = new HistoryStore(app);
 
 function isPrivateHost(hostname) {
@@ -55,6 +76,231 @@ function createWindow() {
   }
 }
 
+function createMenu() {
+  const template = [
+    {
+      label: 'File',
+      submenu: [
+        {
+          label: 'Select Folder',
+          accelerator: 'CmdOrCtrl+O',
+          click: async () => {
+            if (win && !win.isDestroyed()) {
+              const res = await dialog.showOpenDialog(win, {
+                properties: ['openDirectory']
+              });
+              if (!res.canceled && res.filePaths.length > 0) {
+                win.webContents.send('folder-selected', res.filePaths[0]);
+              }
+            }
+          }
+        },
+        { type: 'separator' },
+        {
+          label: 'Quit',
+          accelerator: process.platform === 'darwin' ? 'Cmd+Q' : 'Ctrl+Q',
+          click: () => app.quit()
+        }
+      ]
+    },
+    {
+      label: 'View',
+      submenu: [
+        { role: 'reload' },
+        { role: 'forceReload' },
+        { role: 'toggleDevTools' },
+        { type: 'separator' },
+        { role: 'resetZoom' },
+        { role: 'zoomIn' },
+        { role: 'zoomOut' },
+        { type: 'separator' },
+        { role: 'togglefullscreen' }
+      ]
+    },
+    {
+      label: 'Terminal Status',
+      submenu: [
+        {
+          label: 'Status: None',
+          enabled: false,
+          id: 'terminal-status'
+        },
+        {
+          label: 'Processes: 0',
+          enabled: false,
+          id: 'terminal-processes'
+        },
+        {
+          label: 'PTY: ✗',
+          enabled: false,
+          id: 'terminal-pty'
+        },
+        {
+          label: 'Vite: ✗',
+          enabled: false,
+          id: 'terminal-vite'
+        },
+        {
+          label: 'Working Dir: None',
+          enabled: false,
+          id: 'terminal-working-dir'
+        },
+        { type: 'separator' },
+        {
+          label: 'Start Vite',
+          enabled: false,
+          id: 'terminal-start-vite',
+          click: async () => {
+            try {
+              if (lastViteFolder) {
+                await win.webContents.executeJavaScript(`
+                  if (window.cursovable && window.cursovable.startVite) {
+                    window.cursovable.startVite({ folderPath: '${lastViteFolder}', manager: 'yarn' });
+                  }
+                `);
+              }
+            } catch (err) {
+              console.error('Failed to start Vite from menu:', err);
+            }
+          }
+        },
+        {
+          label: 'Stop Vite',
+          enabled: false,
+          id: 'terminal-stop-vite',
+          click: async () => {
+            try {
+              await win.webContents.executeJavaScript(`
+                if (window.cursovable && window.cursovable.stopVite) {
+                  window.cursovable.stopVite();
+                }
+              `);
+            } catch (err) {
+              console.error('Failed to stop Vite from menu:', err);
+            }
+          }
+        },
+        { type: 'separator' },
+        {
+          label: 'Force Cleanup',
+          click: async () => {
+            try {
+              await win.webContents.executeJavaScript(`
+                if (window.cursovable && window.cursovable.forceTerminalCleanup) {
+                  window.cursovable.forceTerminalCleanup();
+                }
+              `);
+            } catch (err) {
+              console.error('Failed to trigger cleanup from menu:', err);
+            }
+          }
+        }
+      ]
+    },
+    {
+      label: 'Help',
+      submenu: [
+        {
+          label: 'About',
+          click: () => {
+            dialog.showMessageBox(win, {
+              type: 'info',
+              title: 'About Cursovable',
+              message: 'Cursovable - AI-powered development environment',
+              detail: 'Version 1.0.0\nA modern development environment with AI assistance.'
+            });
+          }
+        }
+      ]
+    }
+  ];
+
+  // Add macOS-specific menu adjustments
+  if (process.platform === 'darwin') {
+    template.unshift({
+      label: app.getName(),
+      submenu: [
+        { role: 'about' },
+        { type: 'separator' },
+        { role: 'services' },
+        { type: 'separator' },
+        { role: 'hide' },
+        { role: 'hideOthers' },
+        { role: 'unhide' },
+        { type: 'separator' },
+        { role: 'quit' }
+      ]
+    });
+  }
+
+  const menu = Menu.buildFromTemplate(template);
+  Menu.setApplicationMenu(menu);
+  
+  return menu;
+}
+
+function updateMenuStatus() {
+  try {
+    const menu = Menu.getApplicationMenu();
+    if (!menu) return;
+
+    // Get terminal status
+    const ptyModule = loadPTY();
+    const hasPty = !!ptyModule;
+    const hasPersistentTerminal = !!persistentTerminal;
+    const processCount = agentProcs.size;
+    const hasViteProcess = !!viteProcess;
+
+    // Update menu items
+    const statusItem = menu.getMenuItemById('terminal-status');
+    const processesItem = menu.getMenuItemById('terminal-processes');
+    const ptyItem = menu.getMenuItemById('terminal-pty');
+    const viteItem = menu.getMenuItemById('terminal-vite');
+    const workingDirItem = menu.getMenuItemById('terminal-working-dir');
+    const startViteItem = menu.getMenuItemById('terminal-start-vite');
+    const stopViteItem = menu.getMenuItemById('terminal-stop-vite');
+
+    if (statusItem) {
+      let statusText = 'Status: ';
+      if (hasPersistentTerminal) {
+        statusText += hasPty ? 'PTY Active' : 'Fallback Active';
+      } else {
+        statusText += 'Inactive';
+      }
+      statusItem.label = statusText;
+    }
+
+    if (processesItem) {
+      processesItem.label = `Processes: ${processCount}`;
+    }
+
+    if (ptyItem) {
+      ptyItem.label = `PTY: ${hasPty ? '✓ Available' : '✗ Not Available'}`;
+    }
+
+    if (viteItem) {
+      viteItem.label = `Vite: ${hasViteProcess ? '✓ Running' : '✗ Stopped'}`;
+    }
+
+    if (workingDirItem) {
+      workingDirItem.label = `Working Dir: ${lastViteFolder || 'None'}`;
+    }
+
+    if (startViteItem) {
+      startViteItem.enabled = !!lastViteFolder;
+    }
+
+    if (stopViteItem) {
+      stopViteItem.enabled = !!viteProcess;
+    }
+
+    // Force menu refresh
+    Menu.setApplicationMenu(menu);
+  } catch (err) {
+    console.error('Failed to update menu status:', err);
+  }
+}
+
 app.whenReady().then(() => {
   // In dev, allow insecure localhost to avoid mkcert/self-signed issues
   if (process.env.RENDERER_URL) {
@@ -71,15 +317,113 @@ app.whenReady().then(() => {
     } catch {}
   }
 
+  // Test PTY functionality on startup (lazy load)
+  console.log('🧪 Testing PTY functionality on startup...');
+  const testPty = loadPTY();
+  if (testPty) {
+    try {
+      const shell = process.platform === 'win32' ? 'powershell.exe' : (process.env.SHELL || '/bin/zsh');
+      console.log('Testing PTY with shell:', shell);
+      
+      const ptyInstance = testPty.spawn(shell, [], {
+        name: 'xterm-color',
+        cwd: process.cwd(),
+        env: process.env
+      });
+      
+      ptyInstance.write('echo "PTY test successful"\r');
+      
+      let testOutput = '';
+      ptyInstance.onData((data) => {
+        testOutput += data;
+        if (testOutput.includes('PTY test successful')) {
+          console.log('✅ PTY test successful - terminal features will work');
+          ptyInstance.kill();
+        }
+      });
+      
+      // Kill test after 5 seconds
+      setTimeout(() => {
+        if (!ptyInstance.killed) {
+          ptyInstance.kill();
+          console.log('⚠️  PTY test timed out');
+        }
+      }, 5000);
+      
+    } catch (err) {
+      console.error('❌ PTY test failed:', err.message);
+    }
+  } else {
+    console.log('⚠️  No PTY available - terminal features will be limited');
+  }
+
   createWindow();
+  createMenu();
+
+  // Set up periodic menu status updates
+  setInterval(updateMenuStatus, 2000);
+  
+  // Initial menu status update
+  updateMenuStatus();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
 });
 
+// Cleanup function to terminate all processes
+function cleanupAllProcesses() {
+  // Clean up agent processes
+  for (const [runId, child] of agentProcs.entries()) {
+    try {
+      if (typeof child.kill === 'function') {
+        child.kill('SIGTERM');
+      } else if (child.pid) {
+        process.kill(child.pid, 'SIGTERM');
+      }
+    } catch (err) {
+      console.warn(`Failed to kill agent process ${runId}:`, err.message);
+    }
+  }
+  agentProcs.clear();
+  
+  // Clean up persistent terminal
+  if (persistentTerminal) {
+    try {
+      if (typeof persistentTerminal.kill === 'function') {
+        persistentTerminal.kill('SIGTERM');
+      }
+    } catch (err) {
+      console.warn('Failed to kill persistent terminal:', err.message);
+    }
+    persistentTerminal = null;
+  }
+  
+  // Clean up vite process
+  if (viteProcess) {
+    try {
+      stopVite(viteProcess);
+    } catch (err) {
+      console.warn('Failed to stop vite process:', err.message);
+    }
+    viteProcess = null;
+  }
+  
+  // Update menu after cleanup
+  updateMenuStatus();
+}
+
 app.on('window-all-closed', () => {
+  cleanupAllProcesses();
   if (process.platform !== 'darwin') app.quit();
+});
+
+app.on('before-quit', () => {
+  cleanupAllProcesses();
+});
+
+app.on('will-quit', () => {
+  cleanupAllProcesses();
 });
 
 // Allow self-signed HTTPS certificates for local/private addresses (dev convenience)
@@ -95,8 +439,29 @@ app.on('certificate-error', (event, _webContents, url, _error, _certificate, cal
   callback(false);
 });
 
+// Signal handlers for graceful shutdown
+process.on('SIGTERM', () => {
+  console.log('Received SIGTERM, shutting down gracefully...');
+  cleanupAllProcesses();
+  app.quit();
+});
+
+process.on('SIGINT', () => {
+  console.log('Received SIGINT, shutting down gracefully...');
+  cleanupAllProcesses();
+  app.quit();
+});
+
 // IPC handlers
 ipcMain.handle('select-folder', async () => {
+  const res = await dialog.showOpenDialog(win, {
+    properties: ['openDirectory']
+  });
+  if (res.canceled || res.filePaths.length === 0) return null;
+  return res.filePaths[0];
+});
+
+ipcMain.handle('folder-selected', async () => {
   const res = await dialog.showOpenDialog(win, {
     properties: ['openDirectory']
   });
@@ -113,7 +478,9 @@ ipcMain.handle('vite-start', async (_e, { folderPath, manager }) => {
     try { if (win && !win.isDestroyed()) win.webContents.send('vite-log', { level, line, ts: Date.now() }); } catch {}
   });
   viteProcess = child;
+  lastViteFolder = folderPath;
   const url = (await urlPromise).replace('0.0.0.0', 'localhost');
+  updateMenuStatus(); // Update menu after starting Vite
   return { url };
 });
 
@@ -121,21 +488,333 @@ ipcMain.handle('vite-stop', async () => {
   if (viteProcess) {
     await stopVite(viteProcess);
     viteProcess = null;
+    updateMenuStatus(); // Update menu after stopping Vite
   }
   return true;
 });
 
-ipcMain.handle('cursor-run', async (_e, { message, apiKey, runId: clientRunId }) => {
+ipcMain.handle('cursor-run', async (_e, { message, apiKey, cwd, runId: clientRunId }) => {
   if (!message || !message.trim()) {
     throw new Error('Empty message');
   }
   const runId = clientRunId || `${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
-  const resultJson = await runCursorAgent(message, apiKey, (level, line) => {
+  const workingDir = cwd || lastViteFolder || process.cwd();
+  
+  // Clean up any existing process with this runId
+  const existingProc = agentProcs.get(runId);
+  if (existingProc) {
+    try {
+      if (typeof existingProc.kill === 'function') {
+        existingProc.kill('SIGTERM');
+      } else if (existingProc.pid) {
+        process.kill(existingProc.pid, 'SIGTERM');
+      }
+    } catch (err) {
+      console.warn('Failed to kill existing process:', err.message);
+    }
+    agentProcs.delete(runId);
+  }
+  
+  const { child, wait } = startCursorAgent(message, apiKey, (level, line) => {
     try { if (win && !win.isDestroyed()) win.webContents.send('cursor-log', { runId, level, line, ts: Date.now() }); } catch {}
-  });
+  }, { cwd: workingDir });
+  
+  if (child) agentProcs.set(runId, child);
+  
+  // Update menu to show new process
+  updateMenuStatus();
+  
+  let resultJson;
+  try {
+    resultJson = await wait;
+  } catch (error) {
+    console.error('Cursor agent error:', error);
+    // Clean up on error
+    if (child) {
+      try {
+        if (typeof child.kill === 'function') {
+          child.kill('SIGTERM');
+        } else if (child.pid) {
+          process.kill(child.pid, 'SIGTERM');
+        }
+      } catch (err) {
+        console.warn('Failed to kill process on error:', err.message);
+      }
+    }
+    throw error;
+  } finally {
+    // Always clean up
+    if (child) {
+      try {
+        if (typeof child.kill === 'function') {
+          child.kill('SIGTERM');
+        } else if (child.pid) {
+          process.kill(child.pid, 'SIGTERM');
+        }
+      } catch (err) {
+        console.warn('Failed to kill process in cleanup:', err.message);
+      }
+    }
+    agentProcs.delete(runId);
+    // Update menu after cleanup
+    updateMenuStatus();
+  }
+  
   const enriched = { ...resultJson, message, runId };
   history.push(enriched);
   return enriched;
+});
+
+ipcMain.handle('cursor-input', async (_e, { runId, data }) => {
+  // Try to send to specific agent process first
+  if (runId) {
+    const child = agentProcs.get(runId);
+    if (child) {
+      try {
+        if (typeof child.write === 'function') {
+          child.write(String(data));
+          return true;
+        }
+        if (child.stdin && typeof child.stdin.write === 'function') {
+          child.stdin.write(String(data));
+          return true;
+        }
+      } catch {}
+    }
+  }
+  
+  // If no agent running or runId not found, use persistent terminal
+  if (!persistentTerminal) {
+    const ptyModule = loadPTY();
+    if (!ptyModule) {
+      console.warn('node-pty not available, using fallback terminal');
+      // Create a simple fallback terminal using child_process
+      try {
+        const shell = process.platform === 'win32' ? 'powershell.exe' : (process.env.SHELL || '/bin/zsh');
+        console.log('Creating fallback terminal with shell:', shell);
+        
+        const child = spawn(shell, [], {
+          cwd: lastViteFolder || process.cwd(),
+          env: process.env,
+          stdio: ['pipe', 'pipe', 'pipe']
+        });
+        
+        // Add timeout to prevent hanging
+        const terminalTimeout = setTimeout(() => {
+          if (child && !child.killed) {
+            console.warn('Fallback terminal timeout, killing process');
+            try {
+              child.kill('SIGTERM');
+            } catch (err) {
+              console.error('Failed to kill timed out terminal:', err);
+            }
+            persistentTerminal = null;
+          }
+        }, 300000); // 5 minutes
+        
+        persistentTerminal = {
+          write: (data) => {
+            try {
+              if (child && !child.killed) {
+                child.stdin.write(data);
+              }
+            } catch (err) {
+              console.error('Fallback terminal write error:', err);
+            }
+          },
+          kill: (signal) => {
+            try {
+              clearTimeout(terminalTimeout);
+              if (child && !child.killed) {
+                child.kill(signal);
+              }
+            } catch (err) {
+              console.error('Fallback terminal kill error:', err);
+            }
+            persistentTerminal = null;
+          }
+        };
+        
+        // Forward output
+        child.stdout.on('data', (data) => {
+          try {
+            if (win && !win.isDestroyed()) {
+              win.webContents.send('cursor-log', { 
+                runId: 'persistent', 
+                level: 'info', 
+                line: data.toString(), 
+                ts: Date.now() 
+              });
+            }
+          } catch {}
+        });
+        
+        child.stderr.on('data', (data) => {
+          try {
+            if (win && !win.isDestroyed()) {
+              win.webContents.send('cursor-log', { 
+                runId: 'persistent', 
+                level: 'error', 
+                line: data.toString(), 
+                ts: Date.now() 
+              });
+            }
+          } catch {}
+        });
+        
+        child.on('exit', (code) => {
+          console.log('Fallback terminal exited with code:', code);
+          clearTimeout(terminalTimeout);
+          persistentTerminal = null;
+          // Update menu after terminal cleanup
+          updateMenuStatus();
+        });
+        
+        child.on('error', (err) => {
+          console.error('Fallback terminal error:', err);
+          clearTimeout(terminalTimeout);
+          persistentTerminal = null;
+          // Update menu after terminal cleanup
+          updateMenuStatus();
+        });
+        
+        console.log('Fallback terminal created successfully');
+        // Update menu to show terminal status
+        updateMenuStatus();
+      } catch (err) {
+        console.error('Failed to create fallback terminal:', err);
+        return false;
+      }
+    } else {
+      try {
+        const shell = process.platform === 'win32' ? 'powershell.exe' : (process.env.SHELL || '/bin/zsh');
+        console.log('Creating persistent terminal with shell:', shell);
+        persistentTerminal = ptyModule.spawn(shell, [], {
+          name: 'xterm-color',
+          cwd: lastViteFolder || process.cwd(),
+          env: process.env
+        });
+        
+        // Add timeout to prevent hanging
+        const terminalTimeout = setTimeout(() => {
+          if (persistentTerminal) {
+            console.warn('Persistent terminal timeout, killing process');
+            try {
+              persistentTerminal.kill('SIGTERM');
+            } catch (err) {
+              console.error('Failed to kill timed out terminal:', err);
+            }
+            persistentTerminal = null;
+          }
+        }, 300000); // 5 minutes
+        
+        console.log('Persistent terminal created successfully');
+        // Update menu to show terminal status
+        updateMenuStatus();
+        
+        // Forward persistent terminal output to renderer
+        persistentTerminal.onData((data) => {
+          try {
+            if (win && !win.isDestroyed()) {
+              win.webContents.send('cursor-log', { 
+                runId: 'persistent', 
+                level: 'info', 
+                line: data.toString(), 
+                ts: Date.now() 
+              });
+            }
+          } catch {}
+        });
+        
+        persistentTerminal.onExit(({ exitCode }) => {
+          console.log('Persistent terminal exited with code:', exitCode);
+          clearTimeout(terminalTimeout);
+          persistentTerminal = null;
+          // Update menu after terminal cleanup
+          updateMenuStatus();
+        });
+        
+        persistentTerminal.onError((err) => {
+          console.error('Persistent terminal error:', err);
+          clearTimeout(terminalTimeout);
+          persistentTerminal = null;
+          // Update menu after terminal cleanup
+          updateMenuStatus();
+        });
+      } catch (err) {
+        console.error('Failed to create persistent terminal:', err);
+        return false;
+      }
+    }
+  }
+  
+  if (persistentTerminal) {
+    persistentTerminal.write(String(data));
+    return true;
+  }
+  
+  return false;
+});
+
+ipcMain.handle('cursor-signal', async (_e, { runId, signal }) => {
+  // Try to send signal to specific agent process first
+  if (runId && runId !== 'persistent') {
+    const child = agentProcs.get(runId);
+    if (child) {
+      try {
+        if (typeof child.write === 'function' && signal === 'SIGINT') {
+          child.write('\u0003'); // Ctrl+C
+          return true;
+        }
+        if (typeof child.kill === 'function') {
+          child.kill(signal || 'SIGINT');
+          return true;
+        }
+      } catch {}
+    }
+  }
+  
+  // Send signal to persistent terminal
+  if (persistentTerminal) {
+    try {
+      if (signal === 'SIGINT') {
+        persistentTerminal.write('\u0003'); // Ctrl+C
+        return true;
+      }
+      if (typeof persistentTerminal.kill === 'function') {
+        persistentTerminal.kill(signal || 'SIGINT');
+        return true;
+      }
+    } catch {}
+  }
+  
+  return false;
+});
+
+// Debug handler to test terminal status
+ipcMain.handle('terminal-status', async () => {
+  const ptyModule = loadPTY();
+  return {
+    hasPty: !!ptyModule,
+    hasPersistentTerminal: !!persistentTerminal,
+    terminalType: persistentTerminal ? (ptyModule ? 'pty' : 'fallback') : 'none',
+    activeProcesses: Array.from(agentProcs.keys()),
+    processCount: agentProcs.size,
+    lastViteFolder,
+    hasViteProcess: !!viteProcess
+  };
+});
+
+// Debug handler to force cleanup all processes
+ipcMain.handle('terminal-cleanup', async () => {
+  const beforeCount = agentProcs.size;
+  cleanupAllProcesses();
+  // Note: cleanupAllProcesses already calls updateMenuStatus()
+  return {
+    message: 'Forced cleanup completed',
+    processesCleaned: beforeCount,
+    currentProcessCount: agentProcs.size
+  };
 });
 
 ipcMain.handle('history-get', async () => {

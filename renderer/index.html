@@ -26,13 +26,17 @@
       .debug-panel .tabs { display: flex; gap: 4px; padding: 6px; border-bottom: 1px solid #1d2633; }
       .debug-panel .tabs button { background: #1e2a3d; color: #c9d5e1; border: 1px solid #2b3b53; padding: 6px 8px; border-radius: 8px; cursor: pointer; }
       .debug-panel .tabs button.active { background: #3c6df0; color: white; border-color: #3c6df0; }
-      .debug-panel .terminal { height: 220px; overflow: hidden; }
-      .debug-panel .term-scroll { height: 100%; overflow: auto; padding: 8px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size: 12px; }
+      .debug-panel .terminal { height: 280px; overflow: hidden; display: flex; flex-direction: column; }
+      .debug-panel .term-scroll { flex: 1; overflow: auto; padding: 8px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size: 12px; }
       .debug-panel .ln { white-space: pre-wrap; color: #d6dee8; }
       .debug-panel .ln.stderr { color: #ff8a80; }
       .debug-panel .ln.error { color: #ff8a80; }
       .debug-panel .ln.stdout { color: #cde3ff; }
       .debug-panel .ln.info { color: #cde3ff; }
+      .agent-input { display: flex; gap: 6px; padding: 6px; border-top: 1px solid #1d2633; background: #0b0f16; }
+      .agent-input input { flex: 1; background: #0b0f16; border: 1px solid #27354a; color: #d6dee8; padding: 8px 10px; border-radius: 8px; outline: none; }
+      .agent-input button { background: #3c6df0; color: white; border: none; padding: 8px 12px; border-radius: 8px; cursor: pointer; }
+      .agent-input button.secondary { background: #1e2a3d; }
     </style>
   </head>
   <body>

@@ -1,4 +1,3 @@
-
 # cursovable
 
 Electron-based runner that:
@@ -8,12 +7,33 @@ Electron-based runner that:
 
 > You must have `cursor-agent` installed and on your PATH. Optionally, provide an API key in the UI (exported to the process as `OPENAI_API_KEY` only for the cursor-agent call).
 
+## Features
+
+### Development Environment
+
+- **Vite Integration**: Automatic detection and running of React/Vite projects
+- **Live Preview**: Embedded iframe preview of your development server
+- **Package Manager Support**: Works with yarn, npm, or pnpm
+
+### AI Assistant
+
+- **Cursor Agent Integration**: Built-in chat interface for AI-powered development
+- **History Management**: Persistent storage of AI interactions
+- **Markdown Rendering**: Rich display of AI responses
+
+### Terminal Management
+
+- **PTY Support**: Native terminal emulation with node-pty
+- **Process Monitoring**: Real-time status of running processes
+- **Status Menu**: Custom menu bar with live terminal status updates
+
 ## Dev run
 
 ```bash
 npm install
 npm run dev
 ```
+
 That will launch Vite for the renderer at `http://localhost:5174` and then start Electron.
 
 ## Using it
@@ -30,6 +50,17 @@ That will launch Vite for the renderer at `http://localhost:5174` and then start
    - Render the `result` string as Markdown in chat.
 
 Use **Clear** to wipe the stored history.
+
+## Menu Features
+
+The app includes a custom menu bar that provides:
+
+- **Real-time Status**: Live updates of terminal, PTY, Vite, and process status
+- **Quick Actions**: Direct access to start/stop Vite and cleanup operations
+- **Theme Integration**: Dark theme that matches the app's appearance
+- **Keyboard Shortcuts**: Quick access to common functions
+
+See [Menu Features](docs/menu-features.md) for detailed documentation.
 
 ## Notes
 

@@ -1,5 +1,8 @@
 
 const { spawn } = require('child_process');
+const os = require('os');
+let pty = null;
+try { pty = require('node-pty'); } catch {}
 const fs = require('fs');
 const path = require('path');
 
@@ -76,27 +79,30 @@ function normalizeSuccessObject(obj) {
 
 function startCursorAgent(message, apiKey, onLog, options = {}) {
   let timeoutId = null;
+  let idleTimeoutId = null;
   let settled = false;
   let childRef = null;
+  let lastActivity = Date.now();
+  
   const wait = new Promise((resolve, reject) => {
-    const args = ['-p', '--output-format=json', message];
+    const args = ['-p', message];
     if (onLog) onLog('info', `Running: cursor-agent ${args.map(a => (a.includes(' ') ? '"'+a+'"' : a)).join(' ')}`);
     const env = { ...process.env, ...(apiKey ? { OPENAI_API_KEY: apiKey } : {}) };
     env.PATH = ensureDarwinPath(env.PATH);
     const resolved = resolveCommandPath('cursor-agent', env.PATH) || 'cursor-agent';
-    const child = spawn(resolved, args, {
-      shell: process.platform === 'win32', // support Windows
-      env
-    });
-    childRef = child;
 
+    // Define buffer and handlers before wiring streams so references are valid
     let buffer = '';
 
     const handleData = (data) => {
       const str = data.toString();
+      // Update activity timestamp
+      lastActivity = Date.now();
+      
       // forward raw lines to UI for streaming feedback
       if (onLog) onLog('stream', str);
       buffer += str;
+      
       // Try to parse any JSON objects found
       const objs = extractJsonObjects(buffer);
       for (const raw of objs) {
@@ -107,26 +113,38 @@ function startCursorAgent(message, apiKey, onLog, options = {}) {
             if (onLog) onLog('info', 'Received success JSON from cursor-agent');
             settled = true;
             clearTimeout(timeoutId);
-            try { child.kill(); } catch {}
+            clearTimeout(idleTimeoutId);
+            try { 
+              if (childRef && typeof childRef.kill === 'function') {
+                childRef.kill('SIGTERM');
+              } else if (childRef && childRef.pid) {
+                process.kill(childRef.pid, 'SIGTERM');
+              }
+            } catch {}
             resolve(normalized);
           }
         } catch {}
       }
     };
 
-    child.stdout.on('data', handleData);
-    child.stderr.on('data', handleData);
-
-    child.on('error', (err) => {
-      if (onLog) onLog('error', err.message);
+    const cleanup = () => {
+      if (settled) return;
       settled = true;
       clearTimeout(timeoutId);
-      reject(new Error(`Failed to start cursor-agent: ${err.message}`));
-    });
-    child.on('exit', (code) => {
+      clearTimeout(idleTimeoutId);
+      try { 
+        if (childRef && typeof childRef.kill === 'function') {
+          childRef.kill('SIGTERM');
+        } else if (childRef && childRef.pid) {
+          process.kill(childRef.pid, 'SIGTERM');
+        }
+      } catch {}
+    };
+
+    const childExitHandler = (code) => {
       if (onLog) onLog('info', `cursor-agent exited with code ${code}`);
       // If not already resolved, try one last parse
-      if (buffer) {
+      if (buffer && !settled) {
         const objs = extractJsonObjects(buffer);
         for (const raw of objs) {
           try {
@@ -135,6 +153,7 @@ function startCursorAgent(message, apiKey, onLog, options = {}) {
             if (normalized) {
               settled = true;
               clearTimeout(timeoutId);
+              clearTimeout(idleTimeoutId);
               resolve(normalized);
               return;
             }
@@ -142,30 +161,94 @@ function startCursorAgent(message, apiKey, onLog, options = {}) {
         }
       }
       // As a fallback, reject with raw output
-      if (code !== 0) {
+      if (code !== 0 && !settled) {
         settled = true;
         clearTimeout(timeoutId);
+        clearTimeout(idleTimeoutId);
         reject(new Error(`cursor-agent exited with code ${code}. Output:\n${buffer}`));
-      } else {
+      } else if (!settled) {
         // could have been success without our pattern
         settled = true;
         clearTimeout(timeoutId);
+        clearTimeout(idleTimeoutId);
         resolve({ type: 'raw', output: buffer });
       }
-    });
+    };
 
-    // Timeout support
+    // Try PTY first, fallback to spawn if it fails
+    let ptyFailed = false;
+    if (pty && !ptyFailed) {
+      try {
+        const shell = process.platform === 'win32' ? 'powershell.exe' : (process.env.SHELL || '/bin/zsh');
+        const cmdLine = `${resolved} ${args.map(a => (a.includes(' ') ? '"'+a+'"' : a)).join(' ')}`;
+        if (onLog) onLog('info', `Using PTY with shell: ${shell}`);
+        
+        const p = pty.spawn(shell, [], {
+          name: 'xterm-color',
+          cwd: options.cwd || process.cwd(),
+          env
+        });
+        childRef = p;
+        p.onData((data) => handleData(Buffer.from(data)));
+        p.onExit(({ exitCode }) => {
+          // emulate exit handler
+          childExitHandler(exitCode);
+        });
+        // Write command into the PTY so the environment and login shell are used
+        p.write(cmdLine + '\r');
+        
+        if (onLog) onLog('info', 'PTY terminal created successfully');
+      } catch (err) {
+        if (onLog) onLog('warn', `PTY failed, falling back to spawn: ${err.message}`);
+        ptyFailed = true;
+        // Fall through to spawn below
+      }
+    }
+    
+    // Fallback to spawn if PTY failed or not available
+    if (!pty || ptyFailed) {
+      if (onLog) onLog('info', 'Using spawn fallback for terminal');
+      
+      const child = spawn(resolved, args, {
+        shell: process.platform === 'win32', // support Windows
+        env,
+        cwd: options.cwd || process.cwd()
+      });
+      childRef = child;
+      child.stdout.on('data', handleData);
+      child.stderr.on('data', handleData);
+      child.on('error', (err) => {
+        if (onLog) onLog('error', err.message);
+        cleanup();
+        reject(new Error(`Failed to start cursor-agent: ${err.message}`));
+      });
+      child.on('exit', (code) => childExitHandler(code));
+    }
+
+    // Idle timeout - kill process if no output for extended period
+    const idleTimeoutMs = 30000; // 30 seconds
+    idleTimeoutId = setInterval(() => {
+      if (settled) return;
+      const timeSinceActivity = Date.now() - lastActivity;
+      if (timeSinceActivity > idleTimeoutMs) {
+        if (onLog) onLog('error', `cursor-agent idle timeout after ${idleTimeoutMs}ms of no output`);
+        cleanup();
+        resolve({ type: 'raw', output: buffer, idle_timeout: true });
+      }
+    }, 5000); // Check every 5 seconds
+
+    // Overall timeout support
     const timeoutMs = typeof options.timeoutMs === 'number' ? options.timeoutMs : 180000; // 3 min default
     if (timeoutMs > 0) {
       timeoutId = setTimeout(() => {
         if (settled) return;
         if (onLog) onLog('error', `cursor-agent timeout after ${timeoutMs}ms`);
-        try { child.kill(); } catch {}
-        settled = true;
+        cleanup();
         resolve({ type: 'raw', output: buffer, timeout: true });
       }, timeoutMs);
     }
   });
+  
   return { child: childRef, wait };
 }
 
