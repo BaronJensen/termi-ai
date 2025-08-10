@@ -7,25 +7,132 @@ const fs = require('fs');
 const path = require('path');
 
 function extractJsonObjects(text) {
-  // Attempt to extract JSON objects from a stream
+  // Enhanced JSON extraction that handles nested structures, arrays, and special characters
   const results = [];
-  let depth = 0;
-  let start = -1;
-  for (let i = 0; i < text.length; i++) {
-    const ch = text[i];
-    if (ch === '{') {
-      if (depth === 0) start = i;
-      depth++;
-    } else if (ch === '}') {
-      depth--;
-      if (depth === 0 && start !== -1) {
-        const slice = text.slice(start, i + 1);
-        results.push(slice);
-        start = -1;
+  let i = 0;
+  
+  while (i < text.length) {
+    // Find the start of a potential JSON object
+    if (text[i] === '{') {
+      let depth = 0;
+      let inString = false;
+      let escapeNext = false;
+      let start = i;
+      
+      for (; i < text.length; i++) {
+        const ch = text[i];
+        
+        if (escapeNext) {
+          escapeNext = false;
+          continue;
+        }
+        
+        if (ch === '\\') {
+          escapeNext = true;
+          continue;
+        }
+        
+        if (ch === '"' && !escapeNext) {
+          inString = !inString;
+          continue;
+        }
+        
+        if (!inString) {
+          if (ch === '{') {
+            depth++;
+          } else if (ch === '}') {
+            depth--;
+            if (depth === 0) {
+              // We found a complete JSON object
+              const jsonStr = text.slice(start, i + 1);
+              try {
+                // Validate it's actually valid JSON before adding
+                JSON.parse(jsonStr);
+                results.push(jsonStr);
+              } catch (e) {
+                // If it's not valid JSON, it might be a partial object
+                // We'll skip it and continue looking
+              }
+              break;
+            }
+          } else if (ch === '[') {
+            // Handle arrays within objects
+            depth++;
+          } else if (ch === ']') {
+            depth--;
+          }
+        }
+      }
+    } else if (text[i] === '[') {
+      // Handle standalone arrays
+      let depth = 0;
+      let inString = false;
+      let escapeNext = false;
+      let start = i;
+      
+      for (; i < text.length; i++) {
+        const ch = text[i];
+        
+        if (escapeNext) {
+          escapeNext = false;
+          continue;
+        }
+        
+        if (ch === '\\') {
+          escapeNext = true;
+          continue;
+        }
+        
+        if (ch === '"' && !escapeNext) {
+          inString = !inString;
+          continue;
+        }
+        
+        if (!inString) {
+          if (ch === '[') {
+            depth++;
+          } else if (ch === ']') {
+            depth--;
+            if (depth === 0) {
+              // We found a complete JSON array
+              const jsonStr = text.slice(start, i + 1);
+              try {
+                // Validate it's actually valid JSON before adding
+                JSON.parse(jsonStr);
+                results.push(jsonStr);
+              } catch (e) {
+                // If it's not valid JSON, it might be a partial array
+                // We'll skip it and continue looking
+              }
+              break;
+            }
+          } else if (ch === '{') {
+            // Handle objects within arrays
+            depth++;
+          } else if (ch === '}') {
+            depth--;
+          }
+        }
       }
     }
+    
+    i++;
   }
+  
   return results;
+}
+
+function debugBufferContent(buffer, maxLength = 500) {
+  // Helper function to debug buffer content
+  if (!buffer || buffer.length === 0) {
+    return 'Buffer is empty';
+  }
+  
+  const truncated = buffer.length > maxLength 
+    ? buffer.substring(0, maxLength) + '...' 
+    : buffer;
+  
+  return `Buffer (${buffer.length} chars): "${truncated.replace(/\n/g, '\\n').replace(/\r/g, '\\r')}"`;
 }
 
 function ensureDarwinPath(originalPath) {
@@ -85,7 +192,7 @@ function startCursorAgent(message, apiKey, onLog, options = {}) {
   let lastActivity = Date.now();
   
   const wait = new Promise((resolve, reject) => {
-    const args = ['-p',  '--output-format="stream-json"',  `${message}. Avoid running build tools or scripts, we are already running the project.`];
+    const args = ['-p',  '--output-format="stream-json"',  `${message}. Avoid running build tools or scripts, we are already running the project`];
     if (onLog) onLog('info', `Running: cursor-agent ${args.map(a => (a.includes(' ') ? '"'+a+'"' : a)).join(' ')}`);
     if (onLog) onLog('info', `Working directory: ${options.cwd || process.cwd()}`);
     const env = { ...process.env, ...(apiKey ? { OPENAI_API_KEY: apiKey } : {}) };
@@ -104,11 +211,29 @@ function startCursorAgent(message, apiKey, onLog, options = {}) {
       if (onLog) onLog('stream', str);
       buffer += str;
       
+      // Prevent buffer from growing indefinitely (memory safety)
+      if (buffer.length > 50000) {
+        if (onLog) onLog('warn', 'Buffer exceeded 50KB limit, truncating to last 25KB');
+        buffer = buffer.slice(-25000);
+      }
+      
+      // Log buffer size if it gets large (potential memory issue)
+      if (buffer.length > 10000 && onLog) {
+        onLog('warn', `Buffer is getting large: ${buffer.length} characters`);
+        onLog('info', debugBufferContent(buffer, 200));
+      }
+      
       // Try to parse any JSON objects found
       const objs = extractJsonObjects(buffer);
+      if (objs.length > 0 && onLog) {
+        onLog('info', `Extracted ${objs.length} potential JSON objects from buffer`);
+      }
+      
       for (const raw of objs) {
         try {
           const obj = JSON.parse(raw);
+          if (onLog) onLog('info', `Successfully parsed JSON: ${obj.type || 'unknown-type'}`);
+          
           const normalized = normalizeSuccessObject(obj);
           if (normalized) {
             if (onLog) onLog('info', 'Received success JSON from cursor-agent');
@@ -124,7 +249,16 @@ function startCursorAgent(message, apiKey, onLog, options = {}) {
             } catch {}
             resolve(normalized);
           }
-        } catch {}
+        } catch (parseError) {
+          if (onLog) onLog('error', `Failed to parse extracted JSON: ${parseError.message}`);
+          if (onLog) onLog('error', `Raw content: ${raw.substring(0, 200)}...`);
+        }
+      }
+      
+      // If we have a very large buffer and no JSON objects, log it for debugging
+      if (buffer.length > 5000 && objs.length === 0 && onLog) {
+        onLog('warn', 'Large buffer with no JSON objects detected');
+        onLog('info', debugBufferContent(buffer, 300));
       }
     };
 
@@ -147,9 +281,13 @@ function startCursorAgent(message, apiKey, onLog, options = {}) {
       // If not already resolved, try one last parse
       if (buffer && !settled) {
         const objs = extractJsonObjects(buffer);
+        if (onLog) onLog('info', `Exit handler: Extracted ${objs.length} potential JSON objects from final buffer`);
+        
         for (const raw of objs) {
           try {
             const obj = JSON.parse(raw);
+            if (onLog) onLog('info', `Exit handler: Successfully parsed JSON: ${obj.type || 'unknown-type'}`);
+            
             const normalized = normalizeSuccessObject(obj);
             if (normalized) {
               settled = true;
@@ -158,7 +296,10 @@ function startCursorAgent(message, apiKey, onLog, options = {}) {
               resolve(normalized);
               return;
             }
-          } catch {}
+          } catch (parseError) {
+            if (onLog) onLog('error', `Exit handler: Failed to parse extracted JSON: ${parseError.message}`);
+            if (onLog) onLog('error', `Exit handler: Raw content: ${raw.substring(0, 200)}...`);
+          }
         }
       }
       // As a fallback, reject with raw output
