@@ -1,8 +1,9 @@
 
 import React, { useEffect, useMemo, useRef, useState } from 'react'
-import Chat from './components/Chat.jsx'
+import Dashboard from './pages/Dashboard.jsx'
+import ProjectView from './pages/ProjectView.jsx'
 
-export default function App() {
+function LegacyApp() {
   const [folder, setFolder] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
   const [manager, setManager] = useState('yarn');
@@ -271,8 +272,17 @@ export default function App() {
           </div>
           <button className="secondary" onClick={async () => { await window.cursovable.clearHistory(); location.reload(); }}>Clear</button>
         </div>
-        <Chat apiKey={apiKey} cwd={folder} timeoutMinutes={timeoutMinutes} />
+        {/* Chat panel retained for legacy layout; new ProjectView uses its own */}
+        <ProjectView projectId={null} onBack={() => {}} />
       </div>
     </div>
   )
+}
+
+export default function App() {
+  const [route, setRoute] = useState({ name: 'dashboard', params: {} });
+  if (route.name === 'project') {
+    return <ProjectView projectId={route.params.id} onBack={() => setRoute({ name: 'dashboard', params: {} })} />
+  }
+  return <Dashboard onOpenProject={(id) => setRoute({ name: 'project', params: { id } })} />
 }
