@@ -287,7 +287,7 @@ export default function Dashboard({ onOpenProject }) {
 
   function buildPromptForTemplate(tpl, ideaText) {
     const base = (s) => s.trim().replace(/\s+$/,'');
-    const generic = `Please scaffold a new project in the current folder. Follow these requirements.\n\nUser goal: ${ideaText || 'Create a starter app'}\n`;
+    const generic = `Creating project. Please scaffold a new project in the current folder. Follow these requirements.\n\nUser goal: ${ideaText || 'Create a starter app'}\n`;
     switch (tpl) {
       case 'react-vite':
         return base(`${generic}\nStack: React + Vite\nTasks:\n- Initialize a React + Vite project if missing\n- Minimal pages and components to demonstrate routing and state\n- Add npm scripts: dev, build, preview\n- Provide clear README steps`);

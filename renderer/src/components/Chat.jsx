@@ -1288,6 +1288,14 @@ export default function Chat({ apiKey, cwd, timeoutMinutes = 15, initialMessage 
     }
   }, [initialMessage, cwd]);
 
+  // Ensure we unsubscribe from any log listener on unmount to avoid leaks
+  useEffect(() => {
+    return () => {
+      try { if (unsubRef.current) unsubRef.current(); } catch {}
+      unsubRef.current = null;
+    };
+  }, []);
+
   return (
     <>
 
