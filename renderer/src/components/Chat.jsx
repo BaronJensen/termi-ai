@@ -162,6 +162,18 @@ export default function Chat({ apiKey, cwd, timeoutMinutes = 15 }) {
         min-height: 0;
       }
       
+      .input {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        grid-template-rows: auto auto;
+        grid-column-gap: 12px;
+        grid-row-gap: 6px;
+        align-items: stretch;
+        width: 100%;
+        box-sizing: border-box;
+        margin-top: 8px;
+      }
+      
       .input textarea {
         flex: 1;
         resize: vertical;
@@ -175,6 +187,56 @@ export default function Chat({ apiKey, cwd, timeoutMinutes = 15 }) {
         outline: none;
         font-family: inherit;
         line-height: 1.4;
+        width: 100%;
+        box-sizing: border-box;
+      }
+
+      .input-field { grid-column: 1; grid-row: 1; }
+      .shortcut-hint {
+        grid-column: 1;
+        grid-row: 2;
+        font-size: 10px;
+        color: #6b7280;
+        font-family: monospace;
+        justify-self: start;
+        align-self: center;
+      }
+
+      .send-button {
+        min-width: 110px;
+        padding: 0 18px;
+        border: 1px solid #2a3b55;
+        border-radius: 12px;
+        background: linear-gradient(135deg, rgba(60,109,240,0.9) 0%, rgba(59,130,246,0.85) 50%, rgba(37,99,235,0.9) 100%);
+        color: #f2f6ff;
+        font-weight: 600;
+        letter-spacing: 0.2px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        box-shadow: 0 6px 16px rgba(59,130,246,0.35), inset 0 1px 0 rgba(255,255,255,0.15);
+        transition: transform 0.08s ease, box-shadow 0.2s ease, filter 0.2s ease, opacity 0.2s ease;
+        cursor: pointer;
+        align-self: stretch;
+        grid-column: 2;
+        grid-row: 1 / span 2;
+      }
+
+      .send-button:hover:not(:disabled) {
+        box-shadow: 0 10px 24px rgba(59,130,246,0.45), inset 0 1px 0 rgba(255,255,255,0.2);
+        filter: brightness(1.06);
+        transform: translateY(-1px);
+      }
+
+      .send-button:active:not(:disabled) {
+        transform: translateY(0);
+        filter: brightness(0.98);
+      }
+
+      .send-button:disabled {
+        cursor: not-allowed;
+        filter: grayscale(20%);
       }
       
       /* Global copy functionality */
@@ -1487,8 +1549,8 @@ export default function Chat({ apiKey, cwd, timeoutMinutes = 15 }) {
         </div>
       )}
       
-      <div className="input">
-        <div style={{ position: 'relative', flex: 1 }}>
+      <form className="input" onSubmit={(e) => { e.preventDefault(); send(); }}>
+        <div className="input-field" style={{ position: 'relative', width: '100%' }}>
           <textarea
             placeholder={!cwd ? 'Please select a working directory first...' : `Ask the CTO agent… (timeout: ${timeoutMinutes === 0 ? 'no limit' : `${timeoutMinutes} min`})`}
             value={input}
@@ -1500,7 +1562,11 @@ export default function Chat({ apiKey, cwd, timeoutMinutes = 15 }) {
               textarea.style.height = Math.min(textarea.scrollHeight, 200) + 'px';
             }}
             onKeyDown={(e) => {
-              if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') send();
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                send();
+                return;
+              }
               // Handle Ctrl+C for copying selected text
               if ((e.ctrlKey || e.metaKey) && e.key === 'c') {
                 const selection = e.target.value.substring(e.target.selectionStart, e.target.selectionEnd);
@@ -1516,35 +1582,19 @@ export default function Chat({ apiKey, cwd, timeoutMinutes = 15 }) {
             aria-label="Type your message to the CTO agent"
           />
           {/* Keyboard shortcut hint */}
-          <div style={{
-            position: 'absolute',
-            bottom: '4px',
-            right: '8px',
-            fontSize: '10px',
-            color: '#6b7280',
-            pointerEvents: 'none',
-            fontFamily: 'monospace'
-          }}>
-            {navigator.platform.includes('Mac') ? '⌘' : 'Ctrl'}+Enter
-          </div>
+          <div className="shortcut-hint">Enter to send • Shift+Enter for newline</div>
         </div>
         <button 
-          onClick={send} 
           disabled={busy || !cwd} 
-          style={{ 
-            opacity: !cwd ? 0.5 : 1,
-            minWidth: '80px',
-            height: '64px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '4px'
-          }}
+          className="send-button"
+          style={{ opacity: !cwd ? 0.5 : 1 }}
           aria-label={!cwd ? 'Select working directory first' : busy ? 'Processing request...' : 'Send message'}
+          title={!cwd ? 'Select working directory first' : busy ? 'Processing request...' : 'Send message'}
+          type="submit"
         >
-          {!cwd ? 'Select Directory First' : busy ? '⏳' : 'Send'}
+          {!cwd ? 'Select Directory First' : busy ? '⏳' : '➤ Send'}
         </button>
-      </div>
+      </form>
     </>
   );
 }
