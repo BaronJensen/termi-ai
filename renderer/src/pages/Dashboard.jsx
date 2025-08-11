@@ -98,7 +98,7 @@ function CreateTemplateModal({ onClose, onCreate, initialTemplate = 'react-vite'
   );
 }
 
-function NewProjectModal({ onClose, onCreate }) {
+function LoadProjectModal({ onClose, onLoad }) {
   const [draft, setDraft] = useState({
     name: '',
     description: '',
@@ -170,7 +170,7 @@ function NewProjectModal({ onClose, onCreate }) {
 
   function submit() {
     const id = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-    onCreate({
+    onLoad({
       id,
       name: draft.name.trim(),
       description: draft.description.trim(),
@@ -310,6 +310,14 @@ export default function Dashboard({ onOpenProject }) {
     setNavigateTo({ id: project.id, initialMessage });
   }
 
+  function handleLoad(project) {
+    addProject(project);
+    setProjects(loadProjects());
+    setShowNew(false);
+    // Navigate to ProjectView without initial message (for existing projects)
+    setNavigateTo({ id: project.id });
+  }
+
   function handleRemove(id) {
     if (!confirm('Remove this project? This only deletes it from the dashboard.')) return;
     removeProject(id);
@@ -421,7 +429,7 @@ export default function Dashboard({ onOpenProject }) {
       </div>
 
       {showNew && (
-        <NewProjectModal onClose={() => setShowNew(false)} onCreate={handleCreate} />
+        <LoadProjectModal onClose={() => setShowNew(false)} onLoad={handleLoad} />
       )}
       {showCreateModal && (
         <CreateTemplateModal onClose={() => setShowCreateModal(false)} onCreate={handleCreate} initialTemplate={template} initialPrompt={idea} />

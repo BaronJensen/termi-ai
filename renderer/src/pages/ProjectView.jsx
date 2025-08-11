@@ -559,7 +559,12 @@ export default function ProjectView({ projectId, onBack, initialMessage }) {
         </div>
 
         {/** Default chat instance; session id derived from assistant response for reconnecting later */}
-        <Chat apiKey={apiKey} cwd={folder} timeoutMinutes={timeoutMinutes} initialMessage={initialMessage} />
+        <Chat 
+          apiKey={apiKey} 
+          cwd={folder} 
+          timeoutMinutes={timeoutMinutes} 
+          {...(initialMessage && { initialMessage })}
+        />
         </div>
       )}
     </div>
