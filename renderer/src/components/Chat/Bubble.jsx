@@ -128,42 +128,12 @@ export default function Bubble({
         }}
         onMouseEnter={(e) => !copySuccess && (e.target.style.opacity = 1)}
         onMouseLeave={(e) => !copySuccess && (e.target.style.opacity = 0)}
-        title={copySuccess ? 'Copied!' : 'Copy message'}
         aria-label={copySuccess ? 'Message copied to clipboard' : 'Copy message to clipboard'}
       >
         {copySuccess ? '✓' : 'Copy'}
       </button>
 
-      {rawData && who === 'assistant' && (
-        <div
-          style={{
-            position: 'absolute',
-            top: '8px',
-            right: '40px',
-            background: 'rgba(0, 0, 0, 0.9)',
-            color: '#e6e6e6',
-            border: '1px solid #3c6df0',
-            borderRadius: '4px',
-            padding: '8px',
-            fontSize: '10px',
-            fontFamily: 'monospace',
-            maxWidth: '300px',
-            maxHeight: '200px',
-            overflow: 'auto',
-            opacity: 0,
-            transition: 'opacity 0.2s ease',
-            zIndex: 20,
-            whiteSpace: 'pre-wrap',
-            wordBreak: 'break-all',
-          }}
-          onMouseEnter={(e) => (e.target.style.opacity = 1)}
-          onMouseLeave={(e) => (e.target.style.opacity = 0)}
-          title="Raw JSON data"
-        >
-          <div style={{ color: '#3c6df0', fontWeight: 'bold', marginBottom: '4px' }}>Raw JSON:</div>
-          {JSON.stringify(rawData, null, 2)}
-        </div>
-      )}
+      {/* Removed raw JSON hover overlay */}
 
       {content}
 
