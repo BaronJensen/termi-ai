@@ -61,20 +61,7 @@ export default function Bubble({
     }
   };
 
-  const handleContextMenu = (e) => {
-    e.preventDefault();
-    return false;
-  };
-
-  const handleKeyDown = (e) => {
-    if ((e.ctrlKey || e.metaKey) && e.key === 'c') {
-      const selection = window.getSelection();
-      if (selection.toString()) {
-        e.preventDefault();
-        navigator.clipboard.writeText(selection.toString());
-      }
-    }
-  };
+  // Allow native context and keyboard shortcuts for copy/select
 
   const content = (
     <div
@@ -107,8 +94,7 @@ export default function Bubble({
         opacity: who === 'assistant' && !(children && String(children).trim().length > 0) ? 0 : 1,
         transition: 'opacity 0.25s ease, transform 0.2s ease',
       }}
-      onContextMenu={handleContextMenu}
-      onKeyDown={handleKeyDown}
+      // Do not block the native context menu or key events here
       tabIndex={0}
     >
       <button
