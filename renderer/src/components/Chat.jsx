@@ -591,7 +591,10 @@ export default function Chat({ cwd, initialMessage, projectId }) {
   
   // Load sessions and initialize on mount
   useEffect(() => {
+    console.log(`Loading sessions for project: ${projectId || 'legacy'}`);
     const loadedSessions = loadSessions();
+    console.log(`Found ${loadedSessions.length} existing sessions:`, loadedSessions.map(s => ({id: s.id, name: s.name, messageCount: s.messages?.length || 0})));
+    
     setSessions(loadedSessions);
     
     if (loadedSessions.length > 0) {
@@ -599,10 +602,15 @@ export default function Chat({ cwd, initialMessage, projectId }) {
       const latestSession = loadedSessions.reduce((latest, session) => 
         session.updatedAt > latest.updatedAt ? session : latest
       );
-      loadSession(latestSession.id);
+      console.log(`Loading latest session: ${latestSession.name} (${latestSession.id}) with ${latestSession.messages?.length || 0} messages`);
+      setCurrentSessionId(latestSession.id);
+      setMessages(latestSession.messages || []);
+      setToolCalls(new Map());
+      setHideToolCallIndicators(false);
     } else {
       // Create a new session if none exist
-      createNewSession();
+      console.log('No existing sessions found, creating new session');
+      createNewSession(loadedSessions);
     }
   }, [projectId]);
   
@@ -648,9 +656,10 @@ export default function Chat({ cwd, initialMessage, projectId }) {
     }
   };
   
-  const createNewSession = () => {
+  const createNewSession = (existingSessions = null) => {
+    const currentSessions = existingSessions || sessions;
     const newSessionId = `session-${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
-    const isFirstSession = sessions.length === 0;
+    const isFirstSession = currentSessions.length === 0;
     const newSession = {
       id: newSessionId,
       name: `Session ${new Date().toLocaleString()}`,
@@ -660,7 +669,7 @@ export default function Chat({ cwd, initialMessage, projectId }) {
       isFirstSession: isFirstSession // Mark if this is the very first session
     };
     
-    const updatedSessions = [...sessions, newSession];
+    const updatedSessions = [...currentSessions, newSession];
     setSessions(updatedSessions);
     saveSessions(updatedSessions);
     setCurrentSessionId(newSessionId);
@@ -669,29 +678,47 @@ export default function Chat({ cwd, initialMessage, projectId }) {
     setHideToolCallIndicators(false);
     setIsCreatingNewSession(false);
     
+    console.log(`Created new session: ${newSessionId} (${newSession.name})`);
     return newSessionId;
   };
   
-  const loadSession = (sessionId) => {
-    const session = sessions.find(s => s.id === sessionId);
+  const loadSession = (sessionId, sessionsToSearch = null) => {
+    const currentSessions = sessionsToSearch || sessions;
+    const session = currentSessions.find(s => s.id === sessionId);
     if (session) {
+      console.log(`Loading session ${sessionId} with ${session.messages?.length || 0} messages`);
       setCurrentSessionId(sessionId);
       setMessages(session.messages || []);
       setToolCalls(new Map());
       setHideToolCallIndicators(false);
+    } else {
+      console.warn(`Session ${sessionId} not found in current sessions`);
     }
   };
   
   const saveCurrentSession = () => {
-    if (!currentSessionId) return;
+    if (!currentSessionId) {
+      console.warn('No current session ID, cannot save');
+      return;
+    }
     
-    const updatedSessions = sessions.map(session => 
-      session.id === currentSessionId 
-        ? { ...session, messages, updatedAt: Date.now() }
-        : session
-    );
-    setSessions(updatedSessions);
-    saveSessions(updatedSessions);
+    setSessions(prevSessions => {
+      const updatedSessions = prevSessions.map(session => 
+        session.id === currentSessionId 
+          ? { ...session, messages, updatedAt: Date.now() }
+          : session
+      );
+      
+      // Save to localStorage
+      try {
+        localStorage.setItem(getSessionStorageKey(), JSON.stringify(updatedSessions));
+        console.log(`Session ${currentSessionId} saved with ${messages.length} messages`);
+      } catch (error) {
+        console.error('Failed to save sessions to localStorage:', error);
+      }
+      
+      return updatedSessions;
+    });
   };
   
   const deleteSession = (sessionId) => {
@@ -770,9 +797,35 @@ export default function Chat({ cwd, initialMessage, projectId }) {
   // Save messages to current session whenever they change
   useEffect(() => {
     if (currentSessionId && messages.length > 0) {
+      console.log(`Saving session ${currentSessionId} with ${messages.length} messages`);
       saveCurrentSession();
     }
-  }, [messages, currentSessionId]);
+  }, [messages, currentSessionId, sessions]);
+
+  // Debug function to check session storage
+  const debugSessionStorage = () => {
+    const storageKey = getSessionStorageKey();
+    const stored = localStorage.getItem(storageKey);
+    console.log('=== SESSION STORAGE DEBUG ===');
+    console.log('Storage Key:', storageKey);
+    console.log('Stored Data:', stored);
+    console.log('Current Sessions State:', sessions);
+    console.log('Current Session ID:', currentSessionId);
+    console.log('Current Messages:', messages.length);
+    console.log('=== END DEBUG ===');
+    
+    // Force save current session for testing
+    if (currentSessionId) {
+      saveCurrentSession();
+    }
+    
+    // Add debug message to chat
+    setMessages(m => [...m, { 
+      who: 'assistant', 
+      text: `**Debug Info:**\n- Storage Key: ${storageKey}\n- Sessions in state: ${sessions.length}\n- Current session: ${currentSessionId}\n- Messages: ${messages.length + 1}\n- Storage data length: ${stored?.length || 0} chars\n- **Manual save triggered**`,
+      rawData: { action: 'debug_session_storage' }
+    }]);
+  };
 
   // Check terminal status on mount and when busy changes
   useEffect(() => {
@@ -1552,6 +1605,21 @@ export default function Chat({ cwd, initialMessage, projectId }) {
             title="New session"
           >
             ➕
+          </button>
+          <button
+            onClick={debugSessionStorage}
+            style={{
+              fontSize: '11px',
+              padding: '4px 8px',
+              backgroundColor: '#ef4444',
+              color: '#e6e6e6',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer'
+            }}
+            title="Debug session storage"
+          >
+            🐛
           </button>
         </div>
       </div>
