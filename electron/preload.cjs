@@ -38,5 +38,10 @@ contextBridge.exposeInMainWorld('cursovable', {
   forceTerminalCleanup: () => ipcRenderer.invoke('terminal-cleanup'),
   getWorkingDirectory: () => ipcRenderer.invoke('get-working-directory'),
   openExternal: (url) => ipcRenderer.invoke('open-external', url),
-  setWorkingDirectory: (path) => ipcRenderer.invoke('set-working-directory', path)
+  setWorkingDirectory: (path) => ipcRenderer.invoke('set-working-directory', path),
+  // Git APIs
+  getGitBranches: (opts) => ipcRenderer.invoke('git-branches', opts),
+  gitCommit: (opts) => ipcRenderer.invoke('git-commit', opts),
+  getReflog: (opts) => ipcRenderer.invoke('git-reflog', opts),
+  restoreLocalCommit: (opts) => ipcRenderer.invoke('git-restore-local', opts)
 });

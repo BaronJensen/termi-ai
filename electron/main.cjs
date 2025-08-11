@@ -843,6 +843,201 @@ ipcMain.handle('cursor-input', async (_e, { runId, data }) => {
   return false;
 });
 
+// --------------------
+// Git helpers & IPC
+// --------------------
+function runCommand(command, args, cwd) {
+  return new Promise((resolve) => {
+    try {
+      const child = spawn(command, args, {
+        cwd,
+        shell: process.platform === 'win32',
+        env: process.env,
+      });
+      let stdout = '';
+      let stderr = '';
+      child.stdout.on('data', (d) => { stdout += d.toString(); });
+      child.stderr.on('data', (d) => { stderr += d.toString(); });
+      child.on('error', (err) => resolve({ ok: false, code: -1, stdout, stderr: (stderr || '') + String(err.message || err) }));
+      child.on('exit', (code) => resolve({ ok: code === 0, code, stdout, stderr }));
+    } catch (err) {
+      resolve({ ok: false, code: -1, stdout: '', stderr: String(err.message || err) });
+    }
+  });
+}
+
+async function isGitRepo(cwd) {
+  const res = await runCommand('git', ['rev-parse', '--is-inside-work-tree'], cwd);
+  return res.ok && /true/.test(res.stdout.trim());
+}
+
+async function ensureGitRepo(cwd) {
+  if (await isGitRepo(cwd)) return { ok: true };
+  // Initialize repository. Prefer initializing default branch to main if supported
+  let res = await runCommand('git', ['init'], cwd);
+  if (!res.ok) return { ok: false, error: res.stderr || res.stdout || 'git init failed' };
+  // Try to create/switch to main to be consistent
+  await runCommand('git', ['checkout', '-B', 'main'], cwd);
+  return { ok: true };
+}
+
+async function getCurrentBranch(cwd) {
+  const res = await runCommand('git', ['rev-parse', '--abbrev-ref', 'HEAD'], cwd);
+  if (!res.ok) return null;
+  const name = res.stdout.trim();
+  if (!name || name === 'HEAD') return null;
+  return name;
+}
+
+async function getCurrentUpstream(cwd) {
+  // Returns upstream ref like origin/main, or null if none
+  const res = await runCommand('git', ['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{u}'], cwd);
+  if (!res.ok) return null;
+  const up = (res.stdout || '').trim();
+  return up || null;
+}
+
+async function listBranches(cwd) {
+  const repo = await isGitRepo(cwd);
+  if (!repo) return { ok: true, isRepo: false, branches: [], current: null };
+  const res = await runCommand('git', ['branch', '--format=%(refname:short)'], cwd);
+  if (!res.ok) return { ok: false, error: res.stderr || res.stdout, isRepo: true, branches: [], current: await getCurrentBranch(cwd) };
+  const branches = res.stdout
+    .split(/\r?\n/)
+    .map((s) => s.trim().replace(/^\*\s*/, ''))
+    .filter(Boolean);
+  const current = await getCurrentBranch(cwd);
+  const upstream = await getCurrentUpstream(cwd);
+  return { ok: true, isRepo: true, branches, current, hasUpstream: !!upstream, upstream };
+}
+
+async function checkoutBranch(cwd, branchName, createIfMissing) {
+  if (!branchName) return { ok: true };
+  if (createIfMissing) {
+    const res = await runCommand('git', ['checkout', '-B', branchName], cwd);
+    if (!res.ok) return { ok: false, error: res.stderr || res.stdout };
+    return { ok: true };
+  }
+  const res = await runCommand('git', ['checkout', branchName], cwd);
+  if (!res.ok) return { ok: false, error: res.stderr || res.stdout };
+  return { ok: true };
+}
+
+async function hasChangesToCommit(cwd) {
+  const res = await runCommand('git', ['status', '--porcelain'], cwd);
+  if (!res.ok) return false;
+  return res.stdout.trim().length > 0;
+}
+
+ipcMain.handle('git-branches', async (_e, { folderPath }) => {
+  try {
+    if (!folderPath) throw new Error('No folderPath provided');
+    if (!fs.existsSync(folderPath) || !fs.statSync(folderPath).isDirectory()) {
+      throw new Error('Folder does not exist or is not a directory');
+    }
+    return await listBranches(folderPath);
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
+ipcMain.handle('git-commit', async (_e, { folderPath, message, mode, branchName }) => {
+  // mode: 'existing' | 'new' | undefined
+  try {
+    if (!folderPath) throw new Error('No folderPath provided');
+    if (!message || !String(message).trim()) throw new Error('Commit message required');
+    if (!fs.existsSync(folderPath) || !fs.statSync(folderPath).isDirectory()) {
+      throw new Error('Folder does not exist or is not a directory');
+    }
+
+    const ensured = await ensureGitRepo(folderPath);
+    if (!ensured.ok) return { ok: false, error: ensured.error };
+
+    // Switch/create branch if requested
+    if (mode === 'new' && branchName) {
+      const sw = await checkoutBranch(folderPath, branchName, true);
+      if (!sw.ok) return { ok: false, error: sw.error };
+    } else if (mode === 'existing' && branchName) {
+      const cur = await getCurrentBranch(folderPath);
+      if (cur !== branchName) {
+        const sw = await checkoutBranch(folderPath, branchName, false);
+        if (!sw.ok) return { ok: false, error: sw.error };
+      }
+    }
+
+    // Stage all changes
+    const addRes = await runCommand('git', ['add', '-A'], folderPath);
+    if (!addRes.ok) return { ok: false, error: addRes.stderr || addRes.stdout };
+
+    // No-op if nothing to commit
+    if (!(await hasChangesToCommit(folderPath))) {
+      return { ok: true, message: 'No changes to commit' };
+    }
+
+    const commitRes = await runCommand('git', ['commit', '-m', String(message)], folderPath);
+    if (!commitRes.ok) return { ok: false, error: commitRes.stderr || commitRes.stdout };
+
+    const current = await getCurrentBranch(folderPath);
+    return { ok: true, branch: current, output: commitRes.stdout };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
+ipcMain.handle('git-reflog', async (_e, { folderPath, limit = 50 }) => {
+  try {
+    if (!folderPath) throw new Error('No folderPath provided');
+    if (!fs.existsSync(folderPath) || !fs.statSync(folderPath).isDirectory()) {
+      throw new Error('Folder does not exist or is not a directory');
+    }
+    if (!(await isGitRepo(folderPath))) {
+      return { ok: true, entries: [] };
+    }
+    const res = await runCommand('git', ['log', '-g', `-n`, String(limit), '--date=iso', '--pretty=%h%x09%cd%x09%s'], folderPath);
+    if (!res.ok) return { ok: false, error: res.stderr || res.stdout };
+    const lines = res.stdout.split(/\r?\n/).filter(Boolean);
+    const entries = lines.map((line) => {
+      const [sha, date, message] = line.split('\t');
+      return { sha: (sha || '').trim(), date: (date || '').trim(), message: (message || '').trim() };
+    }).filter(e => e.sha);
+    return { ok: true, entries };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
+ipcMain.handle('git-restore-local', async (_e, { folderPath, action, sha }) => {
+  try {
+    if (!folderPath) throw new Error('No folderPath provided');
+    if (!sha) throw new Error('Missing commit sha');
+    if (!fs.existsSync(folderPath) || !fs.statSync(folderPath).isDirectory()) {
+      throw new Error('Folder does not exist or is not a directory');
+    }
+    if (!(await isGitRepo(folderPath))) {
+      return { ok: false, error: 'Not a git repository' };
+    }
+    let result;
+    switch (action) {
+      case 'reset-hard': {
+        // Disallow reset on branches that have been pushed to an upstream to avoid conflicts
+        const upstream = await getCurrentUpstream(folderPath);
+        if (upstream) {
+          return { ok: false, error: `Reset blocked: current branch tracks ${upstream}. Avoid rewriting pushed history.` };
+        }
+        // Reset current branch to sha (destructive)
+        result = await runCommand('git', ['reset', '--hard', sha], folderPath);
+        if (!result.ok) return { ok: false, error: result.stderr || result.stdout };
+        const cur = await getCurrentBranch(folderPath);
+        return { ok: true, branch: cur };
+      }
+      default:
+        return { ok: false, error: 'Unsupported action' };
+    }
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
 ipcMain.handle('cursor-signal', async (_e, { runId, signal }) => {
   // Try to send signal to specific agent process first
   if (runId && runId !== 'persistent') {
