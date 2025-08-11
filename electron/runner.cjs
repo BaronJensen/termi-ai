@@ -193,6 +193,10 @@ function startCursorAgent(message, sessionId, onLog, options = {}) {
   
   const wait = new Promise((resolve, reject) => {
     const args = ['-p', '--output-format="stream-json"'];
+    // If using token auth, append -a "token"
+    if (options.useTokenAuth) {
+      args.push('-a', 'token');
+    }
     // Model selection support
     if (options.model && typeof options.model === 'string') {
       args.push('--model', options.model);
@@ -208,6 +212,10 @@ function startCursorAgent(message, sessionId, onLog, options = {}) {
     if (onLog) onLog('info', `Running: cursor-agent ${args.map(a => (a.includes(' ') ? '"'+a+'"' : a)).join(' ')}`);
     if (onLog) onLog('info', `Working directory: ${options.cwd || process.cwd()}`);
     const env = { ...process.env };
+    // If apiKey provided, pass as OPENAI_API_KEY to the child process only
+    if (options.apiKey && typeof options.apiKey === 'string') {
+      env.OPENAI_API_KEY = options.apiKey;
+    }
     env.PATH = ensureDarwinPath(env.PATH);
     const resolved = resolveCommandPath('cursor-agent', env.PATH) || 'cursor-agent';
 

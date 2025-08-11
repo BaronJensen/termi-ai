@@ -1517,13 +1517,15 @@ export default function Chat({ cwd, initialMessage, projectId }) {
         await window.cursovable.cursorDebugLog({ line: `[cursor-agent] Working directory: ${currentWd || '(none)'}`, runId });
       } catch {}
 
+      const sForRun = loadSettings();
       const res = await window.cursovable.runCursor({ 
         message: text, 
         cwd: cwd || undefined, 
         runId,
         sessionId: sessionIdToUse,
         ...(model ? { model } : {}),
-        ...(typeof cursorAgentTimeoutMs === 'number' ? { timeoutMs: cursorAgentTimeoutMs } : {})
+        ...(typeof cursorAgentTimeoutMs === 'number' ? { timeoutMs: cursorAgentTimeoutMs } : {}),
+        ...(sForRun.apiKey && String(sForRun.apiKey).trim() ? { apiKey: String(sForRun.apiKey).trim() } : {})
       });
       
       // We just need to ensure the process completed successfully

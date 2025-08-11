@@ -4,12 +4,12 @@ import { loadSettings, saveSettings } from '../store/settings';
 import useDesignSystemStyles from '../ui/useDesignSystemStyles';
 import Button from '../ui/Button';
 import IconButton from '../ui/IconButton';
-import Input from '../ui/Input';
 import Select from '../ui/Select';
 import Label from '../ui/Label';
 import Badge from '../ui/Badge';
 import Card from '../ui/Card';
 import Modal from '../ui/Modal';
+import Input from '../ui/Input';
 
 function CreateTemplateModal({ onClose, onCreate, initialTemplate = 'react-vite', initialPrompt = '' }) {
   const [parentDir, setParentDir] = useState('');
@@ -108,6 +108,7 @@ function SettingsModal({ initial, onClose, onSave }) {
   const [editor, setEditor] = useState(initial?.defaultEditor || '');
   const [pkgMgr, setPkgMgr] = useState(initial?.packageManager || 'yarn');
   const [availableEditors, setAvailableEditors] = useState([]);
+  const [apiKey, setApiKey] = useState(initial?.apiKey || '');
 
   useEffect(() => {
     let mounted = true;
@@ -139,7 +140,7 @@ function SettingsModal({ initial, onClose, onSave }) {
   const footer = (
     <>
       <Button variant="secondary" onClick={onClose}>Cancel</Button>
-      <Button onClick={() => onSave({ cursorAgentTimeoutMs: parsedTimeout, defaultEditor: editor, packageManager: pkgMgr })}>
+      <Button onClick={() => onSave({ cursorAgentTimeoutMs: parsedTimeout, defaultEditor: editor, packageManager: pkgMgr, apiKey })}>
         Save
       </Button>
     </>
@@ -175,6 +176,11 @@ function SettingsModal({ initial, onClose, onSave }) {
             <option value="npm">npm</option>
             <option value="pnpm">pnpm</option>
           </Select>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, gridColumn: '1 / span 2' }}>
+          <Label>API Key</Label>
+          <Input type="password" value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder="Enter API Key" />
+          <div style={{ fontSize: 11, color: '#9ca3af' }}>Stored locally. Used for token-based auth and passed securely to the agent process.</div>
         </div>
       </div>
     </Modal>

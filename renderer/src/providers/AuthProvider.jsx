@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useMemo, useRef, useState 
 import Modal from '../ui/Modal';
 import Button from '../ui/Button';
 import Input from '../ui/Input';
+import { loadSettings, saveSettings } from '../store/settings';
 
 const AuthContext = createContext({
   loggedIn: null,
@@ -23,9 +24,18 @@ export default function AuthProvider({ children }) {
   const [authLink, setAuthLink] = useState('');
   const [authLogs, setAuthLogs] = useState([]);
   const openedRef = useRef(false);
+  const [apiKeyDraft, setApiKeyDraft] = useState(() => loadSettings().apiKey || '');
+  const [useApiKeyLogin, setUseApiKeyLogin] = useState(false);
 
   const refreshStatus = async () => {
     try {
+      // If API key exists, treat as logged in via token auth
+      const s = loadSettings();
+      if (s && s.apiKey && String(s.apiKey).trim()) {
+        setLoggedIn(true);
+        setShowLogin(false);
+        return true;
+      }
       const status = await window.cursovable.getCursorAuthStatus?.();
       const isIn = !!(status && status.loggedIn);
       setLoggedIn(isIn);
@@ -42,6 +52,14 @@ export default function AuthProvider({ children }) {
 
   const triggerLogin = async () => {
     try {
+      if (useApiKeyLogin && apiKeyDraft.trim()) {
+        // Save API key to settings and mark as logged in for token flow
+        const merged = saveSettings({ ...loadSettings(), apiKey: apiKeyDraft.trim() });
+        setApiKeyDraft(merged.apiKey || '');
+        setLoggedIn(true);
+        setShowLogin(false);
+        return;
+      }
       await window.cursovable.triggerCursorAuthLogin?.();
       const isIn = await refreshStatus();
       if (isIn) setShowLogin(false);
@@ -88,21 +106,38 @@ export default function AuthProvider({ children }) {
       {children}
       {showLogin && (
         <Modal
-          title="Sign in to Cursor"
+          title="Authenticate"
           onClose={closeLogin}
           hideClose
           footer={(
             <>
               <Button variant="secondary" onClick={closeLogin}>Cancel</Button>
               {!authLink && (
-                <Button onClick={triggerLogin} style={{ minWidth: 140 }}>Log in</Button>
+                <>
+                  <Button variant={useApiKeyLogin ? 'ghost' : 'primary'} onClick={() => { setUseApiKeyLogin(false); setTimeout(triggerLogin, 0); }} style={{ minWidth: 140 }}>
+                    Quick Login
+                  </Button>
+                  <Button onClick={() => setUseApiKeyLogin(true)} style={{ minWidth: 140 }}>
+                    API Key Login
+                  </Button>
+                </>
               )}
             </>
           )}
         >
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <div style={{ color: '#c9d5e1', fontSize: 13 }}>
-              You are logged out. Click “Log in” to run <code>cursor-agent login</code> and approve in your browser.
+            {!useApiKeyLogin && (
+              <div style={{ color: '#c9d5e1', fontSize: 13 }}>
+                You are logged out. Click “Quick Login” to run <code>cursor-agent login</code> and approve in your browser, or use an API key below.
+              </div>
+            )}
+            <div style={{ display: useApiKeyLogin ? 'flex' : 'none', flexDirection: 'column', gap: 8 }}>
+              <div style={{ color: '#c9d5e1', fontSize: 13 }}>Enter your API key (stored locally; used for token auth)</div>
+              <Input type="password" value={apiKeyDraft} onChange={(e) => setApiKeyDraft(e.target.value)} placeholder="Enter API Key" />
+              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                <Button variant="secondary" onClick={() => setUseApiKeyLogin(false)}>Back</Button>
+                <Button onClick={triggerLogin} disabled={!apiKeyDraft.trim()} style={{ minWidth: 140 }}>Use API Key</Button>
+              </div>
             </div>
             <div style={{ fontSize: 12, color: '#9ca3af' }}>
               Learn more in the <a href="#" onClick={async (e) => { e.preventDefault(); try { await window.cursovable.openExternal('https://docs.cursor.com/en/cli/overview'); } catch {} }} style={{ color: '#93c5fd', textDecoration: 'underline' }}>Cursor CLI docs</a>.

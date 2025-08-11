@@ -592,7 +592,7 @@ ipcMain.handle('html-stop', async () => {
   return true;
 });
 
-ipcMain.handle('cursor-run', async (_e, { message, cwd, runId: clientRunId, sessionId, model, timeoutMs }) => {
+ipcMain.handle('cursor-run', async (_e, { message, cwd, runId: clientRunId, sessionId, model, timeoutMs, apiKey }) => {
   if (!message || !message.trim()) {
     throw new Error('Empty message');
   }
@@ -630,7 +630,7 @@ ipcMain.handle('cursor-run', async (_e, { message, cwd, runId: clientRunId, sess
   console.log(`🚀 Starting cursor-agent in directory: ${workingDir}`);
   const { child, wait } = startCursorAgent(message, sessionId, (level, line) => {
     try { if (win && !win.isDestroyed()) win.webContents.send('cursor-log', { runId, level, line, ts: Date.now() }); } catch {}
-  }, { cwd: workingDir, model, ...(typeof timeoutMs === 'number' ? { timeoutMs } : {}) });
+  }, { cwd: workingDir, model, ...(typeof timeoutMs === 'number' ? { timeoutMs } : {}), ...(apiKey ? { apiKey, useTokenAuth: true } : {}) });
   
   if (child) agentProcs.set(runId, child);
   

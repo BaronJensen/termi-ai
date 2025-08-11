@@ -9,7 +9,9 @@ export function getDefaultSettings() {
     // Preferred editor id for Project View options: code | cursor | webstorm | idea | subl
     defaultEditor: '',
     // Default JS package manager: yarn | npm | pnpm
-    packageManager: 'yarn'
+    packageManager: 'yarn',
+    // Optional API key for token-based auth
+    apiKey: ''
   };
 }
 
