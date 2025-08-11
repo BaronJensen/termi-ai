@@ -34,6 +34,7 @@ contextBridge.exposeInMainWorld('cursovable', {
   getProjectRoutes: (opts) => ipcRenderer.invoke('project-routes', opts),
   sendCursorInput: (opts) => ipcRenderer.invoke('cursor-input', opts),
   sendCursorSignal: (opts) => ipcRenderer.invoke('cursor-signal', opts),
+  cursorDebugLog: (opts) => ipcRenderer.invoke('cursor-debug-log', opts),
   getTerminalStatus: () => ipcRenderer.invoke('terminal-status'),
   forceTerminalCleanup: () => ipcRenderer.invoke('terminal-cleanup'),
   getWorkingDirectory: () => ipcRenderer.invoke('get-working-directory'),

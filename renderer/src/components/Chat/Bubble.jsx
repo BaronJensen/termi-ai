@@ -10,6 +10,7 @@ export default function Bubble({
   showActionLog = false,
   toolCalls = null,
   searchQuery = '',
+  cwd = '',
 }) {
   const [isActionLogExpanded, setIsActionLogExpanded] = useState(false);
   const [copySuccess, setCopySuccess] = useState(false);
@@ -102,6 +103,9 @@ export default function Bubble({
         height: 'auto',
         minHeight: 'fit-content',
         position: 'relative',
+        // Start assistant bubble hidden until content arrives, then fade in
+        opacity: who === 'assistant' && !(children && String(children).trim().length > 0) ? 0 : 1,
+        transition: 'opacity 0.25s ease, transform 0.2s ease',
       }}
       onContextMenu={handleContextMenu}
       onKeyDown={handleKeyDown}
@@ -141,6 +145,7 @@ export default function Bubble({
           isVisible={true}
           onToggle={() => setIsActionLogExpanded(!isActionLogExpanded)}
           isExpanded={isActionLogExpanded}
+          cwd={cwd}
         />
       )}
     </div>

@@ -1,6 +1,6 @@
 import React from 'react';
 
-export default function ToolCallIndicator({ toolCall, isCompleted = false, rawData = null, animationDelay = 0 }) {
+export default function ToolCallIndicator({ toolCall, isCompleted = false, rawData = null, animationDelay = 0, cwd = '' }) {
   if (!toolCall) return null;
 
   const getToolName = (toolCallData) => {
@@ -24,7 +24,23 @@ export default function ToolCallIndicator({ toolCall, isCompleted = false, rawDa
   };
 
   const toolName = getToolName(toolCall);
-  const path = getPath(toolCall, toolName);
+  const absoluteText = getPath(toolCall, toolName);
+
+  const makeRelative = (input) => {
+    if (!input) return '';
+    if (!cwd) return input;
+    const normalizedCwd = cwd.endsWith('/') ? cwd : `${cwd}/`;
+    // Remove absolute cwd prefix wherever it appears
+    let output = input.startsWith(normalizedCwd)
+      ? input.slice(normalizedCwd.length)
+      : input.replaceAll(normalizedCwd, '');
+    // Also handle the case without trailing slash
+    const noSlash = cwd.endsWith('/') ? cwd.slice(0, -1) : cwd;
+    if (output.startsWith(noSlash + '/')) output = output.slice(noSlash.length + 1);
+    return output;
+  };
+
+  const fullText = makeRelative(absoluteText);
 
   return (
     <div
@@ -33,50 +49,27 @@ export default function ToolCallIndicator({ toolCall, isCompleted = false, rawDa
     >
       {isCompleted ? <div className="tool-call-check">✓</div> : <div className="tool-call-spinner"></div>}
       <span style={{ color: '#3c6df0', fontWeight: '500' }}>{toolName}</span>
-      {path && (
+      {fullText && (
         <>
           <span style={{ color: '#6b7280' }}>-</span>
-          <span style={{ color: '#e5e7eb' }}>{path}</span>
+          <span
+            className="path-text truncate-with-popover"
+            style={{ color: '#e5e7eb' }}
+            title={fullText}
+            data-full={fullText}
+          >
+            {fullText}
+          </span>
         </>
       )}
       <span style={{ color: isCompleted ? '#4ade80' : '#fbbf24', fontSize: '10px', marginLeft: 'auto' }}>
         {isCompleted ? 'Completed' : 'Running...'}
       </span>
 
-      {rawData && (
-        <div
-          style={{
-            position: 'absolute',
-            top: '8px',
-            right: '40px',
-            background: 'rgba(0, 0, 0, 0.9)',
-            color: '#e6e6e6',
-            border: '1px solid #3c6df0',
-            borderRadius: '4px',
-            padding: '8px',
-            fontSize: '10px',
-            fontFamily: 'monospace',
-            maxWidth: '300px',
-            maxHeight: '200px',
-            overflow: 'auto',
-            opacity: 0,
-            transition: 'opacity 0.2s ease',
-            zIndex: 20,
-            whiteSpace: 'pre-wrap',
-            wordBreak: 'break-all',
-          }}
-          onMouseEnter={(e) => (e.target.style.opacity = 1)}
-          onMouseLeave={(e) => (e.target.style.opacity = 0)}
-          title="Raw JSON data"
-        >
-          <div style={{ color: '#3c6df0', fontWeight: 'bold', marginBottom: '4px' }}>Raw JSON:</div>
-          {JSON.stringify(rawData, null, 2)}
-        </div>
-      )}
-
+  
       <button
         onClick={() => {
-          const toolInfo = `Tool: ${toolName}${path ? ` - ${path}` : ''} | Status: ${isCompleted ? 'Completed' : 'Running...'}`;
+          const toolInfo = `Tool: ${toolName}${fullText ? ` - ${fullText}` : ''} | Status: ${isCompleted ? 'Completed' : 'Running...'}`;
           navigator.clipboard.writeText(toolInfo);
         }}
         className="copy-button"

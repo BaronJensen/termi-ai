@@ -592,7 +592,7 @@ ipcMain.handle('html-stop', async () => {
   return true;
 });
 
-ipcMain.handle('cursor-run', async (_e, { message, cwd, runId: clientRunId, sessionId, model }) => {
+ipcMain.handle('cursor-run', async (_e, { message, cwd, runId: clientRunId, sessionId, model, timeoutMs }) => {
   if (!message || !message.trim()) {
     throw new Error('Empty message');
   }
@@ -630,7 +630,7 @@ ipcMain.handle('cursor-run', async (_e, { message, cwd, runId: clientRunId, sess
   console.log(`🚀 Starting cursor-agent in directory: ${workingDir}`);
   const { child, wait } = startCursorAgent(message, sessionId, (level, line) => {
     try { if (win && !win.isDestroyed()) win.webContents.send('cursor-log', { runId, level, line, ts: Date.now() }); } catch {}
-  }, { cwd: workingDir, model });
+  }, { cwd: workingDir, model, ...(typeof timeoutMs === 'number' ? { timeoutMs } : {}) });
   
   if (child) agentProcs.set(runId, child);
   
@@ -1213,6 +1213,19 @@ ipcMain.handle('cursor-auth-login', async () => {
   return { ok: res.ok, success, raw: { stdout: res.stdout, stderr: res.stderr } };
 });
 
+// Emit a manual log line into the cursor log stream (for debug)
+ipcMain.handle('cursor-debug-log', async (_e, { line, runId, level }) => {
+  try {
+    const payload = { line: String(line || ''), ts: Date.now(), ...(runId ? { runId } : {}), ...(level ? { level } : {}) };
+    if (win && !win.isDestroyed()) {
+      win.webContents.send('cursor-log', payload);
+    }
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
 // Detect project metadata from a folder
 ipcMain.handle('project-detect', async (_e, folderPath) => {
   try {
@@ -1340,19 +1353,25 @@ ipcMain.handle('detect-editors', async () => {
 });
 
 // Open project in a specific editor
-ipcMain.handle('open-in-editor', async (_e, { folderPath, editor }) => {
+ipcMain.handle('open-in-editor', async (_e, { folderPath, editor, targetPath }) => {
   try {
     if (!folderPath) throw new Error('No folderPath provided');
     const map = {
-      code: { cmd: 'code', args: ['.'] },
-      cursor: { cmd: 'cursor', args: ['.'] },
-      webstorm: { cmd: 'webstorm', args: ['.'] },
-      idea: { cmd: 'idea', args: ['.'] },
-      subl: { cmd: 'subl', args: ['.'] }
+      code: { cmd: 'code' },
+      cursor: { cmd: 'cursor' },
+      webstorm: { cmd: 'webstorm' },
+      idea: { cmd: 'idea' },
+      subl: { cmd: 'subl' }
     };
     const entry = map[editor];
     if (!entry) throw new Error('Unsupported editor');
-    const child = spawn(entry.cmd, entry.args, { cwd: folderPath, shell: process.platform === 'win32' });
+    const args = [];
+    if (targetPath && typeof targetPath === 'string') {
+      args.push(targetPath);
+    } else {
+      args.push('.');
+    }
+    const child = spawn(entry.cmd, args, { cwd: folderPath, shell: process.platform === 'win32' });
     child.on('error', () => {});
     return { ok: true };
   } catch (err) {

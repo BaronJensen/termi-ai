@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import Chat from '../components/Chat.jsx';
 import { getProject, updateProject } from '../store/projects';
+import { loadSettings } from '../store/settings';
 import Button from '../ui/Button';
 import Input from '../ui/Input';
 import Label from '../ui/Label';
@@ -22,7 +23,7 @@ export default function ProjectView({ projectId, onBack, initialMessage }) {
   const [routeQuery, setRouteQuery] = useState('');
   const pendingRouteRef = useRef(null);
   const [editors, setEditors] = useState([]);
-  const [selectedEditor, setSelectedEditor] = useState('');
+  const [selectedEditor, setSelectedEditor] = useState(() => loadSettings().defaultEditor || '');
   const [viewportMode, setViewportMode] = useState('desktop'); // 'desktop', 'tablet', 'phone'
   const [isChatVisible, setIsChatVisible] = useState(true);
   const [showDebug, setShowDebug] = useState(false);
@@ -143,7 +144,8 @@ export default function ProjectView({ projectId, onBack, initialMessage }) {
       if (projectType !== 'html') {
         setIsInstalling(true);
         try {
-          const res = await window.cursovable.installPackages({ folderPath: folder, manager: 'yarn' });
+          const { packageManager } = loadSettings();
+          const res = await window.cursovable.installPackages({ folderPath: folder, manager: packageManager || 'yarn' });
           if (!res || !res.ok) {
             console.warn('Dependency install failed or returned error:', res?.error);
           }
@@ -159,7 +161,8 @@ export default function ProjectView({ projectId, onBack, initialMessage }) {
       if (projectType === 'html') {
         urlObj = await window.cursovable.startHtml({ folderPath: folder });
       } else {
-        urlObj = await window.cursovable.startVite({ folderPath: folder, manager: 'yarn' });
+        const { packageManager } = loadSettings();
+        urlObj = await window.cursovable.startVite({ folderPath: folder, manager: packageManager || 'yarn' });
       }
       const { url } = urlObj;
       setPreviewUrl(url);
@@ -298,6 +301,18 @@ export default function ProjectView({ projectId, onBack, initialMessage }) {
       } catch {}
     })();
   }, []);
+
+  // Apply default editor from settings once editors are detected
+  useEffect(() => {
+    try {
+      if (!selectedEditor && editors.length > 0) {
+        const s = loadSettings();
+        if (s.defaultEditor && editors.includes(s.defaultEditor)) {
+          setSelectedEditor(s.defaultEditor);
+        }
+      }
+    } catch {}
+  }, [editors]);
 
   // If preview becomes available and we have a pending route, navigate to it
   useEffect(() => {
@@ -590,6 +605,16 @@ export default function ProjectView({ projectId, onBack, initialMessage }) {
                   >
                     Open in {selectedEditor ? ({ code: 'VS Code', cursor: 'Cursor', webstorm: 'WebStorm', idea: 'IntelliJ IDEA', subl: 'Sublime Text' }[selectedEditor] || selectedEditor) : 'Editor'}
                   </button>
+                  {/* Preselect default editor from settings if available and not yet chosen */}
+                  {selectedEditor === '' && (() => {
+                    try {
+                      const s = loadSettings();
+                      if (s.defaultEditor && editors.includes(s.defaultEditor)) {
+                        setSelectedEditor(s.defaultEditor);
+                      }
+                    } catch {}
+                    return null;
+                  })()}
                 </div>
                 <button
                   style={{

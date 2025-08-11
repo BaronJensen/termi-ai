@@ -2,6 +2,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import Bubble from './Chat/Bubble';
 import ToolCallIndicator from './Chat/ToolCallIndicator';
+import { loadSettings } from '../store/settings';
 
 export default function Chat({ cwd, initialMessage, projectId }) {
   // Add CSS animations and styles
@@ -653,6 +654,45 @@ export default function Chat({ cwd, initialMessage, projectId }) {
         transform: scale(1.1);
         box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
       }
+
+      /* Truncation and popover for long inline texts (e.g., paths) */
+      .truncate-with-popover {
+        max-width: 40ch;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        display: inline-block;
+        vertical-align: bottom;
+        position: relative;
+      }
+      .truncate-with-popover:hover::after {
+        content: attr(data-full);
+        position: absolute;
+        left: 0;
+        top: 120%;
+        background: linear-gradient(135deg, #0b1018 0%, #1a2331 100%);
+        color: #e6e6e6;
+        border: 1px solid #27354a;
+        padding: 8px 10px;
+        border-radius: 8px;
+        z-index: 50;
+        white-space: pre-wrap;
+        min-width: max(220px, 100%);
+        max-width: 70vw;
+        box-shadow: 0 8px 25px rgba(0,0,0,0.3);
+      }
+      .truncate-with-popover:hover::before {
+        content: '';
+        position: absolute;
+        left: 10px;
+        top: 110%;
+        width: 0;
+        height: 0;
+        border-left: 6px solid transparent;
+        border-right: 6px solid transparent;
+        border-bottom: 6px solid #27354a;
+        filter: drop-shadow(0 2px 2px rgba(0,0,0,0.2));
+      }
     `;
     document.head.appendChild(style);
     
@@ -701,6 +741,7 @@ export default function Chat({ cwd, initialMessage, projectId }) {
   const [currentSessionId, setCurrentSessionId] = useState(null); // Current active session
   const [showSessionList, setShowSessionList] = useState(false); // Toggle session list UI
   const [isCreatingNewSession, setIsCreatingNewSession] = useState(false); // Creating new session state
+  const [globalActionLogExpanded, setGlobalActionLogExpanded] = useState(true); // Global action log expanded state
   // Model selection (empty string means default/auto; don't send to CLI)
   const modelStorageKey = `cursovable-model-${projectId || 'legacy'}`;
   const suggestedModels = [
@@ -711,6 +752,9 @@ export default function Chat({ cwd, initialMessage, projectId }) {
     'gpt-4.1',
     'gpt-4.1-mini'
   ];
+
+
+  console.log('toolCalls 1', toolCalls);
   const [model, setModel] = useState(() => {
     try {
       const stored = localStorage.getItem(modelStorageKey);
@@ -1115,6 +1159,28 @@ export default function Chat({ cwd, initialMessage, projectId }) {
       console.warn('Already processing a request, ignoring new input');
       return;
     }
+
+    // Security check: ensure process working directory matches the project folder
+    try {
+      const normalizePath = (p) => (p || '').replace(/\\/g, '/').replace(/\/+$/,'');
+      const desiredCwd = normalizePath(cwd);
+      let currentWd = normalizePath(await window.cursovable.getWorkingDirectory());
+      if (!currentWd || currentWd !== desiredCwd) {
+        const proceed = confirm(
+          `Security check: Current working directory is "${currentWd || '(none)'}" but project folder is "${desiredCwd}".\n\nSwitch to the project folder before running commands?`
+        );
+        if (!proceed) return;
+        await window.cursovable.setWorkingDirectory(desiredCwd);
+        currentWd = normalizePath(await window.cursovable.getWorkingDirectory());
+        if (currentWd !== desiredCwd) {
+          alert('Failed to switch working directory to the project folder. Aborting to keep your environment safe.');
+          return;
+        }
+      }
+    } catch (err) {
+      alert(`Could not verify working directory: ${err?.message || String(err)}. Aborting to stay safe.`);
+      return;
+    }
     
     if (typeof textOverride !== 'string') setInput('');
     // Reset textarea height
@@ -1217,48 +1283,57 @@ export default function Chat({ cwd, initialMessage, projectId }) {
                 }
               }
               
-              // Handle tool calls
-              if (parsed.type === 'tool_call') {
-                const callId = parsed.call_id;
-                const toolCallData = parsed.tool_call;
-                
-                console.log('Tool call received:', { callId, subtype: parsed.subtype, toolCallData });
-                
+              // Handle tool calls (support multiple formats)
+              if (parsed.type === 'tool_call' || parsed.type === 'tool' || parsed.type === 'function_call' || parsed.tool_call || parsed.tool || parsed.name === 'tool') {
+                let callId = parsed.call_id || parsed.id;
+                let toolCallData = parsed.tool_call;
+                let subtype = parsed.subtype || parsed.status || (parsed.result ? 'completed' : (parsed.args ? 'started' : 'update'));
+
+                // Normalize when tool_call isn't in expected shape
+                if (!toolCallData) {
+                  const name = (parsed.tool && (parsed.tool.name || parsed.tool.tool || parsed.tool.type)) || parsed.name || 'tool';
+                  const args = (parsed.tool && (parsed.tool.args || parsed.tool.parameters)) || parsed.args || {};
+                  const result = parsed.result;
+                  const key = `${String(name).replace(/\s+/g, '')}ToolCall`;
+                  toolCallData = { [key]: { args, ...(result !== undefined ? { result } : {}) } };
+                }
+                if (!callId) {
+                  callId = `${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
+                }
+
+                console.log('Tool call received (normalized):', { callId, subtype, toolCallData });
+
                 // Store tool call info
                 setToolCalls(prev => {
                   const newMap = new Map(prev);
                   const existing = newMap.get(callId);
-                  
-                  console.log('Storing tool call:', { callId, subtype: parsed.subtype, existing: !!existing });
-                  
+
                   if (existing) {
-                    // Update existing tool call
                     newMap.set(callId, {
                       ...existing,
-                      toolCall: toolCallData, // Update with latest tool call data
-                      isCompleted: parsed.subtype === 'completed',
-                      isStarted: parsed.subtype === 'started',
-                      completedAt: parsed.subtype === 'completed' ? Date.now() : existing.completedAt,
-                      rawData: parsed, // Store the complete raw JSON
-                      lastUpdated: Date.now() // Track when this was last updated
+                      toolCall: toolCallData,
+                      isCompleted: subtype === 'completed' || subtype === 'end' || subtype === 'finished',
+                      isStarted: subtype === 'started' || subtype === 'start',
+                      completedAt: (subtype === 'completed' || subtype === 'end' || subtype === 'finished') ? Date.now() : existing.completedAt,
+                      rawData: parsed,
+                      lastUpdated: Date.now()
                     });
                   } else {
-                    // Create new tool call entry
                     newMap.set(callId, {
                       toolCall: toolCallData,
-                      isCompleted: parsed.subtype === 'completed',
-                      isStarted: parsed.subtype === 'started',
+                      isCompleted: subtype === 'completed' || subtype === 'end' || subtype === 'finished',
+                      isStarted: subtype === 'started' || subtype === 'start',
                       startedAt: Date.now(),
-                      completedAt: parsed.subtype === 'completed' ? Date.now() : null,
-                      rawData: parsed, // Store the complete raw JSON
-                      lastUpdated: Date.now() // Track when this was last updated
+                      completedAt: (subtype === 'completed' || subtype === 'end' || subtype === 'finished') ? Date.now() : null,
+                      rawData: parsed,
+                      lastUpdated: Date.now()
                     });
                   }
-                  
+
                   console.log('Tool calls after update:', newMap.size);
                   return newMap;
                 });
-                
+
               }
               
               // Stop streaming when we get a result
@@ -1315,7 +1390,8 @@ export default function Chat({ cwd, initialMessage, projectId }) {
                       const cwdPath = status || (typeof cwd === 'string' ? cwd : null);
                       if (cwdPath) {
                         try {
-                          await window.cursovable.installPackages({ folderPath: cwdPath, manager: 'yarn' });
+                          const { packageManager } = loadSettings();
+                          await window.cursovable.installPackages({ folderPath: cwdPath, manager: packageManager || 'yarn' });
                         } catch (e) {
                           console.warn('Auto install failed:', e);
                         }
@@ -1432,12 +1508,20 @@ export default function Chat({ cwd, initialMessage, projectId }) {
       const currentSession = sessions.find(s => s.id === currentSessionId);
       const sessionIdToUse = currentSession?.cursorSessionId || currentSessionId;
 
+      const { cursorAgentTimeoutMs } = loadSettings();
+      // Print the current terminal folder in the cursor debug log before running
+      try {
+        const currentWd = await window.cursovable.getWorkingDirectory();
+        await window.cursovable.cursorDebugLog({ line: `[cursor-agent] Working directory: ${currentWd || '(none)'}`, runId });
+      } catch {}
+
       const res = await window.cursovable.runCursor({ 
         message: text, 
         cwd: cwd || undefined, 
         runId,
         sessionId: sessionIdToUse,
-        ...(model ? { model } : {})
+        ...(model ? { model } : {}),
+        ...(typeof cursorAgentTimeoutMs === 'number' ? { timeoutMs: cursorAgentTimeoutMs } : {})
       });
       
       // We just need to ensure the process completed successfully
@@ -1904,6 +1988,7 @@ export default function Chat({ cwd, initialMessage, projectId }) {
               showActionLog={m.showActionLog}
               toolCalls={m.showActionLog ? toolCalls : null}
               searchQuery={searchQuery}
+              cwd={cwd || ''}
             >
               {m.text}
             </Bubble>
@@ -1925,6 +2010,7 @@ export default function Chat({ cwd, initialMessage, projectId }) {
                 isCompleted={toolCallInfo.isCompleted}
                 rawData={toolCallInfo.rawData}
                 animationDelay={index * 0.1} // Stagger animations
+                cwd={cwd || ''}
               />
             );
           } catch (error) {

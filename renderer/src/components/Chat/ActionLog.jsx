@@ -1,10 +1,57 @@
 import React from 'react';
 
-export default function ActionLog({ toolCalls, isVisible = false, onToggle, isExpanded = false }) {
+export default function ActionLog({ toolCalls, isVisible = false, onToggle, isExpanded = false, cwd = '' }) {
   if (!isVisible) return null;
-  
-  const completedCount = Array.from(toolCalls.values()).filter((t) => t.isCompleted).length;
-  const totalCount = toolCalls.size;
+  console.log('toolCalls', toolCalls);
+  const entries = Array.from(toolCalls.entries()).map(([callId, toolCallInfo]) => {
+    const keys = toolCallInfo.toolCall ? Object.keys(toolCallInfo.toolCall) : [];
+    const mainKey = keys.find((k) => k !== 'args' && k !== 'result');
+    const toolName = mainKey
+      ? mainKey.replace(/ToolCall$/, '').replace(/^[a-z]/, (c) => c.toUpperCase())
+      : 'Unknown';
+    return { callId, toolCallInfo, toolName, mainKey };
+  });
+
+  // Prefer showing edit-like tool calls; if none, show all so logs are never empty
+  const filteredForEdit = entries.filter(({ mainKey, toolName }) => {
+    if (!mainKey && !toolName) return false;
+    const lowerKey = (mainKey || '').toLowerCase();
+    const normalizedName = (toolName || '').toLowerCase();
+    const haystack = `${lowerKey} ${normalizedName}`;
+    console.log('haystack', haystack, haystack.includes('edit') || haystack.includes('read') || haystack.includes('readtoolcall')); 
+    return (
+      haystack.includes('edit') ||
+      haystack.includes('apply_patch') ||
+      haystack.includes('applypatch') ||
+      haystack.includes('edit_file') ||
+      haystack.includes('editfile') ||
+      haystack.includes('read') ||
+      haystack.includes('readtoolcall')
+    );
+  });
+  const editEntries = filteredForEdit.length > 0 ? filteredForEdit : entries;
+
+  const completedCount = editEntries.filter((e) => e.toolCallInfo.isCompleted).length;
+  const totalCount = editEntries.length;
+
+  const makeRelative = (input) => {
+    if (!input) return '';
+    if (!cwd) return input;
+    const withSlash = cwd.endsWith('/') ? cwd : `${cwd}/`;
+    let out = input.startsWith(withSlash) ? input.slice(withSlash.length) : input.replaceAll(withSlash, '');
+    const noSlash = cwd.endsWith('/') ? cwd.slice(0, -1) : cwd;
+    if (out.startsWith(noSlash + '/')) out = out.slice(noSlash.length + 1);
+    return out;
+  };
+
+  const computeAbsolute = (input) => {
+    if (!input) return '';
+    // If already absolute (starts with / or drive letter), return as is
+    if (/^(\w:)?\//i.test(input) || input.startsWith('/')) return input;
+    if (!cwd) return input;
+    const base = cwd.endsWith('/') ? cwd : `${cwd}/`;
+    return base + input.replace(/^\.\/?/, '');
+  };
   
   return (
     <div
@@ -80,28 +127,16 @@ export default function ActionLog({ toolCalls, isVisible = false, onToggle, isEx
           animation: isExpanded ? 'slideDown 0.3s ease-out' : 'none',
         }}
       >
-        {Array.from(toolCalls.entries()).map(([callId, toolCallInfo]) => {
-          const toolName = toolCallInfo.toolCall
-            ? Object.keys(toolCallInfo.toolCall)
-                .find((key) => key !== 'args' && key !== 'result')
-                ?.replace(/ToolCall$/, '')
-                .replace(/^[a-z]/, (char) => char.toUpperCase()) || 'Unknown'
-            : 'Unknown';
-          
-          const path = toolCallInfo.toolCall
-            ? toolCallInfo.toolCall[
-                Object.keys(toolCallInfo.toolCall).find((key) => key !== 'args' && key !== 'result')
-              ]?.args?.path ||
-              toolCallInfo.toolCall[
-                Object.keys(toolCallInfo.toolCall).find((key) => key !== 'args' && key !== 'result')
-              ]?.args?.pattern ||
-              ''
-            : '';
-          
+        {editEntries.map(({ callId, toolCallInfo, toolName, mainKey }) => {
+          const args = mainKey ? toolCallInfo.toolCall?.[mainKey]?.args : null;
+          const absPath = args?.path || args?.pattern || '';
+          const relPath = makeRelative(absPath);
+          const fullPath = computeAbsolute(relPath || absPath);
+
           const status = toolCallInfo.isCompleted ? 'completed' : 'running';
           const statusColor = toolCallInfo.isCompleted ? '#10b981' : '#f59e0b';
           const statusIcon = toolCallInfo.isCompleted ? '✓' : '⚡';
-          
+
           return (
             <div
               key={callId}
@@ -127,11 +162,54 @@ export default function ActionLog({ toolCalls, isVisible = false, onToggle, isEx
               >
                 {statusIcon}
               </span>
-              <span style={{ color: '#3c6df0', fontWeight: '500', minWidth: '60px' }}>{toolName}</span>
-              {path && (
+              <span style={{ color: '#3c6df0', fontWeight: '500', minWidth: '60px' }}>{toolName || 'Tool'}</span>
+              {relPath && (
                 <>
                   <span style={{ color: '#64748b' }}>-</span>
-                  <span style={{ color: '#cbd5e1', fontSize: '10px' }}>{path}</span>
+                  <span
+                    className="truncate-with-popover"
+                    style={{ color: '#cbd5e1', fontSize: '10px', cursor: 'pointer', textDecoration: 'underline dotted' }}
+                    title={relPath}
+                    data-full={relPath}
+                    role="button"
+                    tabIndex={0}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      try {
+                        const { defaultEditor } = require('../../store/settings');
+                      } catch {}
+                      try {
+                        const settings = JSON.parse(localStorage.getItem('cursovable-settings') || '{}');
+                        const editor = settings.defaultEditor || '';
+                        if (editor) {
+                          window.cursovable.openInEditor({ folderPath: cwd || '', editor, targetPath: fullPath });
+                        } else {
+                          window.cursovable.openFolder(fullPath);
+                        }
+                      } catch {
+                        try { window.cursovable.openFolder(fullPath); } catch {}
+                      }
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        try {
+                          const settings = JSON.parse(localStorage.getItem('cursovable-settings') || '{}');
+                          const editor = settings.defaultEditor || '';
+                          if (editor) {
+                            window.cursovable.openInEditor({ folderPath: cwd || '', editor, targetPath: fullPath });
+                          } else {
+                            window.cursovable.openFolder(fullPath);
+                          }
+                        } catch {
+                          try { window.cursovable.openFolder(fullPath); } catch {}
+                        }
+                      }
+                    }}
+                  >
+                    {relPath}
+                  </span>
                 </>
               )}
               <span
@@ -148,7 +226,7 @@ export default function ActionLog({ toolCalls, isVisible = false, onToggle, isEx
           );
         })}
         
-        {toolCalls.size === 0 && (
+        {totalCount === 0 && (
           <div
             style={{
               textAlign: 'center',
@@ -157,7 +235,7 @@ export default function ActionLog({ toolCalls, isVisible = false, onToggle, isEx
               padding: '16px',
             }}
           >
-            No actions performed during this conversation
+            No edits performed during this conversation
           </div>
         )}
       </div>
