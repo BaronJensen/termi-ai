@@ -193,9 +193,9 @@ function startCursorAgent(message, sessionId, onLog, options = {}) {
   
   const wait = new Promise((resolve, reject) => {
     const args = ['-p', '--output-format="stream-json"'];
-    // If using token auth, append -a "token"
-    if (options.useTokenAuth) {
-      args.push('-a', 'token');
+    // If using token auth, append -a <API_TOKEN>
+    if (options.useTokenAuth && options.apiKey) {
+      args.push('-a', String(options.apiKey));
     }
     // Model selection support
     if (options.model && typeof options.model === 'string') {
@@ -209,12 +209,21 @@ function startCursorAgent(message, sessionId, onLog, options = {}) {
     
     args.push(`${message}. Avoid running build tools or scripts, we are already running the project`);
     
-    if (onLog) onLog('info', `Running: cursor-agent ${args.map(a => (a.includes(' ') ? '"'+a+'"' : a)).join(' ')}`);
+    // Safe display of args (mask API token if present)
+    const displayArgs = args.map(a => (options && options.apiKey && a === String(options.apiKey)) ? '********' : a);
+    if (onLog) onLog('info', `Running: cursor-agent ${displayArgs.map(a => (a.includes(' ') ? '"'+a+'"' : a)).join(' ')}`);
     if (onLog) onLog('info', `Working directory: ${options.cwd || process.cwd()}`);
     const env = { ...process.env };
     // If apiKey provided, pass as OPENAI_API_KEY to the child process only
     if (options.apiKey && typeof options.apiKey === 'string') {
       env.OPENAI_API_KEY = options.apiKey;
+    }
+
+    // Log a safe, non-sensitive confirmation that token auth is enabled
+    if (options.useTokenAuth) {
+      const token = typeof options.apiKey === 'string' ? options.apiKey : '';
+      const tokenTail = token ? token.slice(-4) : '';
+      if (onLog) onLog('info', `[auth] Using token auth (-a ********). OPENAI_API_KEY set (${token.length} chars), token ends with …${tokenTail}`);
     }
     env.PATH = ensureDarwinPath(env.PATH);
     const resolved = resolveCommandPath('cursor-agent', env.PATH) || 'cursor-agent';
