@@ -1372,11 +1372,12 @@ export default function Chat({ cwd, initialMessage, projectId }) {
                       const idx = streamIndexRef.current;
                       if (idx >= 0 && idx < m.length) {
                         const updated = [...m];
+                        const toolCallsSnapshot = Array.from(toolCalls.entries()).map(([id, info]) => ({ id, ...info }));
                         updated[idx] = {
                           ...updated[idx],
-                        isStreaming: false,
-                          // Keep accumulated text; attach result metadata and action log flag
-                        rawData: { result: 'success', text: accumulatedText },
+                          isStreaming: false,
+                          // Keep accumulated text; attach result metadata and action log flag + tool logs snapshot for persistence
+                          rawData: { result: 'success', text: accumulatedText, toolCalls: toolCallsSnapshot },
                           showActionLog: true,
                         };
                         return updated;
@@ -1460,10 +1461,11 @@ export default function Chat({ cwd, initialMessage, projectId }) {
                     const idx = streamIndexRef.current;
                     if (idx >= 0 && idx < m.length) {
                       const updated = [...m];
+                      const toolCallsSnapshot = Array.from(toolCalls.entries()).map(([id, info]) => ({ id, ...info }));
                       updated[idx] = {
                         ...updated[idx],
-                      isStreaming: false,
-                      rawData: { result: 'success', text: accumulatedText },
+                        isStreaming: false,
+                        rawData: { result: 'success', text: accumulatedText, toolCalls: toolCallsSnapshot },
                         showActionLog: true,
                       };
                       return updated;
@@ -1569,10 +1571,11 @@ export default function Chat({ cwd, initialMessage, projectId }) {
             const idx = streamIndexRef.current;
             if (idx >= 0 && idx < m.length) {
               const updated = [...m];
+              const toolCallsSnapshot = Array.from(toolCalls.entries()).map(([id, info]) => ({ id, ...info }));
               updated[idx] = {
                 ...updated[idx],
-            isStreaming: false,
-            rawData: { result: 'completed', text: accumulatedText },
+                isStreaming: false,
+                rawData: { result: 'completed', text: accumulatedText, toolCalls: toolCallsSnapshot },
                 showActionLog: true,
               };
               return updated;

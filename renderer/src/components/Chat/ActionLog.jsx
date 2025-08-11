@@ -3,7 +3,15 @@ import React from 'react';
 export default function ActionLog({ toolCalls, isVisible = false, onToggle, isExpanded = false, cwd = '' }) {
   if (!isVisible) return null;
   console.log('toolCalls', toolCalls);
-  const entries = Array.from(toolCalls.entries()).map(([callId, toolCallInfo]) => {
+
+  const toPairs = (tc) => {
+    if (!tc) return [];
+    if (tc instanceof Map) return Array.from(tc.entries());
+    if (Array.isArray(tc)) return tc.map((e) => [e.id, { ...e }]);
+    return [];
+  };
+
+  const entries = toPairs(toolCalls).map(([callId, toolCallInfo]) => {
     const keys = toolCallInfo.toolCall ? Object.keys(toolCallInfo.toolCall) : [];
     const mainKey = keys.find((k) => k !== 'args' && k !== 'result');
     const toolName = mainKey
