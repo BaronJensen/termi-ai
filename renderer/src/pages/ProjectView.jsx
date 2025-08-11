@@ -256,14 +256,16 @@ export default function ProjectView({ projectId, onBack, initialMessage }) {
   return (
     <div className="app" style={{ gridTemplateColumns: isChatVisible ? '1.6fr 0.8fr' : '1fr' }}>
       <div className="panel">
-        <div className="header">
-          {/* Back arrow */}
-          <button className="secondary" onClick={handleBack} title="Back" aria-label="Back">
-            ←
-          </button>
+        <div className="header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          {/* Left section - Back arrow */}
+          <div style={{ display: 'flex', alignItems: 'center' }}>
+            <button className="secondary" onClick={handleBack} title="Back" aria-label="Back">
+              ←
+            </button>
+          </div>
 
-          {/* Route search / navigation bar */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {/* Center section - Route search / navigation bar and Run/Stop actions */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: '0 0 auto' }}>
             <button className="secondary" title="Reload app" aria-label="Reload app" onClick={() => {
               const wb = document.querySelector('webview');
               try { if (wb) wb.reload(); } catch {}
@@ -281,18 +283,17 @@ export default function ProjectView({ projectId, onBack, initialMessage }) {
                 <option key={r} value={r} />
               ))}
             </datalist>
+            {/* Run / Stop icons */}
+            {!previewUrl && (
+              <button onClick={startPreview} disabled={!folder || isStarting || isInstalling} title="Run">
+                ▶
+              </button>
+            )}
+            <button className="secondary" onClick={stopPreview} title="Stop">■</button>
           </div>
 
-          {/* Run / Stop icons */}
-          {!previewUrl && (
-            <button onClick={startPreview} disabled={!folder || isStarting || isInstalling} title="Run">
-              ▶
-            </button>
-          )}
-          <button className="secondary" onClick={stopPreview} title="Stop">■</button>
-
-          {/* Viewport toggles and options menu */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 'auto' }}>
+          {/* Right section - Viewport toggles and options menu */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             {/* Viewport toggles */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginRight: 8 }}>
               <button 
