@@ -635,6 +635,19 @@ export default function Chat({ cwd, initialMessage, projectId }) {
   // Session storage functions
   const getSessionStorageKey = () => `cursovable-sessions-${projectId || 'legacy'}`;
   
+  // Derive a session name from the first user message
+  const deriveSessionNameFromMessage = (text) => {
+    if (!text || typeof text !== 'string') return 'Untitled';
+    // Trim, collapse whitespace, strip newlines
+    let name = text.trim().replace(/\s+/g, ' ');
+    // Remove markdown code fences/backticks that could bloat UI
+    name = name.replace(/`{1,3}/g, '');
+    // Limit length to avoid breaking UI
+    const maxLen = 60;
+    if (name.length > maxLen) name = name.slice(0, maxLen - 1) + '…';
+    return name || 'Untitled';
+  };
+
   const loadSessions = () => {
     try {
       const savedSessions = localStorage.getItem(getSessionStorageKey());
@@ -705,7 +718,17 @@ export default function Chat({ cwd, initialMessage, projectId }) {
     setSessions(prevSessions => {
       const updatedSessions = prevSessions.map(session => 
         session.id === currentSessionId 
-          ? { ...session, messages, updatedAt: Date.now() }
+          ? { 
+              ...session, 
+              // Keep name (possibly set from first message); only derive name if still default
+              name: session.name && session.name.startsWith('Session ')
+                ? (messages.find(msg => msg.who === 'user')
+                    ? deriveSessionNameFromMessage(messages.find(msg => msg.who === 'user').text)
+                    : session.name)
+                : session.name,
+              messages, 
+              updatedAt: Date.now() 
+            }
           : session
       );
       
@@ -735,64 +758,7 @@ export default function Chat({ cwd, initialMessage, projectId }) {
     }
   };
 
-  // Utility function to identify sessions with first user message
-  const getFirstUserMessageSession = () => {
-    // Find session with first user message across all sessions for this project
-    let earliestUserMessageSession = null;
-    let earliestTimestamp = Infinity;
-    
-    sessions.forEach(session => {
-      const firstUserMessage = (session.messages || []).find(msg => msg.who === 'user');
-      if (firstUserMessage && firstUserMessage.rawData?.timestamp) {
-        if (firstUserMessage.rawData.timestamp < earliestTimestamp) {
-          earliestTimestamp = firstUserMessage.rawData.timestamp;
-          earliestUserMessageSession = session;
-        }
-      }
-    });
-    
-    if (earliestUserMessageSession) {
-      console.log(`First user message session identified: "${earliestUserMessageSession.name}" (${earliestUserMessageSession.id}) with timestamp: ${new Date(earliestTimestamp).toLocaleString()}`);
-    }
-    
-    return earliestUserMessageSession;
-  };
-
-  // Check if a session contains the very first user message for this project
-  const isSessionWithFirstUserMessage = (session) => {
-    const firstUserMessageSession = getFirstUserMessageSession();
-    return firstUserMessageSession && firstUserMessageSession.id === session.id;
-  };
-
-  // Function to navigate to the session with the first user message
-  const goToFirstUserMessageSession = () => {
-    const firstSession = getFirstUserMessageSession();
-    if (firstSession && firstSession.id !== currentSessionId) {
-      loadSession(firstSession.id);
-      setShowSessionList(false);
-      
-      // Show a brief notification
-      setMessages(m => [...m, { 
-        who: 'assistant', 
-        text: `**Navigated to first session:** "${firstSession.name}" contains the first user message for this project.`,
-        rawData: { action: 'navigate_to_first_session', sessionId: firstSession.id }
-      }]);
-    } else if (firstSession) {
-      // Already in the first session
-      setMessages(m => [...m, { 
-        who: 'assistant', 
-        text: `**Already viewing first session:** This session contains the first user message for this project.`,
-        rawData: { action: 'already_in_first_session', sessionId: firstSession.id }
-      }]);
-    } else {
-      // No session with user messages found
-      setMessages(m => [...m, { 
-        who: 'assistant', 
-        text: `**No user messages found:** No sessions contain user messages yet.`,
-        rawData: { action: 'no_user_messages_found' }
-      }]);
-    }
-  };
+  // (Removed debug/session-first-message helpers)
 
   // Save messages to current session whenever they change
   useEffect(() => {
@@ -802,30 +768,7 @@ export default function Chat({ cwd, initialMessage, projectId }) {
     }
   }, [messages, currentSessionId, sessions]);
 
-  // Debug function to check session storage
-  const debugSessionStorage = () => {
-    const storageKey = getSessionStorageKey();
-    const stored = localStorage.getItem(storageKey);
-    console.log('=== SESSION STORAGE DEBUG ===');
-    console.log('Storage Key:', storageKey);
-    console.log('Stored Data:', stored);
-    console.log('Current Sessions State:', sessions);
-    console.log('Current Session ID:', currentSessionId);
-    console.log('Current Messages:', messages.length);
-    console.log('=== END DEBUG ===');
-    
-    // Force save current session for testing
-    if (currentSessionId) {
-      saveCurrentSession();
-    }
-    
-    // Add debug message to chat
-    setMessages(m => [...m, { 
-      who: 'assistant', 
-      text: `**Debug Info:**\n- Storage Key: ${storageKey}\n- Sessions in state: ${sessions.length}\n- Current session: ${currentSessionId}\n- Messages: ${messages.length + 1}\n- Storage data length: ${stored?.length || 0} chars\n- **Manual save triggered**`,
-      rawData: { action: 'debug_session_storage' }
-    }]);
-  };
+  // (Removed debug session storage helper)
 
   // Check terminal status on mount and when busy changes
   useEffect(() => {
@@ -1090,7 +1033,23 @@ export default function Chat({ cwd, initialMessage, projectId }) {
     setHideToolCallIndicators(false);
     
     // Add user message
-    setMessages(m => [...m, { who: 'user', text, rawData: { command: text, timestamp: Date.now() } }]);
+    setMessages(m => {
+      const next = [...m, { who: 'user', text, rawData: { command: text, timestamp: Date.now() } }];
+      // If this is the first user message in this session, set the session name from it
+      if (currentSessionId) {
+        const hasUserBefore = m.some(msg => msg.who === 'user');
+        if (!hasUserBefore) {
+          const newName = deriveSessionNameFromMessage(text);
+          setSessions(prev => {
+            const updated = prev.map(s => s.id === currentSessionId ? { ...s, name: newName } : s);
+            // Persist immediately so the header updates survive reloads
+            try { localStorage.setItem(getSessionStorageKey(), JSON.stringify(updated)); } catch {}
+            return updated;
+          });
+        }
+      }
+      return next;
+    });
     setBusy(true);
     
     try {
@@ -1522,25 +1481,6 @@ export default function Chat({ cwd, initialMessage, projectId }) {
           <span style={{ fontWeight: '500', color: '#3c6df0' }}>
             💬 {sessions.find(s => s.id === currentSessionId)?.name || 'No Session'}
           </span>
-          {currentSessionId && isSessionWithFirstUserMessage(sessions.find(s => s.id === currentSessionId)) && (
-            <span 
-              style={{ 
-                fontSize: '9px', 
-                color: '#fbbf24',
-                fontWeight: 'bold',
-                background: 'rgba(251, 191, 36, 0.1)',
-                padding: '2px 5px',
-                borderRadius: '8px',
-                border: '1px solid rgba(251, 191, 36, 0.3)'
-              }}
-              title="This session contains the first user message for this project"
-            >
-              1st MESSAGE
-            </span>
-          )}
-          <span style={{ fontSize: '10px', opacity: 0.7 }}>
-            ({sessions.length} total)
-          </span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
           <button
@@ -1573,26 +1513,9 @@ export default function Chat({ cwd, initialMessage, projectId }) {
           >
             📚
           </button>
-          {getFirstUserMessageSession() && (
-            <button
-              onClick={goToFirstUserMessageSession}
-              style={{
-                fontSize: '11px',
-                padding: '4px 8px',
-                backgroundColor: '#fbbf24',
-                color: '#111827',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: 'pointer',
-                fontWeight: '600'
-              }}
-              title="Go to session with first user message"
-            >
-              1st
-            </button>
-          )}
+          {/* Removed first-message navigation button */}
           <button
-            onClick={() => setIsCreatingNewSession(true)}
+            onClick={() => { createNewSession(); setShowSessionList(false); }}
             style={{
               fontSize: '11px',
               padding: '4px 8px',
@@ -1606,21 +1529,7 @@ export default function Chat({ cwd, initialMessage, projectId }) {
           >
             ➕
           </button>
-          <button
-            onClick={debugSessionStorage}
-            style={{
-              fontSize: '11px',
-              padding: '4px 8px',
-              backgroundColor: '#ef4444',
-              color: '#e6e6e6',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: 'pointer'
-            }}
-            title="Debug session storage"
-          >
-            🐛
-          </button>
+          {/* Removed debug button */}
         </div>
       </div>
 
@@ -1679,16 +1588,7 @@ export default function Chat({ cwd, initialMessage, projectId }) {
             </div>
           ) : (
             sessions
-              .sort((a, b) => {
-                // First, prioritize the session with the first user message
-                const aIsFirst = isSessionWithFirstUserMessage(a);
-                const bIsFirst = isSessionWithFirstUserMessage(b);
-                if (aIsFirst && !bIsFirst) return -1;
-                if (!aIsFirst && bIsFirst) return 1;
-                
-                // Then sort by most recent update
-                return b.updatedAt - a.updatedAt;
-              })
+              .sort((a, b) => b.updatedAt - a.updatedAt)
               .map(session => (
                 <div
                   key={session.id}
@@ -1722,22 +1622,7 @@ export default function Chat({ cwd, initialMessage, projectId }) {
                       gap: '6px'
                     }}>
                       {session.name}
-                      {isSessionWithFirstUserMessage(session) && (
-                        <span 
-                          style={{ 
-                            fontSize: '10px', 
-                            color: '#fbbf24',
-                            fontWeight: 'bold',
-                            background: 'rgba(251, 191, 36, 0.1)',
-                            padding: '2px 6px',
-                            borderRadius: '10px',
-                            border: '1px solid rgba(251, 191, 36, 0.3)'
-                          }}
-                          title="This session contains the first user message for this project"
-                        >
-                          1st
-                        </span>
-                      )}
+                      {/* Removed first message badge in list */}
                     </div>
                     <div style={{
                       fontSize: '10px',
