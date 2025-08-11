@@ -28,6 +28,53 @@ const { startHtmlServer } = require('./htmlServer.cjs');
 const { runCursorAgent, startCursorAgent } = require('./runner.cjs');
 const { HistoryStore } = require('./historyStore.cjs');
 
+// Ensure PATH includes common Homebrew locations (helps find cursor-agent)
+function ensureDarwinPath(originalPath) {
+  if (process.platform !== 'darwin') return originalPath;
+  const extras = ['/usr/local/bin', '/opt/homebrew/bin'];
+  const parts = (originalPath || '').split(':');
+  for (const p of extras) {
+    if (!parts.includes(p)) parts.unshift(p);
+  }
+  return parts.filter(Boolean).join(':');
+}
+
+function resolveCommandPath(command, envPath) {
+  const fs = require('fs');
+  const path = require('path');
+  const candidates = new Set();
+  const parts = (envPath || '').split(':').filter(Boolean);
+  for (const dir of parts) {
+    candidates.add(path.join(dir, command));
+  }
+  // Common Homebrew paths first
+  candidates.add('/opt/homebrew/bin/cursor-agent');
+  candidates.add('/usr/local/bin/cursor-agent');
+  for (const candidate of candidates) {
+    try {
+      fs.accessSync(candidate, fs.constants.X_OK);
+      return candidate;
+    } catch {}
+  }
+  return null;
+}
+
+// Remove ANSI escape sequences and non-printable control chars
+function stripAnsi(input) {
+  try {
+    const s = String(input || '');
+    return s
+      // CSI (Control Sequence Introducer) sequences like \x1B[31m
+      .replace(/\x1B\[[0-?]*[ -\/]*[@-~]/g, '')
+      // ESC-prefixed sequences
+      .replace(/\u001b\[[0-9;]*[A-Za-z]/g, '')
+      // Other non-printable except tab/newline/carriage return
+      .replace(/[^\x09\x0A\x0D\x20-\x7E]/g, '');
+  } catch {
+    return String(input || '');
+  }
+}
+
 // Dev: allow insecure localhost and certificate errors (must be set before ready)
 if (process.env.RENDERER_URL) {
   try {
@@ -1106,6 +1153,64 @@ ipcMain.handle('history-get', async () => {
 ipcMain.handle('history-clear', async () => {
   history.clear();
   return [];
+});
+
+// --------------------
+// Cursor auth helpers & IPC
+// --------------------
+function runCursorAgentRaw(args, onData) {
+  return new Promise((resolve) => {
+    try {
+      const env = { ...process.env };
+      env.PATH = ensureDarwinPath(env.PATH);
+      const resolved = resolveCommandPath('cursor-agent', env.PATH) || 'cursor-agent';
+      const child = spawn(resolved, args, { shell: process.platform === 'win32', env });
+      let stdout = '';
+      let stderr = '';
+      child.stdout.on('data', (d) => {
+        const s = d.toString();
+        stdout += s;
+        if (onData) onData(s, 'stdout');
+      });
+      child.stderr.on('data', (d) => {
+        const s = d.toString();
+        stderr += s;
+        if (onData) onData(s, 'stderr');
+      });
+      child.on('error', (err) => resolve({ ok: false, code: -1, stdout, stderr: (stderr || '') + String(err.message || err) }));
+      child.on('exit', (code) => resolve({ ok: code === 0, code, stdout, stderr }));
+    } catch (err) {
+      resolve({ ok: false, code: -1, stdout: '', stderr: String(err.message || err) });
+    }
+  });
+}
+
+ipcMain.handle('cursor-auth-status', async () => {
+  const res = await runCursorAgentRaw(['status']);
+  const clean = `${stripAnsi(res.stdout)}\n${stripAnsi(res.stderr)}`;
+  const out = clean.toLowerCase();
+  // Explicitly handle negative case first to avoid matching "logged in" inside "not logged in"
+  const isExplicitlyLoggedOut = /\bnot\s+logged\s+in\b/.test(out);
+  const isExplicitlyLoggedIn = /\blogged\s+in\b/.test(out) || /\blogin\s+successful\b/.test(out);
+  const loggedIn = isExplicitlyLoggedOut ? false : (isExplicitlyLoggedIn ? true : false);
+  return { ok: true, loggedIn, raw: { stdout: res.stdout, stderr: res.stderr } };
+});
+
+ipcMain.handle('cursor-auth-login', async () => {
+  const linkRegex = /(https?:\/\/[^\s]+)/ig;
+  const onData = (chunk) => {
+    try { if (win && !win.isDestroyed()) win.webContents.send('cursor-auth-log', { line: chunk, ts: Date.now() }); } catch {}
+    // Best-effort link detection
+    let m;
+    while ((m = linkRegex.exec(chunk)) !== null) {
+      const url = m[1];
+      try { if (win && !win.isDestroyed()) win.webContents.send('cursor-auth-link', { url, ts: Date.now() }); } catch {}
+    }
+  };
+  const res = await runCursorAgentRaw(['login'], onData);
+  const out = `${stripAnsi(res.stdout)}\n${stripAnsi(res.stderr)}`.toLowerCase();
+  const success = res.ok || /login successful/.test(out) || /authentication tokens stored securely/.test(out);
+  return { ok: res.ok, success, raw: { stdout: res.stdout, stderr: res.stderr } };
 });
 
 // Detect project metadata from a folder

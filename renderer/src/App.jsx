@@ -2,6 +2,9 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import Dashboard from './pages/Dashboard.jsx'
 import ProjectView from './pages/ProjectView.jsx'
+import Button from './ui/Button'
+import Input from './ui/Input'
+import Modal from './ui/Modal'
 
 function LegacyApp() {
   const [folder, setFolder] = useState(null);
@@ -268,8 +271,91 @@ function LegacyApp() {
 
 export default function App() {
   const [route, setRoute] = useState({ name: 'dashboard', params: {} });
-  if (route.name === 'project') {
-    return <ProjectView projectId={route.params.id} initialMessage={route.params.initialMessage} onBack={() => setRoute({ name: 'dashboard', params: {} })} />
+  const [showLogin, setShowLogin] = useState(false);
+  const [authLogs, setAuthLogs] = useState([]);
+  const [authLink, setAuthLink] = useState('');
+  const openedRef = useRef(false);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const status = await window.cursovable.getCursorAuthStatus?.();
+        if (status && status.loggedIn === false) setShowLogin(true);
+      } catch {}
+    })();
+  }, []);
+
+  useEffect(() => {
+    const unsubLog = window.cursovable.onCursorAuthLog?.((payload) => {
+      setAuthLogs((prev) => {
+        const next = [...prev, { ts: payload.ts || Date.now(), line: String(payload.line || '') }];
+        return next.length > 500 ? next.slice(-500) : next;
+      });
+    });
+    const unsubLink = window.cursovable.onCursorAuthLink?.(async ({ url }) => {
+      if (!url) return;
+      setAuthLink(url);
+      if (!openedRef.current) {
+        openedRef.current = true;
+        try { await window.cursovable.openExternal(url); } catch {}
+      }
+    });
+    return () => { try { unsubLog && unsubLog(); } catch {} try { unsubLink && unsubLink(); } catch {} };
+  }, []);
+
+  async function triggerLogin() {
+    try {
+      await window.cursovable.triggerCursorAuthLogin?.();
+      const st = await window.cursovable.getCursorAuthStatus?.();
+      if (st && st.loggedIn) setShowLogin(false);
+    } catch {}
   }
-  return <Dashboard onOpenProject={(id, initialMessage) => setRoute({ name: 'project', params: { id, initialMessage } })} />
+
+  const loginModal = showLogin ? (
+    <Modal
+      title="Sign in to Cursor"
+      onClose={async () => {
+        try { const st = await window.cursovable.getCursorAuthStatus?.(); setShowLogin(!(st && st.loggedIn)); } catch { setShowLogin(false); }
+      }}
+      footer={(
+        <>
+          <Button variant="secondary" onClick={async () => {
+            try { const st = await window.cursovable.getCursorAuthStatus?.(); setShowLogin(!(st && st.loggedIn)); } catch { setShowLogin(false); }
+          }}>Close</Button>
+          <Button onClick={triggerLogin} style={{ minWidth: 140 }}>Log in</Button>
+        </>
+      )}
+    >
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div style={{ color: '#c9d5e1', fontSize: 13 }}>
+          You are logged out. Click “Log in” to run <code>cursor-agent login</code> and approve in your browser.
+        </div>
+        {authLink && (
+          <div style={{ fontSize: 12, background: '#0b0f16', border: '1px solid #27354a', borderRadius: 6, padding: 10 }}>
+            <div style={{ color: '#cde3ff', marginBottom: 6 }}>Authentication link</div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <Input value={authLink} readOnly />
+              <Button className="compact" onClick={async () => { try { await window.cursovable.openExternal(authLink); } catch {} }}>Open</Button>
+            </div>
+          </div>
+        )}
+
+      </div>
+    </Modal>
+  ) : null;
+
+  if (route.name === 'project') {
+    return (
+      <>
+        <ProjectView projectId={route.params.id} initialMessage={route.params.initialMessage} onBack={() => setRoute({ name: 'dashboard', params: {} })} />
+        {loginModal}
+      </>
+    )
+  }
+  return (
+    <>
+      <Dashboard onOpenProject={(id, initialMessage) => setRoute({ name: 'project', params: { id, initialMessage } })} />
+      {loginModal}
+    </>
+  )
 }

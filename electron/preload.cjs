@@ -39,6 +39,19 @@ contextBridge.exposeInMainWorld('cursovable', {
   getWorkingDirectory: () => ipcRenderer.invoke('get-working-directory'),
   openExternal: (url) => ipcRenderer.invoke('open-external', url),
   setWorkingDirectory: (path) => ipcRenderer.invoke('set-working-directory', path),
+  // Cursor auth APIs
+  getCursorAuthStatus: () => ipcRenderer.invoke('cursor-auth-status'),
+  triggerCursorAuthLogin: () => ipcRenderer.invoke('cursor-auth-login'),
+  onCursorAuthLog: (cb) => {
+    const listener = (_e, payload) => cb(payload);
+    ipcRenderer.on('cursor-auth-log', listener);
+    return () => ipcRenderer.removeListener('cursor-auth-log', listener);
+  },
+  onCursorAuthLink: (cb) => {
+    const listener = (_e, payload) => cb(payload);
+    ipcRenderer.on('cursor-auth-link', listener);
+    return () => ipcRenderer.removeListener('cursor-auth-link', listener);
+  },
   // Git APIs
   getGitBranches: (opts) => ipcRenderer.invoke('git-branches', opts),
   gitCommit: (opts) => ipcRenderer.invoke('git-commit', opts),
