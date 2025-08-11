@@ -184,7 +184,7 @@ function normalizeSuccessObject(obj) {
   };
 }
 
-function startCursorAgent(message, apiKey, onLog, options = {}) {
+function startCursorAgent(message, sessionId, onLog, options = {}) {
   let timeoutId = null;
   let idleTimeoutId = null;
   let settled = false;
@@ -192,10 +192,18 @@ function startCursorAgent(message, apiKey, onLog, options = {}) {
   let lastActivity = Date.now();
   
   const wait = new Promise((resolve, reject) => {
-    const args = ['-p',  '--output-format="stream-json"',  `${message}. Avoid running build tools or scripts, we are already running the project`];
+    const args = ['-p', '--output-format="stream-json"'];
+    
+    // Add --resume sessionId if sessionId is provided
+    if (sessionId) {
+      args.push('--resume', sessionId);
+    }
+    
+    args.push(`${message}. Avoid running build tools or scripts, we are already running the project`);
+    
     if (onLog) onLog('info', `Running: cursor-agent ${args.map(a => (a.includes(' ') ? '"'+a+'"' : a)).join(' ')}`);
     if (onLog) onLog('info', `Working directory: ${options.cwd || process.cwd()}`);
-    const env = { ...process.env, ...(apiKey ? { OPENAI_API_KEY: apiKey } : {}) };
+    const env = { ...process.env };
     env.PATH = ensureDarwinPath(env.PATH);
     const resolved = resolveCommandPath('cursor-agent', env.PATH) || 'cursor-agent';
 
@@ -394,8 +402,8 @@ function startCursorAgent(message, apiKey, onLog, options = {}) {
   return { child: childRef, wait };
 }
 
-async function runCursorAgent(message, apiKey, onLog, options = {}) {
-  const { wait } = startCursorAgent(message, apiKey, onLog, options);
+async function runCursorAgent(message, sessionId, onLog, options = {}) {
+  const { wait } = startCursorAgent(message, sessionId, onLog, options);
   return wait;
 }
 

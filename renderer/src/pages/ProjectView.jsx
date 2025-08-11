@@ -5,8 +5,7 @@ import { getProject, updateProject } from '../store/projects';
 export default function ProjectView({ projectId, onBack, initialMessage }) {
   const project = getProject(projectId);
   const [folder, setFolder] = useState(project?.path || null);
-  const [timeoutMinutes, setTimeoutMinutes] = useState(15);
-  const [apiKey, setApiKey] = useState('');
+
   const [previewUrl, setPreviewUrl] = useState(null);
   const [isStarting, setIsStarting] = useState(false);
   const [isInstalling, setIsInstalling] = useState(false);
@@ -544,28 +543,11 @@ export default function ProjectView({ projectId, onBack, initialMessage }) {
 
       {isChatVisible && (
         <div className="panel chat">
-        <div className="header">
-          <input placeholder="Optional API key" value={apiKey} onChange={e => setApiKey(e.target.value)} style={{flex: 1}}/>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px' }}>
-            <label>Timeout:</label>
-            <select value={timeoutMinutes} onChange={e => setTimeoutMinutes(Number(e.target.value))} style={{ padding: '2px 4px', fontSize: '11px' }}>
-              <option value={5}>5 min</option>
-              <option value={10}>10 min</option>
-              <option value={15}>15 min</option>
-              <option value={30}>30 min</option>
-              <option value={60}>60 min</option>
-              <option value={0}>No limit</option>
-            </select>
-          </div>
-        </div>
-
-        {/** Default chat instance; session id derived from assistant response for reconnecting later */}
-        <Chat 
-          apiKey={apiKey} 
-          cwd={folder} 
-          timeoutMinutes={timeoutMinutes} 
-          {...(initialMessage && { initialMessage })}
-        />
+          <Chat 
+            cwd={folder} 
+            projectId={projectId}
+            {...(initialMessage && { initialMessage })}
+          />
         </div>
       )}
     </div>

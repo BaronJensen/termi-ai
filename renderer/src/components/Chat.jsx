@@ -3,7 +3,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import Bubble from './Chat/Bubble';
 import ToolCallIndicator from './Chat/ToolCallIndicator';
 
-export default function Chat({ apiKey, cwd, timeoutMinutes = 15, initialMessage }) {
+export default function Chat({ cwd, initialMessage, projectId }) {
   // Add CSS animations and styles
   useEffect(() => {
     const style = document.createElement('style');
@@ -589,20 +589,22 @@ export default function Chat({ apiKey, cwd, timeoutMinutes = 15, initialMessage 
     };
   }, []);
   
-  // Load messages from localStorage on mount
+  // Load sessions and initialize on mount
   useEffect(() => {
-    try {
-      const savedMessages = localStorage.getItem('cursovable-chat-messages');
-      if (savedMessages) {
-        const parsed = JSON.parse(savedMessages);
-        if (Array.isArray(parsed)) {
-          setMessages(parsed);
-        }
-      }
-    } catch (error) {
-      console.warn('Failed to load messages from localStorage:', error);
+    const loadedSessions = loadSessions();
+    setSessions(loadedSessions);
+    
+    if (loadedSessions.length > 0) {
+      // Load the most recent session
+      const latestSession = loadedSessions.reduce((latest, session) => 
+        session.updatedAt > latest.updatedAt ? session : latest
+      );
+      loadSession(latestSession.id);
+    } else {
+      // Create a new session if none exist
+      createNewSession();
     }
-  }, []);
+  }, [projectId]);
   
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
@@ -613,19 +615,164 @@ export default function Chat({ apiKey, cwd, timeoutMinutes = 15, initialMessage 
   const [searchQuery, setSearchQuery] = useState(''); // New: search functionality
   const [showSearch, setShowSearch] = useState(false); // New: toggle search visibility
   const [currentSearchIndex, setCurrentSearchIndex] = useState(0); // Track current search result
+  const [sessions, setSessions] = useState([]); // All sessions for this project
+  const [currentSessionId, setCurrentSessionId] = useState(null); // Current active session
+  const [showSessionList, setShowSessionList] = useState(false); // Toggle session list UI
+  const [isCreatingNewSession, setIsCreatingNewSession] = useState(false); // Creating new session state
   const scroller = useRef(null);
   const unsubRef = useRef(null);
   const streamIndexRef = useRef(-1);
   const runIdRef = useRef(null);
 
-  // Save messages to localStorage whenever they change
-  useEffect(() => {
+  // Session storage functions
+  const getSessionStorageKey = () => `cursovable-sessions-${projectId || 'legacy'}`;
+  
+  const loadSessions = () => {
     try {
-      localStorage.setItem('cursovable-chat-messages', JSON.stringify(messages));
+      const savedSessions = localStorage.getItem(getSessionStorageKey());
+      if (savedSessions) {
+        const parsed = JSON.parse(savedSessions);
+        return Array.isArray(parsed) ? parsed : [];
+      }
     } catch (error) {
-      console.warn('Failed to save messages to localStorage:', error);
+      console.warn('Failed to load sessions from localStorage:', error);
     }
-  }, [messages]);
+    return [];
+  };
+  
+  const saveSessions = (sessionsToSave) => {
+    try {
+      localStorage.setItem(getSessionStorageKey(), JSON.stringify(sessionsToSave));
+    } catch (error) {
+      console.warn('Failed to save sessions to localStorage:', error);
+    }
+  };
+  
+  const createNewSession = () => {
+    const newSessionId = `session-${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
+    const isFirstSession = sessions.length === 0;
+    const newSession = {
+      id: newSessionId,
+      name: `Session ${new Date().toLocaleString()}`,
+      messages: [],
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      isFirstSession: isFirstSession // Mark if this is the very first session
+    };
+    
+    const updatedSessions = [...sessions, newSession];
+    setSessions(updatedSessions);
+    saveSessions(updatedSessions);
+    setCurrentSessionId(newSessionId);
+    setMessages([]);
+    setToolCalls(new Map());
+    setHideToolCallIndicators(false);
+    setIsCreatingNewSession(false);
+    
+    return newSessionId;
+  };
+  
+  const loadSession = (sessionId) => {
+    const session = sessions.find(s => s.id === sessionId);
+    if (session) {
+      setCurrentSessionId(sessionId);
+      setMessages(session.messages || []);
+      setToolCalls(new Map());
+      setHideToolCallIndicators(false);
+    }
+  };
+  
+  const saveCurrentSession = () => {
+    if (!currentSessionId) return;
+    
+    const updatedSessions = sessions.map(session => 
+      session.id === currentSessionId 
+        ? { ...session, messages, updatedAt: Date.now() }
+        : session
+    );
+    setSessions(updatedSessions);
+    saveSessions(updatedSessions);
+  };
+  
+  const deleteSession = (sessionId) => {
+    const updatedSessions = sessions.filter(s => s.id !== sessionId);
+    setSessions(updatedSessions);
+    saveSessions(updatedSessions);
+    
+    if (currentSessionId === sessionId) {
+      if (updatedSessions.length > 0) {
+        loadSession(updatedSessions[0].id);
+      } else {
+        createNewSession();
+      }
+    }
+  };
+
+  // Utility function to identify sessions with first user message
+  const getFirstUserMessageSession = () => {
+    // Find session with first user message across all sessions for this project
+    let earliestUserMessageSession = null;
+    let earliestTimestamp = Infinity;
+    
+    sessions.forEach(session => {
+      const firstUserMessage = (session.messages || []).find(msg => msg.who === 'user');
+      if (firstUserMessage && firstUserMessage.rawData?.timestamp) {
+        if (firstUserMessage.rawData.timestamp < earliestTimestamp) {
+          earliestTimestamp = firstUserMessage.rawData.timestamp;
+          earliestUserMessageSession = session;
+        }
+      }
+    });
+    
+    if (earliestUserMessageSession) {
+      console.log(`First user message session identified: "${earliestUserMessageSession.name}" (${earliestUserMessageSession.id}) with timestamp: ${new Date(earliestTimestamp).toLocaleString()}`);
+    }
+    
+    return earliestUserMessageSession;
+  };
+
+  // Check if a session contains the very first user message for this project
+  const isSessionWithFirstUserMessage = (session) => {
+    const firstUserMessageSession = getFirstUserMessageSession();
+    return firstUserMessageSession && firstUserMessageSession.id === session.id;
+  };
+
+  // Function to navigate to the session with the first user message
+  const goToFirstUserMessageSession = () => {
+    const firstSession = getFirstUserMessageSession();
+    if (firstSession && firstSession.id !== currentSessionId) {
+      loadSession(firstSession.id);
+      setShowSessionList(false);
+      
+      // Show a brief notification
+      setMessages(m => [...m, { 
+        who: 'assistant', 
+        text: `**Navigated to first session:** "${firstSession.name}" contains the first user message for this project.`,
+        rawData: { action: 'navigate_to_first_session', sessionId: firstSession.id }
+      }]);
+    } else if (firstSession) {
+      // Already in the first session
+      setMessages(m => [...m, { 
+        who: 'assistant', 
+        text: `**Already viewing first session:** This session contains the first user message for this project.`,
+        rawData: { action: 'already_in_first_session', sessionId: firstSession.id }
+      }]);
+    } else {
+      // No session with user messages found
+      setMessages(m => [...m, { 
+        who: 'assistant', 
+        text: `**No user messages found:** No sessions contain user messages yet.`,
+        rawData: { action: 'no_user_messages_found' }
+      }]);
+    }
+  };
+
+  // Save messages to current session whenever they change
+  useEffect(() => {
+    if (currentSessionId && messages.length > 0) {
+      saveCurrentSession();
+    }
+  }, [messages, currentSessionId]);
 
   // Check terminal status on mount and when busy changes
   useEffect(() => {
@@ -855,21 +1002,7 @@ export default function Chat({ apiKey, cwd, timeoutMinutes = 15, initialMessage 
     }]);
   }
 
-  useEffect(() => {
-    (async () => {
-      const hist = await window.cursovable.getHistory();
-      const display = [];
-      for (const item of hist) {
-        if (item.type === 'result') {
-          display.push({ who: 'user', text: item.prompt || item.message || '(message not stored)' });
-          display.push({ who: 'assistant', text: item.result || JSON.stringify(item), rawData: item });
-        } else if (item.type === 'raw') {
-          display.push({ who: 'assistant', text: '```\n' + item.output + '\n```', rawData: item });
-        }
-      }
-      setMessages(display);
-    })();
-  }, []);
+
 
   useEffect(() => {
     if (scroller.current) {
@@ -958,6 +1091,23 @@ export default function Chat({ apiKey, cwd, timeoutMinutes = 15, initialMessage 
                     // Add a small delay for more organic typing feel
                     await new Promise(resolve => setTimeout(resolve, 20));
                   }
+                }
+              }
+              
+              // Extract session ID from cursor-agent response and update session if needed
+              if (parsed.session_id && parsed.session_id !== currentSessionId) {
+                // Update the current session with the session ID from cursor-agent
+                const currentSession = sessions.find(s => s.id === currentSessionId);
+                if (currentSession) {
+                  const updatedSessions = sessions.map(session => 
+                    session.id === currentSessionId 
+                      ? { ...session, cursorSessionId: parsed.session_id, updatedAt: Date.now() }
+                      : session
+                  );
+                  setSessions(updatedSessions);
+                  saveSessions(updatedSessions);
+                  
+                  console.log(`Session ${currentSessionId} linked to cursor-agent session: ${parsed.session_id}`);
                 }
               }
               
@@ -1179,12 +1329,15 @@ export default function Chat({ apiKey, cwd, timeoutMinutes = 15, initialMessage 
         }
       });
 
+      // Use cursor-agent session ID if available, otherwise use our internal session ID
+      const currentSession = sessions.find(s => s.id === currentSessionId);
+      const sessionIdToUse = currentSession?.cursorSessionId || currentSessionId;
+
       const res = await window.cursovable.runCursor({ 
         message: text, 
-        apiKey: apiKey || undefined, 
         cwd: cwd || undefined, 
         runId,
-        timeoutMs: timeoutMinutes * 60 * 1000 // Convert minutes to milliseconds
+        sessionId: sessionIdToUse
       });
       
       // We just need to ensure the process completed successfully
@@ -1298,7 +1451,280 @@ export default function Chat({ apiKey, cwd, timeoutMinutes = 15, initialMessage 
 
   return (
     <>
+      {/* Session management header */}
+      <div style={{
+        padding: '8px 12px',
+        margin: '8px 0',
+        backgroundColor: '#0b1018',
+        borderRadius: '8px',
+        fontSize: '12px',
+        border: '1px solid #1d2633',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        color: '#e6e6e6',
+        gap: '12px'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span style={{ fontWeight: '500', color: '#3c6df0' }}>
+            💬 {sessions.find(s => s.id === currentSessionId)?.name || 'No Session'}
+          </span>
+          {currentSessionId && isSessionWithFirstUserMessage(sessions.find(s => s.id === currentSessionId)) && (
+            <span 
+              style={{ 
+                fontSize: '9px', 
+                color: '#fbbf24',
+                fontWeight: 'bold',
+                background: 'rgba(251, 191, 36, 0.1)',
+                padding: '2px 5px',
+                borderRadius: '8px',
+                border: '1px solid rgba(251, 191, 36, 0.3)'
+              }}
+              title="This session contains the first user message for this project"
+            >
+              1st MESSAGE
+            </span>
+          )}
+          <span style={{ fontSize: '10px', opacity: 0.7 }}>
+            ({sessions.length} total)
+          </span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <button
+            onClick={() => setShowSearch(!showSearch)}
+            style={{
+              fontSize: '11px',
+              padding: '4px 8px',
+              backgroundColor: showSearch ? '#3c6df0' : '#374151',
+              color: '#e6e6e6',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer'
+            }}
+            title="Search messages"
+          >
+            🔍
+          </button>
+          <button
+            onClick={() => setShowSessionList(!showSessionList)}
+            style={{
+              fontSize: '11px',
+              padding: '4px 8px',
+              backgroundColor: showSessionList ? '#3c6df0' : '#374151',
+              color: '#e6e6e6',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer'
+            }}
+            title="Session history"
+          >
+            📚
+          </button>
+          {getFirstUserMessageSession() && (
+            <button
+              onClick={goToFirstUserMessageSession}
+              style={{
+                fontSize: '11px',
+                padding: '4px 8px',
+                backgroundColor: '#fbbf24',
+                color: '#111827',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                fontWeight: '600'
+              }}
+              title="Go to session with first user message"
+            >
+              1st
+            </button>
+          )}
+          <button
+            onClick={() => setIsCreatingNewSession(true)}
+            style={{
+              fontSize: '11px',
+              padding: '4px 8px',
+              backgroundColor: '#10b981',
+              color: '#e6e6e6',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer'
+            }}
+            title="New session"
+          >
+            ➕
+          </button>
+        </div>
+      </div>
 
+      {/* Session list UI */}
+      {showSessionList && (
+        <div style={{
+          padding: '12px',
+          margin: '8px 0',
+          backgroundColor: '#0b1018',
+          borderRadius: '8px',
+          border: '1px solid #1d2633',
+          maxHeight: '300px',
+          overflowY: 'auto'
+        }}>
+          <div style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginBottom: '12px',
+            paddingBottom: '8px',
+            borderBottom: '1px solid #1d2633'
+          }}>
+            <h3 style={{ 
+              margin: 0, 
+              fontSize: '14px', 
+              color: '#3c6df0',
+              fontWeight: '600'
+            }}>
+              Session History
+            </h3>
+            <button
+              onClick={() => createNewSession()}
+              style={{
+                fontSize: '12px',
+                padding: '6px 12px',
+                backgroundColor: '#10b981',
+                color: '#ffffff',
+                border: 'none',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                fontWeight: '500'
+              }}
+            >
+              + New Session
+            </button>
+          </div>
+          
+          {sessions.length === 0 ? (
+            <div style={{
+              textAlign: 'center',
+              color: '#6b7280',
+              fontSize: '12px',
+              padding: '20px'
+            }}>
+              No sessions yet. Create your first session!
+            </div>
+          ) : (
+            sessions
+              .sort((a, b) => {
+                // First, prioritize the session with the first user message
+                const aIsFirst = isSessionWithFirstUserMessage(a);
+                const bIsFirst = isSessionWithFirstUserMessage(b);
+                if (aIsFirst && !bIsFirst) return -1;
+                if (!aIsFirst && bIsFirst) return 1;
+                
+                // Then sort by most recent update
+                return b.updatedAt - a.updatedAt;
+              })
+              .map(session => (
+                <div
+                  key={session.id}
+                  style={{
+                    padding: '8px 12px',
+                    margin: '4px 0',
+                    backgroundColor: session.id === currentSessionId ? '#1a2331' : '#111827',
+                    border: session.id === currentSessionId ? '1px solid #3c6df0' : '1px solid #374151',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    transition: 'all 0.2s ease'
+                  }}
+                  onClick={() => {
+                    if (session.id !== currentSessionId) {
+                      loadSession(session.id);
+                      setShowSessionList(false);
+                    }
+                  }}
+                >
+                  <div style={{ flex: 1 }}>
+                    <div style={{
+                      fontSize: '12px',
+                      color: session.id === currentSessionId ? '#3c6df0' : '#e6e6e6',
+                      fontWeight: session.id === currentSessionId ? '600' : '400',
+                      marginBottom: '2px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px'
+                    }}>
+                      {session.name}
+                      {isSessionWithFirstUserMessage(session) && (
+                        <span 
+                          style={{ 
+                            fontSize: '10px', 
+                            color: '#fbbf24',
+                            fontWeight: 'bold',
+                            background: 'rgba(251, 191, 36, 0.1)',
+                            padding: '2px 6px',
+                            borderRadius: '10px',
+                            border: '1px solid rgba(251, 191, 36, 0.3)'
+                          }}
+                          title="This session contains the first user message for this project"
+                        >
+                          1st
+                        </span>
+                      )}
+                    </div>
+                    <div style={{
+                      fontSize: '10px',
+                      color: '#6b7280',
+                      display: 'flex',
+                      gap: '8px'
+                    }}>
+                      <span>{(session.messages || []).length} messages</span>
+                      <span>•</span>
+                      <span>{new Date(session.updatedAt).toLocaleString()}</span>
+                      {session.cursorSessionId && (
+                        <>
+                          <span>•</span>
+                          <span style={{ color: '#10b981' }} title={`Linked to cursor-agent session: ${session.cursorSessionId}`}>🔗</span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                  
+                  {session.id === currentSessionId && (
+                    <span style={{
+                      fontSize: '10px',
+                      color: '#10b981',
+                      fontWeight: '600',
+                      marginRight: '8px'
+                    }}>
+                      ACTIVE
+                    </span>
+                  )}
+                  
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (confirm(`Delete session "${session.name}"? This cannot be undone.`)) {
+                        deleteSession(session.id);
+                      }
+                    }}
+                    style={{
+                      fontSize: '10px',
+                      padding: '2px 6px',
+                      backgroundColor: '#ef4444',
+                      color: '#ffffff',
+                      border: 'none',
+                      borderRadius: '3px',
+                      cursor: 'pointer'
+                    }}
+                    title="Delete session"
+                  >
+                    🗑️
+                  </button>
+                </div>
+              ))
+          )}
+        </div>
+      )}
       
       {/* Search bar */}
       {showSearch && (
@@ -1586,7 +2012,7 @@ export default function Chat({ apiKey, cwd, timeoutMinutes = 15, initialMessage 
       <form className="input" onSubmit={(e) => { e.preventDefault(); send(); }}>
         <div className="input-field" style={{ position: 'relative', width: '100%' }}>
           <textarea
-            placeholder={!cwd ? 'Please select a working directory first...' : `Ask the CTO agent… (timeout: ${timeoutMinutes === 0 ? 'no limit' : `${timeoutMinutes} min`})`}
+            placeholder={!cwd ? 'Please select a working directory first...' : 'Ask the CTO agent…'}
             value={input}
             onChange={(e) => {
               setInput(e.target.value);

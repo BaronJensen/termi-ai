@@ -254,22 +254,9 @@ function LegacyApp() {
 
       <div className="panel chat">
         <div className="header">
-          <input placeholder="Optional API key (exported as OPENAI_API_KEY)" value={apiKey} onChange={e => setApiKey(e.target.value)} style={{flex: 1}}/>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px' }}>
-            <label>Timeout:</label>
-            <select 
-              value={timeoutMinutes} 
-              onChange={e => setTimeoutMinutes(Number(e.target.value))}
-              style={{ padding: '2px 4px', fontSize: '11px' }}
-            >
-              <option value={5}>5 min</option>
-              <option value={10}>10 min</option>
-              <option value={15}>15 min</option>
-              <option value={30}>30 min</option>
-              <option value={60}>60 min</option>
-              <option value={0}>No limit</option>
-            </select>
-          </div>
+          <span style={{ flex: 1, padding: '8px', color: '#6b7280', fontSize: '12px' }}>
+            Legacy chat interface - Use projects for session management
+          </span>
           <button className="secondary" onClick={async () => { await window.cursovable.clearHistory(); location.reload(); }}>Clear</button>
         </div>
         {/* Chat panel retained for legacy layout; new ProjectView uses its own */}
