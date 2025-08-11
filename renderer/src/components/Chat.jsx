@@ -123,27 +123,27 @@ export default function Chat({ cwd, initialMessage, projectId }) {
         word-wrap: break-word;
         overflow-wrap: break-word;
         white-space: pre-wrap;
-        padding: 12px 16px;
-        margin: 8px 0;
-        border-radius: 12px;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        padding: 10px 14px;
+        margin: 6px 0;
+        border-radius: 10px;
+        box-shadow: 0 1px 6px rgba(0,0,0,0.1);
         transition: all 0.2s ease;
         min-height: fit-content;
         height: auto;
-        font-size: 13px;
+        font-size: 12px;
       }
       
       .bubble.assistant {
-        background: linear-gradient(135deg, #0b1018 0%, #1a2331 100%);
-        border-left: 4px solid #3c6df0;
-        margin-right: 20px;
+        background: linear-gradient(135deg, #0b1018 0%, #172033 100%);
+        border-left: 3px solid #3c6df0;
+        margin-right: 18px;
         color: #e6e6e6;
       }
       
       .bubble.user {
-        background: linear-gradient(135deg, #172033 0%, #2d3d57 100%);
+        background: linear-gradient(135deg, #121a29 0%, #243249 100%);
         color: #e6e6e6;
-        margin-left: 20px;
+        margin-left: 18px;
         text-align: right;
       }
       
@@ -155,10 +155,10 @@ export default function Chat({ cwd, initialMessage, projectId }) {
       .messages {
         flex: 1;
         overflow-y: auto;
-        padding: 12px;
+        padding: 10px;
         display: flex;
         flex-direction: column;
-        gap: 12px;
+        gap: 8px;
         height: auto;
         min-height: 0;
       }
@@ -178,16 +178,17 @@ export default function Chat({ cwd, initialMessage, projectId }) {
       .input textarea {
         flex: 1;
         resize: vertical;
-        min-height: 64px;
-        max-height: 200px;
+        min-height: 48px;
+        max-height: 180px;
         background: #0b0f16;
         border: 1px solid #27354a;
         color: #d6dee8;
-        padding: 10px;
-        border-radius: 10px;
+        padding: 8px;
+        border-radius: 8px;
         outline: none;
         font-family: inherit;
-        line-height: 1.4;
+        font-size: 12px;
+        line-height: 1.35;
         width: 100%;
         box-sizing: border-box;
       }
@@ -388,9 +389,9 @@ export default function Chat({ cwd, initialMessage, projectId }) {
       /* Markdown content styles */
       .markdown-content {
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-        line-height: 1.55;
+        line-height: 1.45;
         color: #e6e6e6;
-        font-size: 13px;
+        font-size: 12px;
       }
       
       .markdown-content h1,
@@ -456,7 +457,7 @@ export default function Chat({ cwd, initialMessage, projectId }) {
         padding: 2px 6px;
         border-radius: 4px;
         font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
-        font-size: 0.9em;
+        font-size: 0.85em;
         border: 1px solid #374151;
       }
       
@@ -476,8 +477,8 @@ export default function Chat({ cwd, initialMessage, projectId }) {
         color: #e2e8f0;
         padding: 0;
         border: none;
-        font-size: 0.9em;
-        line-height: 1.5;
+        font-size: 0.85em;
+        line-height: 1.45;
         display: block;
         white-space: pre;
         overflow-x: auto;
@@ -1255,24 +1256,21 @@ export default function Chat({ cwd, initialMessage, projectId }) {
                       return m;
                     });
                     
-                    // Create a new bubble with the final result message
+                    // Update the existing streamed bubble as the final result
                     setMessages(m => {
-                      const newMessages = [...m, { 
-                        who: 'assistant', 
-                        text: `**Command completed successfully!**\n\n${accumulatedText}`,
-                        isStreaming: false,
-                        rawData: { result: 'success', text: accumulatedText },
-                        showActionLog: true // Flag to show action log
-                      }];
-                      
-                      // Scroll to the new message after a brief delay to ensure it's rendered
-                      setTimeout(() => {
-                        if (scroller.current) {
-                          scroller.current.scrollTop = scroller.current.scrollHeight;
-                        }
-                      }, 100);
-                      
-                      return newMessages;
+                      const idx = streamIndexRef.current;
+                      if (idx >= 0 && idx < m.length) {
+                        const updated = [...m];
+                        updated[idx] = {
+                          ...updated[idx],
+                          isStreaming: false,
+                          // Keep accumulated text; attach result metadata and action log flag
+                          rawData: { result: 'success', text: accumulatedText },
+                          showActionLog: true,
+                        };
+                        return updated;
+                      }
+                      return m;
                     });
 
                     // After first response: try installing packages then auto-run preview
@@ -1345,24 +1343,20 @@ export default function Chat({ cwd, initialMessage, projectId }) {
                     return m;
                   });
                   
-                  // Create a new bubble with the final result message
+                  // Update the existing streamed bubble as the final result
                   setMessages(m => {
-                    const newMessages = [...m, { 
-                      who: 'assistant', 
-                      text: `**Command completed successfully!**\n\n${accumulatedText}`,
-                      isStreaming: false,
-                      rawData: { result: 'success', text: accumulatedText },
-                      showActionLog: true // Flag to show action log
-                    }];
-                    
-                    // Scroll to the new message after a brief delay to ensure it's rendered
-                    setTimeout(() => {
-                      if (scroller.current) {
-                        scroller.current.scrollTop = scroller.current.scrollHeight;
-                      }
-                    }, 100);
-                    
-                    return newMessages;
+                    const idx = streamIndexRef.current;
+                    if (idx >= 0 && idx < m.length) {
+                      const updated = [...m];
+                      updated[idx] = {
+                        ...updated[idx],
+                        isStreaming: false,
+                        rawData: { result: 'success', text: accumulatedText },
+                        showActionLog: true,
+                      };
+                      return updated;
+                    }
+                    return m;
                   });
                 } else {
                   // If we didn't get any assistant content, show a fallback message
@@ -1449,13 +1443,21 @@ export default function Chat({ cwd, initialMessage, projectId }) {
         
         // Create completion message if we have content
         if (accumulatedText.trim()) {
-          setMessages(m => [...m, { 
-            who: 'assistant', 
-            text: `**Command completed:**\n\n${accumulatedText}`,
-            isStreaming: false,
-            rawData: { result: 'completed', text: accumulatedText },
-            showActionLog: true // Flag to show action log
-          }]);
+          // Update the existing streamed bubble with final metadata instead of adding a duplicate
+          setMessages(m => {
+            const idx = streamIndexRef.current;
+            if (idx >= 0 && idx < m.length) {
+              const updated = [...m];
+              updated[idx] = {
+                ...updated[idx],
+                isStreaming: false,
+                rawData: { result: 'completed', text: accumulatedText },
+                showActionLog: true,
+              };
+              return updated;
+            }
+            return m;
+          });
         }
         
         // Clean up streaming state and allow new input
@@ -1952,28 +1954,7 @@ export default function Chat({ cwd, initialMessage, projectId }) {
         )}
       </div>
       
-      {/* Message counter and status */}
-      <div style={{
-        padding: '8px 12px',
-        margin: '8px 0',
-        backgroundColor: '#0b1018',
-        borderRadius: '4px',
-        fontSize: '11px',
-        fontFamily: 'monospace',
-        border: '1px solid #1d2633',
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        color: '#6b7280'
-      }}>
-        <span>
-          💬 {messages.length} message{messages.length !== 1 ? 's' : ''} 
-          {searchQuery && ` • ${filteredMessages.length} filtered`}
-        </span>
-        <span>
-          ⚡ {Array.from(toolCalls.values()).filter(t => !t.isCompleted).length} active tools
-        </span>
-      </div>
+   
       
       {/* Status indicators at the bottom */}
       {busy && (

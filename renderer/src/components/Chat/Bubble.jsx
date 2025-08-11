@@ -75,9 +75,7 @@ export default function Bubble({
     }
   };
 
-  const content = isStreaming ? (
-    <span className="streaming-text">{children}</span>
-  ) : (
+  const content = (
     <div
       dangerouslySetInnerHTML={{
         __html: marked.parse(children || '', {
@@ -87,8 +85,8 @@ export default function Bubble({
           mangle: false,
         }),
       }}
-      style={{ userSelect: 'text', cursor: 'text', lineHeight: '1.6', fontSize: '14px' }}
-      className="markdown-content"
+      style={{ userSelect: 'text', cursor: 'text', lineHeight: 1.4, fontSize: 12 }}
+      className={`markdown-content${isStreaming ? ' streaming-text' : ''}`}
     />
   );
 
@@ -96,8 +94,8 @@ export default function Bubble({
     <div
       className={`bubble ${who}`}
       style={{
-        fontSize: '14px',
-        lineHeight: '1.5',
+        fontSize: 12,
+        lineHeight: 1.4,
         wordWrap: 'break-word',
         overflowWrap: 'break-word',
         maxWidth: '100%',
