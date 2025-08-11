@@ -204,24 +204,25 @@ export default function Chat({ cwd, initialMessage, projectId }) {
       }
 
       .send-button {
-        min-width: 110px;
-        padding: 0 18px;
+        width: 44px;
+        height: 44px;
+        padding: 0;
         border: 1px solid #2a3b55;
-        border-radius: 12px;
+        border-radius: 50%;
         background: linear-gradient(135deg, rgba(60,109,240,0.9) 0%, rgba(59,130,246,0.85) 50%, rgba(37,99,235,0.9) 100%);
         color: #f2f6ff;
-        font-weight: 600;
+        font-weight: 700;
+        font-size: 16px;
         letter-spacing: 0.2px;
         display: flex;
         align-items: center;
         justify-content: center;
-        gap: 8px;
         box-shadow: 0 6px 16px rgba(59,130,246,0.35), inset 0 1px 0 rgba(255,255,255,0.15);
         transition: transform 0.08s ease, box-shadow 0.2s ease, filter 0.2s ease, opacity 0.2s ease;
         cursor: pointer;
-        align-self: stretch;
         grid-column: 2;
         grid-row: 1 / span 2;
+        align-self: center; /* ensure vertical centering within grid rows */
       }
 
       .send-button:hover:not(:disabled) {
@@ -238,6 +239,62 @@ export default function Chat({ cwd, initialMessage, projectId }) {
       .send-button:disabled {
         cursor: not-allowed;
         filter: grayscale(20%);
+      }
+
+      /* Themed scrollbars for app surfaces */
+      .messages {
+        scrollbar-color: #3c6df0 #0b1018; /* Firefox */
+        scrollbar-width: thin; /* Firefox */
+      }
+      .messages::-webkit-scrollbar {
+        width: 8px;
+      }
+      .messages::-webkit-scrollbar-track {
+        background: #0b1018;
+        border-left: 1px solid #1d2633;
+      }
+      .messages::-webkit-scrollbar-thumb {
+        background: #3c6df0;
+        border-radius: 8px;
+        border: 2px solid #0b1018;
+      }
+      .messages:hover::-webkit-scrollbar-thumb {
+        background: #60a5fa;
+      }
+
+      .markdown-content pre {
+        scrollbar-color: #3c6df0 #0b1018;
+        scrollbar-width: thin;
+      }
+      .markdown-content pre::-webkit-scrollbar {
+        height: 8px;
+      }
+      .markdown-content pre::-webkit-scrollbar-track {
+        background: #0b1018;
+        border-top: 1px solid #1d2633;
+        border-bottom: 1px solid #1d2633;
+      }
+      .markdown-content pre::-webkit-scrollbar-thumb {
+        background: #3c6df0;
+        border-radius: 8px;
+        border: 2px solid #0b1018;
+      }
+
+      .input textarea {
+        scrollbar-color: #3c6df0 #0b1018;
+        scrollbar-width: thin;
+      }
+      .input textarea::-webkit-scrollbar {
+        width: 8px;
+      }
+      .input textarea::-webkit-scrollbar-track {
+        background: #0b1018;
+        border-left: 1px solid #1d2633;
+      }
+      .input textarea::-webkit-scrollbar-thumb {
+        background: #3c6df0;
+        border-radius: 8px;
+        border: 2px solid #0b1018;
       }
       
       /* Global copy functionality */
@@ -1965,7 +2022,7 @@ export default function Chat({ cwd, initialMessage, projectId }) {
       <form className="input" onSubmit={(e) => { e.preventDefault(); send(); }}>
         <div className="input-field" style={{ position: 'relative', width: '100%' }}>
           <textarea
-            placeholder={!cwd ? 'Please select a working directory first...' : 'Ask the CTO agent…'}
+            placeholder={!cwd ? 'Please select a working directory first...' : 'What do you want to do?'}
             value={input}
             onChange={(e) => {
               setInput(e.target.value);
@@ -1994,8 +2051,7 @@ export default function Chat({ cwd, initialMessage, projectId }) {
             className="copyable-text"
             aria-label="Type your message to the CTO agent"
           />
-          {/* Keyboard shortcut hint */}
-          <div className="shortcut-hint">Enter to send • Shift+Enter for newline</div>
+         
         </div>
         <button 
           disabled={busy || !cwd} 
@@ -2005,7 +2061,7 @@ export default function Chat({ cwd, initialMessage, projectId }) {
           title={!cwd ? 'Select working directory first' : busy ? 'Processing request...' : 'Send message'}
           type="submit"
         >
-          {!cwd ? 'Select Directory First' : busy ? '⏳' : '➤ Send'}
+          {!cwd ? '⛔' : busy ? '⏳' : '➤'}
         </button>
       </form>
     </>
