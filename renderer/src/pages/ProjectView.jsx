@@ -18,6 +18,16 @@ export default function ProjectView({ projectId, onBack, initialMessage }) {
   const [selectedEditor, setSelectedEditor] = useState('');
   const [viewportMode, setViewportMode] = useState('desktop'); // 'desktop', 'tablet', 'phone'
   const [isChatVisible, setIsChatVisible] = useState(true);
+  const [showDebug, setShowDebug] = useState(false);
+  const [activeTab, setActiveTab] = useState('vite'); // 'vite' | 'cursor' | 'console'
+  const [viteLogs, setViteLogs] = useState([]);
+  const [cursorLogs, setCursorLogs] = useState([]);
+  const [consoleLogs, setConsoleLogs] = useState([]);
+  const viteLogScroller = useRef(null);
+  const cursorLogScroller = useRef(null);
+  const consoleLogScroller = useRef(null);
+  const [terminalStatusText, setTerminalStatusText] = useState('Checking...');
+  const webviewRef = useRef(null);
 
   // Inject lightweight loader styles
   useEffect(() => {
@@ -54,6 +64,41 @@ export default function ProjectView({ projectId, onBack, initialMessage }) {
     document.head.appendChild(style);
     return () => { try { document.head.removeChild(style); } catch {} };
   }, []);
+
+  // Normalize terminal output for readability
+  function sanitizeTerminalText(input) {
+    if (!input) return '';
+    let text = String(input);
+    // Convert carriage returns that overwrite lines into newlines
+    text = text.replace(/\r(?!\n)/g, '\n');
+    // Strip ANSI escape sequences (with or without ESC prefix)
+    text = text.replace(/\u001b\[[0-9;]*[A-Za-z]/g, ''); // ESC-prefixed
+    text = text.replace(/\x1b\[[0-9;]*[A-Za-z]/g, ''); // ESC as hex
+    text = text.replace(/\[[0-9;]*m/g, ''); // stray color segments
+    // Remove other non-printable control chars except tab/newline
+    text = text.replace(/[^\x09\x0A\x0D\x20-\x7E]/g, '');
+    // Collapse excessive whitespace created by stripping
+    text = text.replace(/[\t ]{2,}/g, ' ');
+    return text;
+  }
+
+  function appendSanitizedLogs(setter, payload) {
+    const ts = payload.ts || Date.now();
+    const level = payload.level || 'info';
+    const runId = payload.runId;
+    const raw = String(payload.line || '');
+    const normalized = sanitizeTerminalText(raw);
+    const lines = normalized.split(/\n/);
+    setter((prev) => {
+      const next = [...prev];
+      for (const ln of lines) {
+        const trimmed = ln.replace(/\s+$/g, '');
+        if (trimmed.length === 0) continue;
+        next.push({ level, line: trimmed, ts, ...(runId ? { runId } : {}) });
+      }
+      return next.length > 1000 ? next.slice(-1000) : next;
+    });
+  }
 
   if (!project) {
     return (
@@ -168,7 +213,7 @@ export default function ProjectView({ projectId, onBack, initialMessage }) {
     if (!previewUrl) return;
 
     const setupWebviewListener = () => {
-      const wb = document.querySelector('webview');
+      const wb = webviewRef.current || document.querySelector('webview');
       if (!wb) return;
 
       const handleNavigation = () => {
@@ -206,6 +251,56 @@ export default function ProjectView({ projectId, onBack, initialMessage }) {
       clearTimeout(timeout);
     };
   }, [previewUrl]);
+
+  // Subscribe to preview and cursor logs
+  useEffect(() => {
+    const unsubV = window.cursovable.onViteLog((payload) => {
+      appendSanitizedLogs(setViteLogs, payload);
+    });
+    const unsubC = window.cursovable.onCursorLog((payload) => {
+      appendSanitizedLogs(setCursorLogs, payload);
+    });
+    return () => { try { unsubV && unsubV(); } catch {} try { unsubC && unsubC(); } catch {} };
+  }, []);
+
+  // Auto-scroll logs
+  useEffect(() => { if (viteLogScroller.current) viteLogScroller.current.scrollTop = viteLogScroller.current.scrollHeight; }, [viteLogs]);
+  useEffect(() => { if (cursorLogScroller.current) cursorLogScroller.current.scrollTop = cursorLogScroller.current.scrollHeight; }, [cursorLogs]);
+  useEffect(() => { if (consoleLogScroller.current) consoleLogScroller.current.scrollTop = consoleLogScroller.current.scrollHeight; }, [consoleLogs]);
+
+  // Capture webview console messages
+  useEffect(() => {
+    const el = webviewRef.current;
+    if (!el) return;
+    const onConsole = (e) => {
+      const line = `[${e.level}] ${e.message}`;
+      setConsoleLogs((prev) => {
+        const next = [...prev, { level: e.level, line, ts: Date.now() }];
+        return next.length > 1000 ? next.slice(-1000) : next;
+      });
+    };
+    el.addEventListener('console-message', onConsole);
+    return () => { try { el.removeEventListener('console-message', onConsole); } catch {} };
+  }, [previewUrl]);
+
+  // Periodically check terminal status
+  useEffect(() => {
+    let mounted = true;
+    const checkStatus = async () => {
+      try {
+        const status = await window.cursovable.getTerminalStatus();
+        if (!mounted) return;
+        const text = `${status.terminalType} (PTY: ${status.hasPty ? 'Yes' : 'No'})`;
+        setTerminalStatusText(text);
+      } catch {
+        if (!mounted) return;
+        setTerminalStatusText('Error');
+      }
+    };
+    checkStatus();
+    const interval = setInterval(checkStatus, 2000);
+    return () => { mounted = false; clearInterval(interval); };
+  }, []);
 
   // Get viewport dimensions based on mode
   function getViewportStyle() {
@@ -491,14 +586,13 @@ export default function ProjectView({ projectId, onBack, initialMessage }) {
                   onMouseEnter={(e) => e.target.style.background = '#1a2331'}
                   onMouseLeave={(e) => e.target.style.background = 'transparent'}
                   onClick={() => {
-                    alert('Open the bottom debug panel using the terminal tab in App (legacy). Future: toggle panel here.');
-                    // Close menu after action
+                    setShowDebug(v => !v);
                     const menu = document.querySelector('[style*="zIndex: 1000"]');
                     if (menu) menu.style.display = 'none';
                   }}
                   title="Debug"
                 >
-                  💻 Debug
+                  💻 {showDebug ? 'Hide' : 'Show'} Debug
                 </button>
               </div>
             </div>
@@ -525,6 +619,7 @@ export default function ProjectView({ projectId, onBack, initialMessage }) {
               padding: viewportMode === 'desktop' ? 0 : '20px'
             }}>
               <webview 
+                ref={webviewRef}
                 src={previewUrl} 
                 style={getViewportStyle()} 
                 allowpopups="true" 
@@ -539,6 +634,55 @@ export default function ProjectView({ projectId, onBack, initialMessage }) {
             </div>
           )}
         </div>
+
+        {showDebug && (
+          <div className="debug-panel">
+            <div className="tabs">
+              <button className={activeTab==='vite'?'active':''} onClick={() => setActiveTab('vite')}>Preview</button>
+              <button className={activeTab==='cursor'?'active':''} onClick={() => setActiveTab('cursor')}>Terminal</button>
+              <button className={activeTab==='console'?'active':''} onClick={() => setActiveTab('console')}>Web Console</button>
+            </div>
+            <div className="terminal">
+              {activeTab==='vite' && (
+                <div className="term-scroll" ref={viteLogScroller}>
+                  {viteLogs.map((l, i) => (
+                    <div key={i} className={`ln ${l.level || 'info'}`}>[{new Date(l.ts).toLocaleTimeString()}] {l.line}</div>
+                  ))}
+                </div>
+              )}
+              {activeTab==='cursor' && (
+                <>
+                  <div className="term-scroll" ref={cursorLogScroller}>
+                    {cursorLogs.map((l, i) => (
+                      <div key={i} className={`ln ${l.level || 'info'}`}>[{new Date(l.ts).toLocaleTimeString()}] {l.line}</div>
+                    ))}
+                  </div>
+                  <div className="agent-input">
+                    <div style={{color: '#cde3ff', fontSize: '11px', marginBottom: '4px'}}>
+                      Terminal Console: {cursorLogs.length > 0 ? `(${cursorLogs.length} logs)` : '(No logs yet)'}
+                      {cursorLogs.length > 0 && (
+                        <span style={{marginLeft: '10px', color: '#ff8a80'}}>
+                          Active: {cursorLogs[cursorLogs.length - 1]?.runId === 'persistent' ? 'Persistent Terminal' : `Agent (${cursorLogs[cursorLogs.length - 1]?.runId || 'none'})`}
+                        </span>
+                      )}
+                    </div>
+                    <div style={{color: '#cde3ff', fontSize: '10px', marginBottom: '0px', opacity: 0.7}}>
+                      Status: <span id="terminal-status">{terminalStatusText}</span>
+                    </div>
+                  </div>
+                </>
+              )}
+              {activeTab==='console' && (
+                <div className="term-scroll" ref={consoleLogScroller}>
+                  {consoleLogs.map((l, i) => (
+                    <div key={i} className={`ln ${l.level || 'info'}`}>[{new Date(l.ts).toLocaleTimeString()}] {l.line}</div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
       </div>
 
       {isChatVisible && (
