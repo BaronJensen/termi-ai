@@ -1,5 +1,35 @@
 
 const { spawn } = require('child_process');
+const fs = require('fs');
+const path = require('path');
+
+function ensureDarwinPath(originalPath) {
+  if (process.platform !== 'darwin') return originalPath;
+  const extras = ['/usr/local/bin', '/opt/homebrew/bin'];
+  const parts = (originalPath || '').split(':');
+  for (const p of extras) {
+    if (!parts.includes(p)) parts.unshift(p);
+  }
+  return parts.filter(Boolean).join(':');
+}
+
+function resolveExecutable(command, envPath) {
+  const candidates = new Set();
+  const parts = (envPath || '').split(':').filter(Boolean);
+  for (const dir of parts) {
+    candidates.add(path.join(dir, command));
+  }
+  // Common Homebrew paths first
+  candidates.add(`/opt/homebrew/bin/${command}`);
+  candidates.add(`/usr/local/bin/${command}`);
+  for (const candidate of candidates) {
+    try {
+      fs.accessSync(candidate, fs.constants.X_OK);
+      return candidate;
+    } catch {}
+  }
+  return null;
+}
 
 function parseUrlFromViteOutput(chunk) {
   const text = chunk.toString();
@@ -15,13 +45,50 @@ function parseUrlFromViteOutput(chunk) {
 }
 
 function startVite(folderPath, manager='yarn', onLog) {
-  const command = manager === 'npm' ? 'npm' : manager === 'pnpm' ? 'pnpm' : 'yarn';
-  const args = manager === 'npm' ? ['run', 'dev'] : ['dev'];
+  const preferredManagers = Array.from(new Set([
+    manager || 'yarn',
+    'yarn',
+    'npm',
+    'pnpm'
+  ]));
 
-  const child = spawn(command, args, {
+  const env = { ...process.env };
+  env.PATH = ensureDarwinPath(env.PATH);
+
+  let resolvedCommand = null;
+  let resolvedManager = null;
+  for (const m of preferredManagers) {
+    const cmd = m === 'npm' ? 'npm' : m === 'pnpm' ? 'pnpm' : 'yarn';
+    const absolute = resolveExecutable(cmd, env.PATH) || cmd;
+    // If not in PATH, resolveExecutable returns null; still try the bare cmd on Windows/shell
+    try {
+      fs.accessSync(absolute, fs.constants.X_OK);
+      resolvedCommand = absolute;
+      resolvedManager = m;
+      break;
+    } catch {
+      // If absolute is the same bare cmd, we cannot verify X_OK; try it only if on Windows/shell later
+      if (absolute === cmd && process.platform === 'win32') {
+        resolvedCommand = absolute;
+        resolvedManager = m;
+        break;
+      }
+    }
+  }
+
+  if (!resolvedCommand) {
+    const msg = `No package manager executable found in PATH. Tried: ${preferredManagers.join(', ')}\nPATH: ${env.PATH}`;
+    const error = new Error(msg);
+    if (onLog) onLog('error', msg);
+    throw error;
+  }
+
+  const args = resolvedManager === 'npm' ? ['run', 'dev'] : ['dev'];
+
+  const child = spawn(resolvedCommand, args, {
     cwd: folderPath,
     shell: process.platform === 'win32', // make it work on Windows too
-    env: process.env
+    env
   });
 
   let resolved = false;
@@ -55,11 +122,11 @@ function startVite(folderPath, manager='yarn', onLog) {
     }
   };
 
-  if (onLog) onLog('info', `Running: ${command} ${args.join(' ')}\nCWD: ${folderPath}`);
+  if (onLog) onLog('info', `Running: ${resolvedCommand} ${args.join(' ')}\nCWD: ${folderPath}`);
   child.stdout.on('data', onStdout);
   child.stderr.on('data', onStderr);
   child.on('error', (err) => {
-    if (!resolved) urlReject(new Error(`Failed to start dev server: ${err.message}\nCommand: ${command} ${args.join(' ')}\nCWD: ${folderPath}`));
+    if (!resolved) urlReject(new Error(`Failed to start dev server: ${err.message}\nCommand: ${resolvedCommand} ${args.join(' ')}\nCWD: ${folderPath}\nPATH: ${env.PATH}`));
   });
   child.on('exit', (code) => {
     if (!resolved) {

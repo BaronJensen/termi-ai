@@ -107,6 +107,8 @@ function createWindow() {
   win = new BrowserWindow({
     width: 1400,
     height: 900,
+    // Set window icon (used on Windows/Linux; ignored on macOS)
+    icon: path.join(__dirname, 'images', 'icon_square.png'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
@@ -121,8 +123,50 @@ function createWindow() {
   if (rendererUrl) {
     win.loadURL(rendererUrl);
   } else {
-    win.loadFile(path.join(__dirname, '../renderer/index.html'));
+    // Prefer built renderer if available
+    try {
+      const builtIndex = path.join(__dirname, '../renderer/dist/index.html');
+      const devIndex = path.join(__dirname, '../renderer/index.html');
+      if (fs.existsSync(builtIndex)) {
+        win.loadFile(builtIndex);
+      } else {
+        win.loadFile(devIndex);
+      }
+    } catch {
+      win.loadFile(path.join(__dirname, '../renderer/index.html'));
+    }
   }
+
+  // Set Dock icon on macOS
+  try {
+    if (process.platform === 'darwin' && app.dock) {
+      const { nativeImage } = require('electron');
+      const dockIcon = nativeImage.createFromPath(path.join(__dirname, 'images', 'icon_rounded.png'));
+      if (!dockIcon.isEmpty()) app.dock.setIcon(dockIcon);
+    }
+  } catch {}
+
+  // Inject favicon into the document at runtime using data URI (works in dev and prod)
+  try {
+    const iconPath = path.join(__dirname, 'images', 'icon_square.png');
+    const iconBytes = fs.readFileSync(iconPath);
+    const dataUri = `data:image/png;base64,${iconBytes.toString('base64')}`;
+    win.webContents.on('dom-ready', () => {
+      try {
+        win.webContents.executeJavaScript(`
+          (function(){
+            try {
+              var link = document.querySelector('link[rel="icon"]') || document.createElement('link');
+              link.setAttribute('rel','icon');
+              link.setAttribute('type','image/png');
+              link.setAttribute('href','${dataUri}');
+              document.head && document.head.appendChild(link);
+            } catch (e) {}
+          })();
+        `);
+      } catch {}
+    });
+  } catch {}
 }
 
 function createMenu() {
