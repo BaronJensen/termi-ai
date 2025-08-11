@@ -276,100 +276,6 @@ function LoadProjectModal({ onClose, onLoad }) {
   );
 }
 
-function LoginModal({ onClose }) {
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
-  const [logs, setLogs] = useState([]);
-  const [link, setLink] = useState('');
-  const openedRef = React.useRef(false);
-
-  useEffect(() => {
-    const unsubLog = window.cursovable.onCursorAuthLog?.((payload) => {
-      setLogs((prev) => {
-        const next = [...prev, { ts: payload.ts || Date.now(), line: String(payload.line || '') }];
-        return next.length > 500 ? next.slice(-500) : next;
-      });
-    });
-    const unsubLink = window.cursovable.onCursorAuthLink?.(async ({ url }) => {
-      if (!url) return;
-      setLink(url);
-      if (!openedRef.current) {
-        openedRef.current = true;
-        try { await window.cursovable.openExternal(url); } catch {}
-      }
-    });
-    return () => { try { unsubLog && unsubLog(); } catch {} try { unsubLink && unsubLink(); } catch {} };
-  }, []);
-
-  async function startLogin() {
-    setBusy(true);
-    setError('');
-    setLogs([]);
-    setLink('');
-    openedRef.current = false;
-    try {
-      const res = await window.cursovable.triggerCursorAuthLogin();
-      const st = await window.cursovable.getCursorAuthStatus();
-      if (st?.loggedIn || res?.success) {
-        onClose();
-        return;
-      }
-      if (res && res.ok === false) {
-        setError(res?.raw?.stderr || 'Login failed');
-      } else {
-        setError('Awaiting browser authentication…');
-      }
-    } catch (e) {
-      setError(e.message || String(e));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <Modal
-      title="Sign in to Cursor"
-      onClose={onClose}
-      footer={(
-        <>
-          <Button variant="secondary" onClick={onClose}>Close</Button>
-          <Button onClick={startLogin} disabled={busy} style={{ minWidth: 140 }}>
-            {busy ? 'Waiting…' : 'Log in'}
-          </Button>
-        </>
-      )}
-    >
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <div style={{ color: '#c9d5e1', fontSize: 13 }}>
-          You are logged out. Click “Log in” to run <code>cursor-agent login</code> and approve in your browser.
-        </div>
-        {link && (
-          <div style={{ fontSize: 12, background: '#0b0f16', border: '1px solid #27354a', borderRadius: 6, padding: 10 }}>
-            <div style={{ color: '#cde3ff', marginBottom: 6 }}>Authentication link</div>
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-              <Input value={link} readOnly />
-              <Button className="compact" onClick={async () => { try { await window.cursovable.openExternal(link); } catch {} }}>Open</Button>
-            </div>
-          </div>
-        )}
-        <div style={{ fontSize: 12, color: '#9ca3af' }}>Logs</div>
-        <div style={{ maxHeight: 200, overflow: 'auto', border: '1px solid #27354a', borderRadius: 6, background: '#0b0f16', padding: 8 }}>
-          {logs.length === 0 ? (
-            <div style={{ color: '#6b7280' }}>Waiting for output…</div>
-          ) : logs.map((l, i) => (
-            <div key={i} style={{ whiteSpace: 'pre-wrap', color: '#cde3ff' }}>
-              {l.line}
-            </div>
-          ))}
-        </div>
-        {error && (
-          <div style={{ color: '#ef4444', fontSize: 12 }}>{error}</div>
-        )}
-      </div>
-    </Modal>
-  );
-}
-
 export default function Dashboard({ onOpenProject }) {
   useDesignSystemStyles();
   const [projects, setProjects] = useState(loadProjects());
@@ -378,18 +284,6 @@ export default function Dashboard({ onOpenProject }) {
   const [idea, setIdea] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [navigateTo, setNavigateTo] = useState(null); // { id, initialMessage }
-  const [showLogin, setShowLogin] = useState(false);
-
-  useEffect(() => {
-    (async () => {
-      try {
-        const status = await window.cursovable.getCursorAuthStatus?.();
-        if (status && status.loggedIn === false) {
-          setShowLogin(true);
-        }
-      } catch {}
-    })();
-  }, []);
 
   function buildPromptForTemplate(tpl, ideaText) {
     const base = (s) => s.trim().replace(/\s+$/,'');
@@ -539,11 +433,6 @@ export default function Dashboard({ onOpenProject }) {
       )}
       {showCreateModal && (
         <CreateTemplateModal onClose={() => setShowCreateModal(false)} onCreate={handleCreate} initialTemplate={template} initialPrompt={idea} />
-      )}
-      {showLogin && (
-        <LoginModal onClose={async () => {
-          try { const st = await window.cursovable.getCursorAuthStatus?.(); setShowLogin(!(st && st.loggedIn)); } catch { setShowLogin(false); }
-        }} />
       )}
       {navigateTo && (
         // Imperative navigation hook for App-level router: we expose an event by opening project
