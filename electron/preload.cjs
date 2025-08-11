@@ -28,10 +28,15 @@ contextBridge.exposeInMainWorld('cursovable', {
   stopHtml: () => ipcRenderer.invoke('html-stop'),
   createProjectScaffold: (opts) => ipcRenderer.invoke('project-create', opts),
   installPackages: (opts) => ipcRenderer.invoke('packages-install', opts),
+  openFolder: (folderPath) => ipcRenderer.invoke('open-folder', folderPath),
+  detectEditors: () => ipcRenderer.invoke('detect-editors'),
+  openInEditor: (opts) => ipcRenderer.invoke('open-in-editor', opts),
+  getProjectRoutes: (opts) => ipcRenderer.invoke('project-routes', opts),
   sendCursorInput: (opts) => ipcRenderer.invoke('cursor-input', opts),
   sendCursorSignal: (opts) => ipcRenderer.invoke('cursor-signal', opts),
   getTerminalStatus: () => ipcRenderer.invoke('terminal-status'),
   forceTerminalCleanup: () => ipcRenderer.invoke('terminal-cleanup'),
   getWorkingDirectory: () => ipcRenderer.invoke('get-working-directory'),
+  openExternal: (url) => ipcRenderer.invoke('open-external', url),
   setWorkingDirectory: (path) => ipcRenderer.invoke('set-working-directory', path)
 });

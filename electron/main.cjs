@@ -1,5 +1,5 @@
 
-const { app, BrowserWindow, ipcMain, dialog, session, Menu } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, session, Menu, shell } = require('electron');
 const path = require('path');
 const { spawn } = require('child_process');
 const fs = require('fs');
@@ -1004,6 +1004,121 @@ ipcMain.handle('project-detect', async (_e, folderPath) => {
     return { ok: true, data: { ...result, projectType } };
   } catch (err) {
     return { ok: false, error: err.message };
+  }
+});
+
+// Open folder in the OS file manager
+ipcMain.handle('open-folder', async (_e, folderPath) => {
+  try {
+    if (!folderPath) throw new Error('No folderPath provided');
+    const res = await shell.openPath(folderPath);
+    if (res) return { ok: false, error: res };
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
+// Detect available editors in PATH
+ipcMain.handle('detect-editors', async () => {
+  const candidates = [
+    { id: 'code', cmd: 'code', args: ['--version'] },
+    { id: 'cursor', cmd: 'cursor', args: ['--version'] },
+    { id: 'webstorm', cmd: 'webstorm', args: ['--version'] },
+    { id: 'idea', cmd: 'idea', args: ['--version'] },
+    { id: 'subl', cmd: 'subl', args: ['--version'] }
+  ];
+  const available = [];
+  await Promise.all(candidates.map(c => new Promise((resolve) => {
+    try {
+      const child = spawn(c.cmd, c.args, { stdio: 'ignore', shell: process.platform === 'win32' });
+      child.on('exit', (code) => { if (code === 0 || code === 1) available.push(c.id); resolve(); });
+      child.on('error', () => resolve());
+    } catch { resolve(); }
+  })));
+  return available;
+});
+
+// Open project in a specific editor
+ipcMain.handle('open-in-editor', async (_e, { folderPath, editor }) => {
+  try {
+    if (!folderPath) throw new Error('No folderPath provided');
+    const map = {
+      code: { cmd: 'code', args: ['.'] },
+      cursor: { cmd: 'cursor', args: ['.'] },
+      webstorm: { cmd: 'webstorm', args: ['.'] },
+      idea: { cmd: 'idea', args: ['.'] },
+      subl: { cmd: 'subl', args: ['.'] }
+    };
+    const entry = map[editor];
+    if (!entry) throw new Error('Unsupported editor');
+    const child = spawn(entry.cmd, entry.args, { cwd: folderPath, shell: process.platform === 'win32' });
+    child.on('error', () => {});
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
+// Open URL in default browser
+ipcMain.handle('open-external', async (_e, url) => {
+  try {
+    if (!url) throw new Error('No URL provided');
+    const { shell } = require('electron');
+    await shell.openExternal(url);
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
+// Compute simple project routes by scanning file structure
+ipcMain.handle('project-routes', async (_e, { folderPath, projectType }) => {
+  try {
+    if (!folderPath) throw new Error('No folderPath provided');
+    const ignore = ['node_modules', '.git', 'dist', 'build', '.next', 'out'];
+    const routes = new Set();
+    function walk(dir) {
+      for (const name of fs.readdirSync(dir)) {
+        if (ignore.includes(name)) continue;
+        const full = path.join(dir, name);
+        const stat = fs.statSync(full);
+        if (stat.isDirectory()) walk(full);
+        else {
+          if (projectType === 'html') {
+            if (name.endsWith('.html')) {
+              const rel = path.relative(folderPath, full).replace(/\\/g, '/');
+              let route = '/' + rel.replace(/index\.html$/i, '').replace(/\.html$/i, '');
+              if (route.endsWith('/')) route = route.slice(0, -1) || '/';
+              routes.add(route || '/');
+            }
+          } else {
+            // Next.js app/pages or vite src/pages heuristic
+            const rel = path.relative(folderPath, full).replace(/\\/g, '/');
+            if (/^app\/.+\/page\.(t|j)sx?$/.test(rel)) {
+              const p = rel.replace(/^app\//, '').replace(/\/page\.(t|j)sx?$/,'');
+              routes.add('/' + p);
+            }
+            if (/^pages\/.+\.(t|j)sx?$/.test(rel)) {
+              let p = rel.replace(/^pages\//, '').replace(/\.(t|j)sx?$/,'');
+              p = p.replace(/index$/,'');
+              routes.add('/' + p);
+            }
+            if (/^src\/pages\/.+\.(t|j)sx?$/.test(rel)) {
+              let p = rel.replace(/^src\/pages\//, '').replace(/\.(t|j)sx?$/,'');
+              p = p.replace(/index$/,'');
+              routes.add('/' + p);
+            }
+          }
+        }
+      }
+    }
+    walk(folderPath);
+    const out = Array.from(routes).map(r => r.replace(/\/+/g,'/')).map(r => r || '/');
+    const unique = Array.from(new Set(out)).sort();
+    return { ok: true, routes: unique };
+  } catch (err) {
+    return { ok: false, error: err.message, routes: [] };
   }
 });
 

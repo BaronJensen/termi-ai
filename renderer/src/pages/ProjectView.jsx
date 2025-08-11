@@ -12,6 +12,13 @@ export default function ProjectView({ projectId, onBack, initialMessage }) {
   const [isInstalling, setIsInstalling] = useState(false);
   const projectType = project?.runningConfig?.projectType || 'vite';
   const autoStartedRef = useRef(false);
+  const [routes, setRoutes] = useState([]);
+  const [routeQuery, setRouteQuery] = useState('');
+  const pendingRouteRef = useRef(null);
+  const [editors, setEditors] = useState([]);
+  const [selectedEditor, setSelectedEditor] = useState('');
+  const [viewportMode, setViewportMode] = useState('desktop'); // 'desktop', 'tablet', 'phone'
+  const [isChatVisible, setIsChatVisible] = useState(true);
 
   // Inject lightweight loader styles
   useEffect(() => {
@@ -121,16 +128,381 @@ export default function ProjectView({ projectId, onBack, initialMessage }) {
     }
   }, [folder]);
 
+  // Fetch project routes for autocomplete
+  useEffect(() => {
+    (async () => {
+      try {
+        if (!folder) return;
+        const res = await window.cursovable.getProjectRoutes({ folderPath: folder, projectType });
+        if (res && res.ok && Array.isArray(res.routes)) {
+          setRoutes(res.routes);
+        } else {
+          setRoutes([]);
+        }
+      } catch {
+        setRoutes([]);
+      }
+    })();
+  }, [folder, projectType]);
+
+  // Detect available editors for the menu
+  useEffect(() => {
+    (async () => {
+      try {
+        const list = await window.cursovable.detectEditors();
+        if (Array.isArray(list)) setEditors(list);
+      } catch {}
+    })();
+  }, []);
+
+  // If preview becomes available and we have a pending route, navigate to it
+  useEffect(() => {
+    if (previewUrl && pendingRouteRef.current) {
+      const r = pendingRouteRef.current;
+      pendingRouteRef.current = null;
+      navigateToRoute(r);
+    }
+  }, [previewUrl]);
+
+  // Set up webview navigation listener to sync route input
+  useEffect(() => {
+    if (!previewUrl) return;
+
+    const setupWebviewListener = () => {
+      const wb = document.querySelector('webview');
+      if (!wb) return;
+
+      const handleNavigation = () => {
+        try {
+          const currentUrl = wb.getURL();
+          if (currentUrl && previewUrl) {
+            const baseUrl = new URL(previewUrl);
+            const currentUrlObj = new URL(currentUrl);
+            
+            // Only update if it's the same origin (our dev server)
+            if (currentUrlObj.origin === baseUrl.origin) {
+              const path = currentUrlObj.pathname;
+              setRouteQuery(path === '/' ? '' : path);
+            }
+          }
+        } catch (e) {
+          // Ignore errors from cross-origin or invalid URLs
+        }
+      };
+
+      // Listen for navigation events
+      wb.addEventListener('did-navigate', handleNavigation);
+      wb.addEventListener('did-navigate-in-page', handleNavigation);
+
+      return () => {
+        wb.removeEventListener('did-navigate', handleNavigation);
+        wb.removeEventListener('did-navigate-in-page', handleNavigation);
+      };
+    };
+
+    // Setup listener after a short delay to ensure webview is ready
+    const timeout = setTimeout(setupWebviewListener, 500);
+    
+    return () => {
+      clearTimeout(timeout);
+    };
+  }, [previewUrl]);
+
+  // Get viewport dimensions based on mode
+  function getViewportStyle() {
+    const baseStyle = { width: '100%', height: '100%' };
+    
+    switch (viewportMode) {
+      case 'tablet':
+        return {
+          ...baseStyle,
+          maxWidth: '768px',
+          margin: '0 auto',
+          border: '2px solid #374151',
+          borderRadius: '12px',
+          backgroundColor: '#1f2937'
+        };
+      case 'phone':
+        return {
+          ...baseStyle,
+          maxWidth: '375px',
+          margin: '0 auto',
+          border: '2px solid #374151',
+          borderRadius: '20px',
+          backgroundColor: '#1f2937'
+        };
+      default: // desktop
+        return baseStyle;
+    }
+  }
+
+  function navigateToRoute(route) {
+    const r = (route || '/').trim();
+    const wb = document.querySelector('webview');
+    if (!wb) return;
+    if (!previewUrl) {
+      pendingRouteRef.current = r;
+      startPreview();
+      return;
+    }
+    try {
+      const base = new URL(previewUrl);
+      const path = r.startsWith('/') ? r.slice(1) : r;
+      base.pathname = path;
+      wb.src = base.toString();
+    } catch {}
+  }
+
   return (
-    <div className="app" style={{ gridTemplateColumns: '1.6fr 0.8fr' }}>
+    <div className="app" style={{ gridTemplateColumns: isChatVisible ? '1.6fr 0.8fr' : '1fr' }}>
       <div className="panel">
         <div className="header">
-          <button className="secondary" onClick={handleBack}>Back</button>
-          <input style={{minWidth: '280px'}} value={folder || ''} placeholder="No folder selected" readOnly />
-          <button onClick={startPreview} disabled={!folder || isStarting || isInstalling}>
-            {isInstalling ? 'Installing…' : (projectType === 'html' ? 'Run HTML Server' : 'Run Preview')}
+          {/* Back arrow */}
+          <button className="secondary" onClick={handleBack} title="Back" aria-label="Back">
+            ←
           </button>
-          <button className="secondary" onClick={stopPreview}>Stop</button>
+
+          {/* Route search / navigation bar */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <button className="secondary" title="Reload app" aria-label="Reload app" onClick={() => {
+              const wb = document.querySelector('webview');
+              try { if (wb) wb.reload(); } catch {}
+            }}>⟳</button>
+            <input
+              list="project-route-list"
+              placeholder={projectType === 'html' ? '/, /about, /docs/intro' : '/, /api/hello, /dashboard'}
+              value={routeQuery}
+              onChange={(e) => setRouteQuery(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') navigateToRoute(routeQuery || '/'); }}
+              style={{ width: 300, padding: '6px 10px', borderRadius: 8, border: '1px solid #27354a', background: '#0b0f16', color: '#e6e6e6' }}
+            />
+            <datalist id="project-route-list">
+              {routes.map((r) => (
+                <option key={r} value={r} />
+              ))}
+            </datalist>
+          </div>
+
+          {/* Run / Stop icons */}
+          {!previewUrl && (
+            <button onClick={startPreview} disabled={!folder || isStarting || isInstalling} title="Run">
+              ▶
+            </button>
+          )}
+          <button className="secondary" onClick={stopPreview} title="Stop">■</button>
+
+          {/* Viewport toggles and options menu */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 'auto' }}>
+            {/* Viewport toggles */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginRight: 8 }}>
+              <button 
+                className={viewportMode === 'desktop' ? 'primary' : 'secondary'}
+                onClick={() => setViewportMode('desktop')}
+                title="Desktop view"
+                style={{ padding: '4px 8px', fontSize: '12px' }}
+              >
+                🖥️
+              </button>
+              <button 
+                className={viewportMode === 'tablet' ? 'primary' : 'secondary'}
+                onClick={() => setViewportMode('tablet')}
+                title="Tablet view"
+                style={{ padding: '4px 8px', fontSize: '12px' }}
+              >
+                📱
+              </button>
+              <button 
+                className={viewportMode === 'phone' ? 'primary' : 'secondary'}
+                onClick={() => setViewportMode('phone')}
+                title="Phone view"
+                style={{ padding: '4px 8px', fontSize: '12px' }}
+              >
+                📞
+              </button>
+            </div>
+            <div style={{ position: 'relative', display: 'inline-block' }}>
+              <button className="secondary" title="Options" onClick={(e) => {
+                const menu = e.currentTarget.nextElementSibling;
+                menu.style.display = menu.style.display === 'block' ? 'none' : 'block';
+              }}>⋮</button>
+              <div style={{
+                position: 'absolute',
+                right: 0,
+                top: '100%',
+                marginTop: 4,
+                background: '#0b0f16',
+                border: '1px solid #27354a',
+                borderRadius: 8,
+                padding: 8,
+                display: 'none',
+                zIndex: 1000,
+                minWidth: 200
+              }}>
+                <div style={{ marginBottom: 8, borderBottom: '1px solid #27354a', paddingBottom: 8 }}>
+                  <div style={{ fontSize: '12px', color: '#9ca3af', marginBottom: 4 }}>Open in Editor:</div>
+                  <select
+                    value={selectedEditor}
+                    onChange={(e) => setSelectedEditor(e.target.value)}
+                    style={{ 
+                      width: '100%', 
+                      padding: '4px 8px', 
+                      borderRadius: 4, 
+                      border: '1px solid #27354a', 
+                      background: '#1a2331', 
+                      color: '#e6e6e6',
+                      fontSize: '12px'
+                    }}
+                    title="Choose editor"
+                  >
+                    <option value="">Select editor…</option>
+                    {editors.map((id) => (
+                      <option key={id} value={id}>{
+                        ({ code: 'VS Code', cursor: 'Cursor', webstorm: 'WebStorm', idea: 'IntelliJ IDEA', subl: 'Sublime Text' }[id] || id)
+                      }</option>
+                    ))}
+                  </select>
+                  <button
+                    style={{
+                      width: '100%',
+                      marginTop: 4,
+                      padding: '4px 8px',
+                      background: selectedEditor ? '#3c6df0' : '#374151',
+                      border: 'none',
+                      color: '#ffffff',
+                      cursor: selectedEditor ? 'pointer' : 'not-allowed',
+                      borderRadius: 4,
+                      fontSize: '12px'
+                    }}
+                    disabled={!folder || !selectedEditor}
+                    onClick={async () => { 
+                      if (folder && selectedEditor) {
+                        await window.cursovable.openInEditor({ folderPath: folder, editor: selectedEditor });
+                        // Close menu after action
+                        const menu = document.querySelector('[style*="zIndex: 1000"]');
+                        if (menu) menu.style.display = 'none';
+                      }
+                    }}
+                  >
+                    Open in {selectedEditor ? ({ code: 'VS Code', cursor: 'Cursor', webstorm: 'WebStorm', idea: 'IntelliJ IDEA', subl: 'Sublime Text' }[selectedEditor] || selectedEditor) : 'Editor'}
+                  </button>
+                </div>
+                <button
+                  style={{
+                    display: 'block',
+                    width: '100%',
+                    textAlign: 'left',
+                    padding: '6px 8px',
+                    background: 'transparent',
+                    border: 'none',
+                    color: previewUrl ? '#e6e6e6' : '#9ca3af',
+                    cursor: previewUrl ? 'pointer' : 'not-allowed',
+                    borderRadius: 4
+                  }}
+                  onMouseEnter={(e) => { if (previewUrl) e.target.style.background = '#1a2331' }}
+                  onMouseLeave={(e) => e.target.style.background = 'transparent'}
+                  disabled={!previewUrl}
+                  onClick={async () => { 
+                    if (previewUrl) {
+                      // Ensure localhost URLs use HTTP protocol for browser compatibility
+                      let urlToOpen = previewUrl;
+                      try {
+                        const url = new URL(previewUrl);
+                        if (url.hostname === 'localhost' || url.hostname === '127.0.0.1') {
+                          url.protocol = 'http:';
+                          urlToOpen = url.toString();
+                        }
+                      } catch (e) {
+                        // If URL parsing fails, use original URL
+                        urlToOpen = previewUrl;
+                      }
+                      await window.cursovable.openExternal(urlToOpen);
+                      // Close menu after action
+                      const menu = document.querySelector('[style*="zIndex: 1000"]');
+                      if (menu) menu.style.display = 'none';
+                    }
+                  }}
+                  title={previewUrl ? "Open preview in browser" : "Start preview to open in browser"}
+                >
+                  🌐 Open in browser
+                </button>
+                <button
+                  style={{
+                    display: 'block',
+                    width: '100%',
+                    textAlign: 'left',
+                    padding: '6px 8px',
+                    background: 'transparent',
+                    border: 'none',
+                    color: '#e6e6e6',
+                    cursor: 'pointer',
+                    borderRadius: 4,
+                    marginTop: 4
+                  }}
+                  onMouseEnter={(e) => e.target.style.background = '#1a2331'}
+                  onMouseLeave={(e) => e.target.style.background = 'transparent'}
+                  onClick={async () => { 
+                    if (folder) await window.cursovable.openFolder(folder); 
+                    // Close menu after action
+                    const menu = document.querySelector('[style*="zIndex: 1000"]');
+                    if (menu) menu.style.display = 'none';
+                  }}
+                  title="Open in file system"
+                >
+                  📁 Open in file system
+                </button>
+                <button
+                  style={{
+                    display: 'block',
+                    width: '100%',
+                    textAlign: 'left',
+                    padding: '6px 8px',
+                    background: 'transparent',
+                    border: 'none',
+                    color: '#e6e6e6',
+                    cursor: 'pointer',
+                    borderRadius: 4,
+                    marginTop: 4
+                  }}
+                  onMouseEnter={(e) => e.target.style.background = '#1a2331'}
+                  onMouseLeave={(e) => e.target.style.background = 'transparent'}
+                  onClick={() => {
+                    setIsChatVisible(!isChatVisible);
+                    // Close menu after action
+                    const menu = document.querySelector('[style*="zIndex: 1000"]');
+                    if (menu) menu.style.display = 'none';
+                  }}
+                  title={isChatVisible ? "Hide chat panel" : "Show chat panel"}
+                >
+                  💬 {isChatVisible ? 'Hide' : 'Show'} Chat
+                </button>
+                <button
+                  style={{
+                    display: 'block',
+                    width: '100%',
+                    textAlign: 'left',
+                    padding: '6px 8px',
+                    background: 'transparent',
+                    border: 'none',
+                    color: '#e6e6e6',
+                    cursor: 'pointer',
+                    borderRadius: 4,
+                    marginTop: 4
+                  }}
+                  onMouseEnter={(e) => e.target.style.background = '#1a2331'}
+                  onMouseLeave={(e) => e.target.style.background = 'transparent'}
+                  onClick={() => {
+                    alert('Open the bottom debug panel using the terminal tab in App (legacy). Future: toggle panel here.');
+                    // Close menu after action
+                    const menu = document.querySelector('[style*="zIndex: 1000"]');
+                    if (menu) menu.style.display = 'none';
+                  }}
+                  title="Debug"
+                >
+                  💻 Debug
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
         <div className="iframe-wrap">
           {(!previewUrl && (isInstalling || isStarting)) ? (
@@ -143,7 +515,24 @@ export default function ProjectView({ projectId, onBack, initialMessage }) {
               </div>
             </div>
           ) : previewUrl ? (
-            <webview src={previewUrl} style={{width:'100%', height:'100%'}} allowpopups="true" disablewebsecurity="true" webpreferences="contextIsolation, javascript=yes, webSecurity=no, allowRunningInsecureContent=yes" partition="persist:default"/>
+            <div style={{ 
+              width: '100%', 
+              height: '100%', 
+              display: 'flex', 
+              justifyContent: 'center', 
+              alignItems: viewportMode === 'desktop' ? 'stretch' : 'center',
+              backgroundColor: viewportMode === 'desktop' ? 'transparent' : '#0f172a',
+              padding: viewportMode === 'desktop' ? 0 : '20px'
+            }}>
+              <webview 
+                src={previewUrl} 
+                style={getViewportStyle()} 
+                allowpopups="true" 
+                disablewebsecurity="true" 
+                webpreferences="contextIsolation, javascript=yes, webSecurity=no, allowRunningInsecureContent=yes" 
+                partition="persist:default"
+              />
+            </div>
           ) : (
             <div style={{padding: 18, opacity: .7}}>
               {projectType === 'html' ? 'Click “Run HTML Server” to serve your static site with live reload.' : 'Click “Run Preview” to start your project.'}
@@ -152,7 +541,8 @@ export default function ProjectView({ projectId, onBack, initialMessage }) {
         </div>
       </div>
 
-      <div className="panel chat">
+      {isChatVisible && (
+        <div className="panel chat">
         <div className="header">
           <input placeholder="Optional API key" value={apiKey} onChange={e => setApiKey(e.target.value)} style={{flex: 1}}/>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px' }}>
@@ -170,7 +560,8 @@ export default function ProjectView({ projectId, onBack, initialMessage }) {
 
         {/** Default chat instance; session id derived from assistant response for reconnecting later */}
         <Chat apiKey={apiKey} cwd={folder} timeoutMinutes={timeoutMinutes} initialMessage={initialMessage} />
-      </div>
+        </div>
+      )}
     </div>
   );
 }
