@@ -164,12 +164,13 @@ export default function Chat({ cwd, initialMessage, projectId }) {
       }
       
       .input {
-        display: grid;
-        grid-template-columns: 1fr auto;
-        grid-template-rows: auto auto;
-        grid-column-gap: 12px;
-        grid-row-gap: 6px;
-        align-items: stretch;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        background: #0b0f16;
+        border: 1px solid #27354a;
+        border-radius: 12px;
+        padding: 10px;
         width: 100%;
         box-sizing: border-box;
         margin-top: 8px;
@@ -178,13 +179,13 @@ export default function Chat({ cwd, initialMessage, projectId }) {
       .input textarea {
         flex: 1;
         resize: vertical;
-        min-height: 48px;
+        min-height: 56px;
         max-height: 180px;
-        background: #0b0f16;
-        border: 1px solid #27354a;
+        background: #0b1018;
+        border: 1px solid #1d2633;
         color: #d6dee8;
-        padding: 8px;
-        border-radius: 8px;
+        padding: 10px;
+        border-radius: 10px;
         outline: none;
         font-family: inherit;
         font-size: 12px;
@@ -205,8 +206,8 @@ export default function Chat({ cwd, initialMessage, projectId }) {
       }
 
       .send-button {
-        width: 44px;
-        height: 44px;
+        width: 36px;
+        height: 36px;
         padding: 0;
         border: 1px solid #2a3b55;
         border-radius: 50%;
@@ -221,9 +222,22 @@ export default function Chat({ cwd, initialMessage, projectId }) {
         box-shadow: 0 6px 16px rgba(59,130,246,0.35), inset 0 1px 0 rgba(255,255,255,0.15);
         transition: transform 0.08s ease, box-shadow 0.2s ease, filter 0.2s ease, opacity 0.2s ease;
         cursor: pointer;
-        grid-column: 2;
-        grid-row: 1 / span 2;
-        align-self: center; /* ensure vertical centering within grid rows */
+        align-self: center;
+      }
+
+      .chip { 
+        display: inline-flex; align-items: center; gap: 6px;
+        background: #0b1018; border: 1px solid #1d2633; color: #c9d5e1;
+        padding: 6px 10px; border-radius: 999px; font-size: 11px;
+      }
+
+      .chip-select { 
+        appearance: none; background: #0b1018; color: #e6e6e6; 
+        border: 1px solid #1d2633; border-radius: 999px; padding: 6px 28px 6px 10px; 
+        font-size: 11px; outline: none; cursor: pointer;
+        background-image: linear-gradient(45deg, transparent 50%, #6b7280 50%), linear-gradient(135deg, #6b7280 50%, transparent 50%);
+        background-position: calc(100% - 14px) calc(1em - 2px), calc(100% - 9px) calc(1em - 2px);
+        background-size: 5px 5px, 5px 5px; background-repeat: no-repeat;
       }
 
       .send-button:hover:not(:disabled) {
@@ -671,6 +685,8 @@ export default function Chat({ cwd, initialMessage, projectId }) {
       createNewSession(loadedSessions);
     }
   }, [projectId]);
+
+  
   
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
@@ -685,6 +701,26 @@ export default function Chat({ cwd, initialMessage, projectId }) {
   const [currentSessionId, setCurrentSessionId] = useState(null); // Current active session
   const [showSessionList, setShowSessionList] = useState(false); // Toggle session list UI
   const [isCreatingNewSession, setIsCreatingNewSession] = useState(false); // Creating new session state
+  // Model selection (empty string means default/auto; don't send to CLI)
+  const modelStorageKey = `cursovable-model-${projectId || 'legacy'}`;
+  const suggestedModels = [
+    'gpt-5',
+    'gpt-5-fast',
+    'sonnet-4',
+    'sonnet-4-thinking',
+    'gpt-4.1',
+    'gpt-4.1-mini'
+  ];
+  const [model, setModel] = useState(() => {
+    try {
+      const stored = localStorage.getItem(modelStorageKey);
+      return stored !== null ? stored : '';
+    } catch { return ''; }
+  });
+  // Persist model per project (must be after model is declared)
+  useEffect(() => {
+    try { localStorage.setItem(modelStorageKey, model); } catch {}
+  }, [model, modelStorageKey]);
   const scroller = useRef(null);
   const unsubRef = useRef(null);
   const streamIndexRef = useRef(-1);
@@ -1263,9 +1299,9 @@ export default function Chat({ cwd, initialMessage, projectId }) {
                         const updated = [...m];
                         updated[idx] = {
                           ...updated[idx],
-                          isStreaming: false,
+                        isStreaming: false,
                           // Keep accumulated text; attach result metadata and action log flag
-                          rawData: { result: 'success', text: accumulatedText },
+                        rawData: { result: 'success', text: accumulatedText },
                           showActionLog: true,
                         };
                         return updated;
@@ -1350,8 +1386,8 @@ export default function Chat({ cwd, initialMessage, projectId }) {
                       const updated = [...m];
                       updated[idx] = {
                         ...updated[idx],
-                        isStreaming: false,
-                        rawData: { result: 'success', text: accumulatedText },
+                      isStreaming: false,
+                      rawData: { result: 'success', text: accumulatedText },
                         showActionLog: true,
                       };
                       return updated;
@@ -1400,7 +1436,8 @@ export default function Chat({ cwd, initialMessage, projectId }) {
         message: text, 
         cwd: cwd || undefined, 
         runId,
-        sessionId: sessionIdToUse
+        sessionId: sessionIdToUse,
+        ...(model ? { model } : {})
       });
       
       // We just need to ensure the process completed successfully
@@ -1450,8 +1487,8 @@ export default function Chat({ cwd, initialMessage, projectId }) {
               const updated = [...m];
               updated[idx] = {
                 ...updated[idx],
-                isStreaming: false,
-                rawData: { result: 'completed', text: accumulatedText },
+            isStreaming: false,
+            rawData: { result: 'completed', text: accumulatedText },
                 showActionLog: true,
               };
               return updated;
@@ -2001,7 +2038,7 @@ export default function Chat({ cwd, initialMessage, projectId }) {
       )}
       
       <form className="input" onSubmit={(e) => { e.preventDefault(); send(); }}>
-        <div className="input-field" style={{ position: 'relative', width: '100%' }}>
+        <div className="input-field" style={{ position: 'relative', width: '100%', display: 'grid', gridTemplateColumns: '1fr auto', gap: '10px', alignItems: 'center' }}>
           <textarea
             placeholder={!cwd ? 'Please select a working directory first...' : 'What do you want to do?'}
             value={input}
@@ -2032,19 +2069,40 @@ export default function Chat({ cwd, initialMessage, projectId }) {
             className="copyable-text"
             aria-label="Type your message to the CTO agent"
           />
-         
+          <button 
+            disabled={busy || !cwd} 
+            className="send-button"
+            style={{ opacity: !cwd ? 0.5 : 1 }}
+            aria-label={!cwd ? 'Select working directory first' : busy ? 'Processing request...' : 'Send message'}
+            title={!cwd ? 'Select working directory first' : busy ? 'Processing request...' : 'Send message'}
+            type="submit"
+          >
+            {!cwd ? '⛔' : busy ? '⏳' : '➤'}
+          </button>
         </div>
-        <button 
-          disabled={busy || !cwd} 
-          className="send-button"
-          style={{ opacity: !cwd ? 0.5 : 1 }}
-          aria-label={!cwd ? 'Select working directory first' : busy ? 'Processing request...' : 'Send message'}
-          title={!cwd ? 'Select working directory first' : busy ? 'Processing request...' : 'Send message'}
-          type="submit"
-        >
-          {!cwd ? '⛔' : busy ? '⏳' : '➤'}
-        </button>
       </form>
+      {/* Model selector below input */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '6px' }}>
+     
+        
+      
+        <select
+          className="chip-select"
+          value={model}
+          onChange={(e) => setModel(e.target.value)}
+          aria-label="Select model"
+        >
+          <option value="">Auto (default)</option>
+          {suggestedModels.map(m => (
+            <option key={m} value={m}>{m}</option>
+          ))}
+        </select>
+        <datalist id="cursor-models">
+          {suggestedModels.map(m => (
+            <option key={m} value={m} />
+          ))}
+        </datalist>
+      </div>
     </>
   );
 }

@@ -193,6 +193,10 @@ function startCursorAgent(message, sessionId, onLog, options = {}) {
   
   const wait = new Promise((resolve, reject) => {
     const args = ['-p', '--output-format="stream-json"'];
+    // Model selection support
+    if (options.model && typeof options.model === 'string') {
+      args.push('--model', options.model);
+    }
     
     // Add --resume sessionId if sessionId is provided
     if (sessionId) {
