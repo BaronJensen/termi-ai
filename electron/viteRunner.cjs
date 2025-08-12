@@ -13,6 +13,36 @@ function ensureDarwinPath(originalPath) {
   return parts.filter(Boolean).join(':');
 }
 
+function splitCommandLine(cmd) {
+  // Minimal shell-like splitter supporting quotes
+  const out = [];
+  let cur = '';
+  let quote = null;
+  for (let i = 0; i < cmd.length; i++) {
+    const ch = cmd[i];
+    if (quote) {
+      if (ch === quote) {
+        quote = null;
+      } else if (ch === '\\' && i + 1 < cmd.length) {
+        // simple escape support inside quotes
+        i += 1; cur += cmd[i];
+      } else {
+        cur += ch;
+      }
+    } else {
+      if (ch === '"' || ch === '\'') {
+        quote = ch;
+      } else if (/\s/.test(ch)) {
+        if (cur) { out.push(cur); cur = ''; }
+      } else {
+        cur += ch;
+      }
+    }
+  }
+  if (cur) out.push(cur);
+  return out;
+}
+
 function resolveExecutable(command, envPath) {
   const candidates = new Set();
   const parts = (envPath || '').split(':').filter(Boolean);
@@ -44,7 +74,63 @@ function parseUrlFromViteOutput(chunk) {
   return null;
 }
 
-function startVite(folderPath, manager='yarn', onLog) {
+function readProjectPackageJson(folderPath) {
+  try {
+    const pkgPath = path.join(folderPath, 'package.json');
+    if (!fs.existsSync(pkgPath)) return null;
+    const raw = fs.readFileSync(pkgPath, 'utf8');
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+function detectScriptKey(pkg) {
+  if (!pkg || !pkg.scripts) return 'dev';
+  if (pkg.scripts.dev) return 'dev';
+  // Look for vite dev or serve
+  const entries = Object.entries(pkg.scripts);
+  const vite = entries.find(([k, v]) => /vite/.test(String(v)) && /(dev|serve)/.test(String(v)));
+  if (vite) return vite[0];
+  // Next.js dev
+  const next = entries.find(([k, v]) => /next/.test(String(v)) && /dev/.test(String(v)));
+  if (next) return next[0];
+  // Fallback to start
+  if (pkg.scripts.start) return 'start';
+  return 'dev';
+}
+
+function ensureDevEnv(env) {
+  const out = { ...env };
+  out.NODE_ENV = 'development';
+  out.YARN_PRODUCTION = 'false';
+  out.npm_config_production = 'false';
+  return out;
+}
+
+function runInstallIfNeeded(folderPath, manager, env, onLog) {
+  return new Promise((resolve) => {
+    try {
+      const nodeModules = path.join(folderPath, 'node_modules');
+      const hasNodeModules = fs.existsSync(nodeModules);
+      // If missing node_modules or empty, install
+      const needsInstall = !hasNodeModules || (hasNodeModules && fs.readdirSync(nodeModules).length === 0);
+      if (!needsInstall) return resolve(true);
+      const cmd = manager === 'npm' ? 'npm' : manager === 'pnpm' ? 'pnpm' : 'yarn';
+      const args = manager === 'npm' ? ['install', '--include=dev'] : manager === 'pnpm' ? ['install', '--prod=false'] : ['install', '--production=false'];
+      if (onLog) onLog('info', `Installing dependencies: ${cmd} ${args.join(' ')}`);
+      const child = spawn(cmd, args, { cwd: folderPath, shell: process.platform === 'win32', env });
+      child.stdout.on('data', (d) => onLog && onLog('stdout', d.toString()));
+      child.stderr.on('data', (d) => onLog && onLog('stderr', d.toString()));
+      child.on('exit', (code) => resolve(code === 0));
+      child.on('error', () => resolve(false));
+    } catch {
+      resolve(false);
+    }
+  });
+}
+
+async function startVite(folderPath, manager='yarn', onLog) {
   const preferredManagers = Array.from(new Set([
     manager || 'yarn',
     'yarn',
@@ -52,42 +138,86 @@ function startVite(folderPath, manager='yarn', onLog) {
     'pnpm'
   ]));
 
-  const env = { ...process.env };
+  let env = { ...process.env };
   env.PATH = ensureDarwinPath(env.PATH);
+  // Prepend local node_modules/.bin so scripts can find local binaries regardless of manager quirks
+  try {
+    const localBin = path.join(folderPath, 'node_modules', '.bin');
+    if (fs.existsSync(localBin)) {
+      env.PATH = `${localBin}:${env.PATH}`;
+    }
+  } catch {}
+  // Force dev-like environment so devDependencies are available
+  env = ensureDevEnv(env);
 
-  let resolvedCommand = null;
-  let resolvedManager = null;
-  for (const m of preferredManagers) {
-    const cmd = m === 'npm' ? 'npm' : m === 'pnpm' ? 'pnpm' : 'yarn';
-    const absolute = resolveExecutable(cmd, env.PATH) || cmd;
-    // If not in PATH, resolveExecutable returns null; still try the bare cmd on Windows/shell
-    try {
-      fs.accessSync(absolute, fs.constants.X_OK);
-      resolvedCommand = absolute;
-      resolvedManager = m;
-      break;
-    } catch {
-      // If absolute is the same bare cmd, we cannot verify X_OK; try it only if on Windows/shell later
-      if (absolute === cmd && process.platform === 'win32') {
+  // Ensure dependencies present before running scripts
+  await runInstallIfNeeded(folderPath, manager, env, onLog);
+
+  // Resolve script key from package.json
+  const pkg = readProjectPackageJson(folderPath);
+  const scriptKey = detectScriptKey(pkg);
+  if (onLog) onLog('info', `Detected script: ${scriptKey}`);
+
+  // Determine how to execute: prefer direct local binary for reliability in production
+  const rawScript = (pkg && pkg.scripts && pkg.scripts[scriptKey]) ? String(pkg.scripts[scriptKey]) : scriptKey;
+  const preferVite = /(^|\s)vite(\s|$)/.test(rawScript);
+  const parts = splitCommandLine(rawScript);
+  let primary = parts[0] || 'vite';
+  let restArgs = parts.slice(1);
+  if (preferVite) {
+    primary = 'vite';
+    restArgs = [];
+  }
+
+  // Try local .bin first
+  let execCmd = null;
+  let execArgs = restArgs;
+  try {
+    const binName = process.platform === 'win32' ? `${primary}.cmd` : primary;
+    const localBinPath = path.join(folderPath, 'node_modules', '.bin', binName);
+    fs.accessSync(localBinPath, fs.constants.X_OK);
+    execCmd = localBinPath;
+  } catch {}
+
+  // If no local bin, fallback to package manager run
+  if (!execCmd) {
+    let resolvedCommand = null;
+    let resolvedManager = null;
+    for (const m of preferredManagers) {
+      const cmd = m === 'npm' ? 'npm' : m === 'pnpm' ? 'pnpm' : 'yarn';
+      const absolute = resolveExecutable(cmd, env.PATH) || cmd;
+      try {
+        fs.accessSync(absolute, fs.constants.X_OK);
         resolvedCommand = absolute;
         resolvedManager = m;
         break;
+      } catch {
+        if (absolute === cmd && process.platform === 'win32') {
+          resolvedCommand = absolute;
+          resolvedManager = m;
+          break;
+        }
       }
     }
+
+    if (!resolvedCommand) {
+      const msg = `No package manager executable found in PATH. Tried: ${preferredManagers.join(', ')}\nPATH: ${env.PATH}`;
+      const error = new Error(msg);
+      if (onLog) onLog('error', msg);
+      throw error;
+    }
+
+    // Best-effort: ensure dependencies present
+    try { runInstallIfNeeded(folderPath, resolvedManager, env, onLog).then(() => {}).catch(() => {}); } catch {}
+
+    execCmd = resolvedCommand;
+    execArgs = (resolvedManager === 'npm') ? ['run', scriptKey] : ['run', scriptKey];
   }
 
-  if (!resolvedCommand) {
-    const msg = `No package manager executable found in PATH. Tried: ${preferredManagers.join(', ')}\nPATH: ${env.PATH}`;
-    const error = new Error(msg);
-    if (onLog) onLog('error', msg);
-    throw error;
-  }
-
-  const args = resolvedManager === 'npm' ? ['run', 'dev'] : ['dev'];
-
-  const child = spawn(resolvedCommand, args, {
+  // Run the chosen command
+  const child = spawn(execCmd, execArgs, {
     cwd: folderPath,
-    shell: process.platform === 'win32', // make it work on Windows too
+    shell: process.platform === 'win32',
     env
   });
 
@@ -122,7 +252,7 @@ function startVite(folderPath, manager='yarn', onLog) {
     }
   };
 
-  if (onLog) onLog('info', `Running: ${resolvedCommand} ${args.join(' ')}\nCWD: ${folderPath}`);
+  if (onLog) onLog('info', `Running: ${execCmd} ${execArgs.join(' ')}\nCWD: ${folderPath}`);
   child.stdout.on('data', onStdout);
   child.stderr.on('data', onStderr);
   child.on('error', (err) => {

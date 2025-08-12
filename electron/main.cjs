@@ -599,12 +599,14 @@ ipcMain.handle('vite-start', async (_e, { folderPath, manager }) => {
     try { htmlServerRef.stop(); } catch {}
     htmlServerRef = null;
   }
-  const { child, urlPromise } = startVite(folderPath, manager || 'yarn', (level, line) => {
+  const result = await startVite(folderPath, manager || 'yarn', (level, line) => {
     try { if (win && !win.isDestroyed()) win.webContents.send('vite-log', { level, line, ts: Date.now() }); } catch {}
   });
-  viteProcess = child;
+  const { child, urlPromise } = result || {};
+  viteProcess = child || null;
   lastViteFolder = folderPath;
-  const url = (await urlPromise).replace('0.0.0.0', 'localhost');
+  const resolvedUrl = urlPromise ? await urlPromise : null;
+  const url = typeof resolvedUrl === 'string' ? resolvedUrl.replace('0.0.0.0', 'localhost') : resolvedUrl;
   updateMenuStatus(); // Update menu after starting Vite
   return { url };
 });
@@ -738,6 +740,20 @@ ipcMain.handle('cursor-run', async (_e, { message, cwd, runId: clientRunId, sess
 
 ipcMain.handle('get-working-directory', async () => {
   return lastViteFolder || process.cwd();
+});
+
+ipcMain.handle('get-app-info', async () => {
+  try {
+    return {
+      isPackaged: app.isPackaged === true,
+      env: {
+        NODE_ENV: process.env.NODE_ENV || null,
+        ELECTRON_IS_DEV: process.env.ELECTRON_IS_DEV || null
+      }
+    };
+  } catch (err) {
+    return { isPackaged: false, env: {}, error: err.message };
+  }
 });
 
 ipcMain.handle('set-working-directory', async (_e, path) => {
@@ -1506,9 +1522,42 @@ ipcMain.handle('packages-install', async (_e, { folderPath, manager = 'yarn' }) 
     if (!fs.existsSync(folderPath) || !fs.statSync(folderPath).isDirectory()) {
       throw new Error('Folder does not exist or is not a directory');
     }
-    const cmd = manager === 'npm' ? 'npm' : manager === 'pnpm' ? 'pnpm' : 'yarn';
-    const args = manager === 'npm' ? ['install'] : ['install'];
-    const child = spawn(cmd, args, { cwd: folderPath, shell: process.platform === 'win32', env: process.env });
+
+    // Normalize manager and args, forcing devDependencies to be installed even if NODE_ENV=production
+    const isNpm = manager === 'npm';
+    const isPnpm = manager === 'pnpm';
+    const cmd = isNpm ? 'npm' : isPnpm ? 'pnpm' : 'yarn';
+
+    // Default install args per manager
+    const args = isNpm
+      ? ['install', '--include=dev'] // ensure dev deps
+      : isPnpm
+        ? ['install', '--prod=false'] // include dev deps
+        : ['install', '--production=false']; // yarn classic
+
+    // Ensure environment variables do not prune devDependencies
+    const env = { ...process.env };
+    env.NODE_ENV = 'development';
+    // Yarn classic respects YARN_PRODUCTION
+    env.YARN_PRODUCTION = 'false';
+    // npm/pnpm respect npm_config_production
+    env.npm_config_production = 'false';
+
+    // Ensure local project binaries are on PATH when installing (for postinstall scripts etc.)
+    try {
+      const localBin = path.join(folderPath, 'node_modules', '.bin');
+      if (fs.existsSync(localBin)) {
+        const basePath = process.env.PATH || '';
+        env.PATH = `${localBin}:${basePath}`;
+      }
+    } catch {}
+
+    const child = spawn(cmd, args, {
+      cwd: folderPath,
+      shell: process.platform === 'win32',
+      env
+    });
+
     return await new Promise((resolve) => {
       child.on('exit', (code) => {
         if (code === 0) resolve({ ok: true });

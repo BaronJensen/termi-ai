@@ -40,6 +40,7 @@ contextBridge.exposeInMainWorld('cursovable', {
   getWorkingDirectory: () => ipcRenderer.invoke('get-working-directory'),
   openExternal: (url) => ipcRenderer.invoke('open-external', url),
   setWorkingDirectory: (path) => ipcRenderer.invoke('set-working-directory', path),
+  getAppInfo: () => ipcRenderer.invoke('get-app-info'),
   // Cursor auth APIs
   getCursorAuthStatus: () => ipcRenderer.invoke('cursor-auth-status'),
   triggerCursorAuthLogin: () => ipcRenderer.invoke('cursor-auth-login'),
