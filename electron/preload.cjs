@@ -23,6 +23,14 @@ contextBridge.exposeInMainWorld('cursovable', {
     ipcRenderer.on('cursor-log', listener);
     return () => ipcRenderer.removeListener('cursor-log', listener);
   },
+  // Performance monitoring
+  startPerf: () => ipcRenderer.invoke('perf-start'),
+  stopPerf: () => ipcRenderer.invoke('perf-stop'),
+  onPerfStats: (cb) => {
+    const listener = (_e, payload) => cb(payload);
+    ipcRenderer.on('perf-stats', listener);
+    return () => ipcRenderer.removeListener('perf-stats', listener);
+  },
   detectProject: (folderPath) => ipcRenderer.invoke('project-detect', folderPath),
   startHtml: (opts) => ipcRenderer.invoke('html-start', opts),
   stopHtml: () => ipcRenderer.invoke('html-stop'),

@@ -31,11 +31,18 @@ export default function ProjectView({ projectId, onBack, initialMessage }) {
   const [viteLogs, setViteLogs] = useState([]);
   const [cursorLogs, setCursorLogs] = useState([]);
   const [consoleLogs, setConsoleLogs] = useState([]);
+  const LOG_STORE_LIMIT = 1000; // keep memory bounded
+  const LOG_RENDER_LIMIT = 300; // render fewer lines for performance
+  const viteBufferRef = useRef([]);
+  const cursorBufferRef = useRef([]);
+  const consoleBufferRef = useRef([]);
+  const flushScheduledRef = useRef(false);
   const viteLogScroller = useRef(null);
   const cursorLogScroller = useRef(null);
   const consoleLogScroller = useRef(null);
   const [terminalStatusText, setTerminalStatusText] = useState('Checking...');
   const webviewRef = useRef(null);
+  const [perfStats, setPerfStats] = useState(null);
   // Commit modal state
   const [showCommit, setShowCommit] = useState(false);
   const [commitBusy, setCommitBusy] = useState(false);
@@ -110,22 +117,62 @@ export default function ProjectView({ projectId, onBack, initialMessage }) {
     return text;
   }
 
-  function appendSanitizedLogs(setter, payload) {
+  function formatBytes(b) {
+    const n = Number(b || 0);
+    if (n < 1024) return `${Math.round(n)} B/s`;
+    if (n < 1024 * 1024) return `${Math.round(n / 1024)} KB/s`;
+    return `${(n / (1024 * 1024)).toFixed(1)} MB/s`;
+  }
+
+  function flushLogBuffers() {
+    // Flush vite
+    setViteLogs((prev) => {
+      if (!viteBufferRef.current.length) return prev;
+      const merged = prev.concat(viteBufferRef.current);
+      viteBufferRef.current = [];
+      return merged.length > LOG_STORE_LIMIT ? merged.slice(-LOG_STORE_LIMIT) : merged;
+    });
+    // Flush cursor
+    setCursorLogs((prev) => {
+      if (!cursorBufferRef.current.length) return prev;
+      const merged = prev.concat(cursorBufferRef.current);
+      cursorBufferRef.current = [];
+      return merged.length > LOG_STORE_LIMIT ? merged.slice(-LOG_STORE_LIMIT) : merged;
+    });
+    // Flush console
+    setConsoleLogs((prev) => {
+      if (!consoleBufferRef.current.length) return prev;
+      const merged = prev.concat(consoleBufferRef.current);
+      consoleBufferRef.current = [];
+      return merged.length > LOG_STORE_LIMIT ? merged.slice(-LOG_STORE_LIMIT) : merged;
+    });
+    flushScheduledRef.current = false;
+  }
+
+  function scheduleFlush() {
+    if (flushScheduledRef.current) return;
+    flushScheduledRef.current = true;
+    if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+      window.requestAnimationFrame(() => flushLogBuffers());
+    } else {
+      setTimeout(() => flushLogBuffers(), 50);
+    }
+  }
+
+  function appendSanitizedLogsBuffered(bufferRef, payload) {
     const ts = payload.ts || Date.now();
     const level = payload.level || 'info';
     const runId = payload.runId;
     const raw = String(payload.line || '');
     const normalized = sanitizeTerminalText(raw);
     const lines = normalized.split(/\n/);
-    setter((prev) => {
-      const next = [...prev];
-      for (const ln of lines) {
-        const trimmed = ln.replace(/\s+$/g, '');
-        if (trimmed.length === 0) continue;
-        next.push({ level, line: trimmed, ts, ...(runId ? { runId } : {}) });
-      }
-      return next.length > 1000 ? next.slice(-1000) : next;
-    });
+    const tsString = new Date(ts).toLocaleTimeString();
+    for (const ln of lines) {
+      const trimmed = ln.replace(/\s+$/g, '');
+      if (trimmed.length === 0) continue;
+      bufferRef.current.push({ level, line: trimmed, ts, tss: tsString, ...(runId ? { runId } : {}) });
+    }
+    scheduleFlush();
   }
 
   if (!project) {
@@ -367,15 +414,32 @@ export default function ProjectView({ projectId, onBack, initialMessage }) {
     };
   }, [previewUrl]);
 
-  // Subscribe to preview and cursor logs
+  // Subscribe to preview and cursor logs (buffered to reduce re-renders)
   useEffect(() => {
     const unsubV = window.cursovable.onViteLog((payload) => {
-      appendSanitizedLogs(setViteLogs, payload);
+      appendSanitizedLogsBuffered(viteBufferRef, payload);
     });
     const unsubC = window.cursovable.onCursorLog((payload) => {
-      appendSanitizedLogs(setCursorLogs, payload);
+      appendSanitizedLogsBuffered(cursorBufferRef, payload);
     });
     return () => { try { unsubV && unsubV(); } catch {} try { unsubC && unsubC(); } catch {} };
+  }, []);
+
+  // Perf stats subscription
+  useEffect(() => {
+    let unsub = null;
+    let started = false;
+    const onPerf = (payload) => setPerfStats(payload);
+    try {
+      if (window.cursovable && window.cursovable.onPerfStats) {
+        unsub = window.cursovable.onPerfStats(onPerf);
+      }
+    } catch {}
+    (async () => { try { if (window.cursovable && window.cursovable.startPerf) { await window.cursovable.startPerf(); started = true; } } catch {} })();
+    return () => {
+      try { unsub && unsub(); } catch {}
+      try { if (started && window.cursovable && window.cursovable.stopPerf) window.cursovable.stopPerf(); } catch {}
+    };
   }, []);
 
   // Auto-scroll logs
@@ -383,16 +447,16 @@ export default function ProjectView({ projectId, onBack, initialMessage }) {
   useEffect(() => { if (cursorLogScroller.current) cursorLogScroller.current.scrollTop = cursorLogScroller.current.scrollHeight; }, [cursorLogs]);
   useEffect(() => { if (consoleLogScroller.current) consoleLogScroller.current.scrollTop = consoleLogScroller.current.scrollHeight; }, [consoleLogs]);
 
-  // Capture webview console messages
+  // Capture webview console messages (buffered)
   useEffect(() => {
     const el = webviewRef.current;
     if (!el) return;
     const onConsole = (e) => {
+      const ts = Date.now();
+      const tss = new Date(ts).toLocaleTimeString();
       const line = `[${e.level}] ${e.message}`;
-      setConsoleLogs((prev) => {
-        const next = [...prev, { level: e.level, line, ts: Date.now() }];
-        return next.length > 1000 ? next.slice(-1000) : next;
-      });
+      consoleBufferRef.current.push({ level: e.level, line, ts, tss });
+      scheduleFlush();
     };
     el.addEventListener('console-message', onConsole);
     return () => { try { el.removeEventListener('console-message', onConsole); } catch {} };
@@ -776,20 +840,21 @@ export default function ProjectView({ projectId, onBack, initialMessage }) {
               <button className={activeTab==='vite'?'active':''} onClick={() => setActiveTab('vite')}>Preview</button>
               <button className={activeTab==='cursor'?'active':''} onClick={() => setActiveTab('cursor')}>Terminal</button>
               <button className={activeTab==='console'?'active':''} onClick={() => setActiveTab('console')}>Web Console</button>
+              <button className={activeTab==='metrics'?'active':''} onClick={() => setActiveTab('metrics')}>Metrics</button>
             </div>
             <div className="terminal">
               {activeTab==='vite' && (
                 <div className="term-scroll" ref={viteLogScroller}>
-                  {viteLogs.map((l, i) => (
-                    <div key={i} className={`ln ${l.level || 'info'}`}>[{new Date(l.ts).toLocaleTimeString()}] {l.line}</div>
+                  {viteLogs.slice(-LOG_RENDER_LIMIT).map((l, i) => (
+                    <div key={i} className={`ln ${l.level || 'info'}`}>[{l.tss || new Date(l.ts).toLocaleTimeString()}] {l.line}</div>
                   ))}
                 </div>
               )}
               {activeTab==='cursor' && (
                 <>
                   <div className="term-scroll" ref={cursorLogScroller}>
-                    {cursorLogs.map((l, i) => (
-                      <div key={i} className={`ln ${l.level || 'info'}`}>[{new Date(l.ts).toLocaleTimeString()}] {l.line}</div>
+                    {cursorLogs.slice(-LOG_RENDER_LIMIT).map((l, i) => (
+                      <div key={i} className={`ln ${l.level || 'info'}`}>[{l.tss || new Date(l.ts).toLocaleTimeString()}] {l.line}</div>
                     ))}
                   </div>
                   <div className="agent-input">
@@ -809,9 +874,54 @@ export default function ProjectView({ projectId, onBack, initialMessage }) {
               )}
               {activeTab==='console' && (
                 <div className="term-scroll" ref={consoleLogScroller}>
-                  {consoleLogs.map((l, i) => (
-                    <div key={i} className={`ln ${l.level || 'info'}`}>[{new Date(l.ts).toLocaleTimeString()}] {l.line}</div>
+                  {consoleLogs.slice(-LOG_RENDER_LIMIT).map((l, i) => (
+                    <div key={i} className={`ln ${l.level || 'info'}`}>[{l.tss || new Date(l.ts).toLocaleTimeString()}] {l.line}</div>
                   ))}
+                </div>
+              )}
+              {activeTab==='metrics' && (
+                <div className="term-scroll" style={{ padding: 10, color: '#cde3ff' }}>
+                  {!perfStats ? (
+                    <div style={{ opacity: 0.7 }}>Collecting metrics…</div>
+                  ) : (
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                      <div style={{ gridColumn: '1 / span 2' }}>
+                        <div style={{ fontWeight: 600, marginBottom: 6 }}>App</div>
+                        <div style={{ fontFamily: 'ui-monospace, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace', fontSize: 12 }}>
+                          Main: {Math.round(perfStats.app?.main?.cpu || 0)}% CPU, {perfStats.app?.main?.memoryMB || 0} MB
+                          {perfStats.app?.gpu ? (
+                            <>
+                              <br />GPU: {Math.round(perfStats.app?.gpu?.cpu || 0)}% CPU, {perfStats.app?.gpu?.memoryMB || 0} MB
+                            </>
+                          ) : null}
+                          {(perfStats.app?.renderer || []).length ? (
+                            <>
+                              <br />Renderers: {(perfStats.app.renderer || []).map((r) => `${r.pid}:${Math.round(r.cpu || 0)}%/${r.memoryMB || 0}MB`).join('  ')}
+                            </>
+                          ) : null}
+                        </div>
+                      </div>
+                      <div style={{ gridColumn: '1 / span 2' }}>
+                        <div style={{ fontWeight: 600, marginBottom: 6 }}>Children</div>
+                        <div style={{ fontFamily: 'ui-monospace, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace', fontSize: 12 }}>
+                          {(perfStats.children || []).length ? (
+                            (perfStats.children || []).map((c) => (
+                              <div key={c.pid}>{c.name} (pid {c.pid}): {Math.round(c.cpu || 0)}% CPU, {c.memoryMB || 0} MB</div>
+                            ))
+                          ) : (
+                            <div style={{ opacity: 0.7 }}>No child processes</div>
+                          )}
+                        </div>
+                      </div>
+                      <div style={{ gridColumn: '1 / span 2' }}>
+                        <div style={{ fontWeight: 600, marginBottom: 6 }}>I/O</div>
+                        <div style={{ fontFamily: 'ui-monospace, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace', fontSize: 12 }}>
+                          Logs: cursor {formatBytes(perfStats.io?.logsBytesPerSec?.cursor)}, vite {formatBytes(perfStats.io?.logsBytesPerSec?.vite)}
+                          <br />Network: {formatBytes(perfStats.io?.networkBytesPerSec)}
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

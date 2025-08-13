@@ -91,6 +91,143 @@ const agentProcs = new Map(); // runId -> childRef
 let persistentTerminal = null; // Always-available terminal session
 const history = new HistoryStore(app);
 
+// --- Performance monitoring state ---
+let perfInterval = null;
+let perfLastLogBytes = { cursor: 0, vite: 0 };
+let perfAccumLogBytes = { cursor: 0, vite: 0 };
+let perfAccumNetworkBytes = 0;
+let webRequestListenerAttached = false;
+
+function attachNetworkListeners() {
+  try {
+    if (webRequestListenerAttached) return;
+    const sess = session.defaultSession;
+    if (!sess) return;
+    // Approximate network bytes via Content-Length when present
+    sess.webRequest.onCompleted((details) => {
+      try {
+        const headers = details.responseHeaders || {};
+        const lenKey = Object.keys(headers).find((k) => k.toLowerCase() === 'content-length');
+        const len = lenKey ? parseInt((headers[lenKey][0] || '0'), 10) : 0;
+        if (!Number.isNaN(len) && len > 0 && !details.fromCache) {
+          perfAccumNetworkBytes += len;
+        }
+      } catch {}
+    });
+    webRequestListenerAttached = true;
+  } catch {}
+}
+
+function getChildProcessesSnapshot() {
+  const children = [];
+  try {
+    if (viteProcess && viteProcess.pid) {
+      children.push({ name: 'vite', pid: viteProcess.pid });
+    }
+  } catch {}
+  try {
+    for (const [runId, child] of agentProcs.entries()) {
+      const pid = child && (child.pid || child.processId || child.process?.pid);
+      if (pid) children.push({ name: `cursor-agent:${runId}`, pid });
+    }
+  } catch {}
+  try {
+    if (persistentTerminal && persistentTerminal.pid) {
+      children.push({ name: 'persistent-terminal', pid: persistentTerminal.pid });
+    }
+  } catch {}
+  return children;
+}
+
+function readProcessStatsDarwin(pid) {
+  // macOS: ps returns %cpu and rss (KB)
+  return new Promise((resolve) => {
+    try {
+      const { execFile } = require('child_process');
+      execFile('ps', ['-o', 'pid=,%cpu=,rss=', '-p', String(pid)], { timeout: 1000 }, (err, stdout) => {
+        if (err) return resolve(null);
+        const line = (stdout || '').trim();
+        const parts = line.split(/\s+/).filter(Boolean);
+        if (parts.length >= 3) {
+          const cpu = parseFloat(parts[1]);
+          const rssKb = parseInt(parts[2], 10);
+          resolve({ pid, cpu: Number.isFinite(cpu) ? cpu : 0, memoryMB: Number.isFinite(rssKb) ? Math.round(rssKb / 1024) : 0 });
+        } else {
+          resolve(null);
+        }
+      });
+    } catch { resolve(null); }
+  });
+}
+
+async function samplePerfAndEmit() {
+  try {
+    if (!win || win.isDestroyed()) return;
+    const ts = Date.now();
+
+    // App-level metrics
+    let appMetrics = [];
+    try { appMetrics = app.getAppMetrics ? app.getAppMetrics() : []; } catch {}
+    const mainMetric = appMetrics.find((m) => m.type === 'Browser') || null;
+    const rendererMetrics = appMetrics.filter((m) => m.type === 'Renderer');
+    const gpuMetric = appMetrics.find((m) => m.type === 'GPU') || null;
+
+    // Main memory info
+    let mainMem = null;
+    try { mainMem = await process.getProcessMemoryInfo(); } catch {}
+
+    // Child process metrics
+    const childSnapshots = getChildProcessesSnapshot();
+    const childStats = await Promise.all(childSnapshots.map((c) => readProcessStatsDarwin(c.pid).then((s) => ({ name: c.name, pid: c.pid, ...(s || {}) }))));
+
+    // Throughput deltas
+    const cursorBytesPerSec = Math.max(0, perfAccumLogBytes.cursor - perfLastLogBytes.cursor);
+    const viteBytesPerSec = Math.max(0, perfAccumLogBytes.vite - perfLastLogBytes.vite);
+    perfLastLogBytes.cursor = perfAccumLogBytes.cursor;
+    perfLastLogBytes.vite = perfAccumLogBytes.vite;
+
+    const networkBytesPerSec = perfAccumNetworkBytes;
+    perfAccumNetworkBytes = 0;
+
+    const payload = {
+      ts,
+      app: {
+        main: mainMetric ? {
+          pid: mainMetric.pid,
+          cpu: mainMetric.cpu ? mainMetric.cpu.percentCPUUsage : undefined,
+          memoryMB: mainMetric.memory ? Math.round((mainMetric.memory.workingSetSize || 0) / (1024 * 1024)) : undefined
+        } : null,
+        renderer: rendererMetrics.map((m) => ({ pid: m.pid, cpu: m.cpu ? m.cpu.percentCPUUsage : undefined, memoryMB: m.memory ? Math.round((m.memory.workingSetSize || 0) / (1024 * 1024)) : undefined })),
+        gpu: gpuMetric ? { pid: gpuMetric.pid, cpu: gpuMetric.cpu ? gpuMetric.cpu.percentCPUUsage : undefined, memoryMB: gpuMetric.memory ? Math.round((gpuMetric.memory.workingSetSize || 0) / (1024 * 1024)) : undefined } : null,
+        mainMem: mainMem ? { rssMB: Math.round((mainMem.residentSet || 0) / 1024) } : null
+      },
+      children: childStats,
+      io: {
+        logsBytesPerSec: { cursor: cursorBytesPerSec, vite: viteBytesPerSec },
+        networkBytesPerSec
+      }
+    };
+
+    win.webContents.send('perf-stats', payload);
+  } catch {}
+}
+
+ipcMain.handle('perf-start', async () => {
+  try {
+    attachNetworkListeners();
+    if (perfInterval) return true;
+    perfInterval = setInterval(samplePerfAndEmit, 1000);
+    return true;
+  } catch { return false; }
+});
+
+ipcMain.handle('perf-stop', async () => {
+  try {
+    if (perfInterval) { clearInterval(perfInterval); perfInterval = null; }
+    return true;
+  } catch { return false; }
+});
+
 function isPrivateHost(hostname) {
   if (!hostname) return false;
   if (hostname === 'localhost') return true;
@@ -600,7 +737,10 @@ ipcMain.handle('vite-start', async (_e, { folderPath, manager }) => {
     htmlServerRef = null;
   }
   const result = await startVite(folderPath, manager || 'yarn', (level, line) => {
-    try { if (win && !win.isDestroyed()) win.webContents.send('vite-log', { level, line, ts: Date.now() }); } catch {}
+    try {
+      if (line) perfAccumLogBytes.vite += Buffer.byteLength(String(line));
+      if (win && !win.isDestroyed()) win.webContents.send('vite-log', { level, line, ts: Date.now() });
+    } catch {}
   });
   const { child, urlPromise } = result || {};
   viteProcess = child || null;
@@ -634,7 +774,10 @@ ipcMain.handle('html-start', async (_e, { folderPath }) => {
     htmlServerRef = null;
   }
   const server = startHtmlServer(folderPath, (level, line) => {
-    try { if (win && !win.isDestroyed()) win.webContents.send('vite-log', { level, line, ts: Date.now() }); } catch {}
+    try {
+      if (line) perfAccumLogBytes.vite += Buffer.byteLength(String(line));
+      if (win && !win.isDestroyed()) win.webContents.send('vite-log', { level, line, ts: Date.now() });
+    } catch {}
   });
   htmlServerRef = server;
   lastViteFolder = folderPath;
@@ -689,7 +832,10 @@ ipcMain.handle('cursor-run', async (_e, { message, cwd, runId: clientRunId, sess
   
   console.log(`🚀 Starting cursor-agent in directory: ${workingDir}`);
   const { child, wait } = startCursorAgent(message, sessionId, (level, line) => {
-    try { if (win && !win.isDestroyed()) win.webContents.send('cursor-log', { runId, level, line, ts: Date.now() }); } catch {}
+    try {
+      if (line) perfAccumLogBytes.cursor += Buffer.byteLength(String(line));
+      if (win && !win.isDestroyed()) win.webContents.send('cursor-log', { runId, level, line, ts: Date.now() });
+    } catch {}
   }, { cwd: workingDir, model, ...(typeof timeoutMs === 'number' ? { timeoutMs } : {}), ...(apiKey ? { apiKey, useTokenAuth: true } : {}) });
   
   if (child) agentProcs.set(runId, child);
@@ -846,6 +992,7 @@ ipcMain.handle('cursor-input', async (_e, { runId, data }) => {
         // Forward output
         child.stdout.on('data', (data) => {
           try {
+            try { if (data) perfAccumLogBytes.cursor += Buffer.byteLength(String(data)); } catch {}
             if (win && !win.isDestroyed()) {
               win.webContents.send('cursor-log', { 
                 runId: 'persistent', 
@@ -859,6 +1006,7 @@ ipcMain.handle('cursor-input', async (_e, { runId, data }) => {
         
         child.stderr.on('data', (data) => {
           try {
+            try { if (data) perfAccumLogBytes.cursor += Buffer.byteLength(String(data)); } catch {}
             if (win && !win.isDestroyed()) {
               win.webContents.send('cursor-log', { 
                 runId: 'persistent', 
