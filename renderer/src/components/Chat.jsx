@@ -1252,6 +1252,37 @@ export default function Chat({ cwd, initialMessage, projectId }) {
         }, ms);
       } catch {}
       
+      // Helpers to sanitize noisy terminal lines before JSON parse
+      const stripAnsiAndControls = (input) => {
+        try {
+          return String(input || '')
+            .replace(/\x1B\[[0-?]*[ -\/]*[@-~]/g, '')
+            .replace(/\u001b\[[0-9;]*[A-Za-z]/g, '')
+            .replace(/\x1b\[[0-9;]*[A-Za-z]/g, '')
+            .replace(/\[[0-9;]*m/g, '')
+            .replace(/\r(?!\n)/g, '\n')
+            .replace(/[^\x09\x0A\x0D\x20-\x7E]/g, '');
+        } catch { return String(input || ''); }
+      };
+      const extractJsonCandidate = (line) => {
+        if (!line) return null;
+        const startObj = line.indexOf('{');
+        const startArr = line.indexOf('[');
+        let start = -1;
+        let end = -1;
+        if (startObj !== -1 && (startArr === -1 || startObj < startArr)) {
+          start = startObj;
+          end = line.lastIndexOf('}');
+        } else if (startArr !== -1) {
+          start = startArr;
+          end = line.lastIndexOf(']');
+        }
+        if (start !== -1 && end !== -1 && end > start) {
+          return line.slice(start, end + 1);
+        }
+        return null;
+      };
+
       // Subscribe to log stream for this run
       unsubRef.current = window.cursovable.onCursorLog(async (payload) => {
         if (!payload || payload.runId !== runIdRef.current) {
@@ -1259,12 +1290,20 @@ export default function Chat({ cwd, initialMessage, projectId }) {
         }
         
         try {
-          // Parse each line as JSON (cursor-agent emits line-delimited JSON)
-          const lines = payload.line.split('\n').filter(line => line.trim());
+          // Parse each line as JSON, but sanitize noisy terminal escapes first
+          const sanitized = stripAnsiAndControls(payload.line);
+          const lines = sanitized.split('\n').filter(line => line.trim());
           
           for (const line of lines) {
             try {
-              const parsed = JSON.parse(line);
+              let parsed;
+              try {
+                parsed = JSON.parse(line);
+              } catch {
+                const candidate = extractJsonCandidate(line);
+                if (!candidate) throw new Error('no-json');
+                parsed = JSON.parse(candidate);
+              }
               console.log('Parsed log line:', parsed);
               
               // Handle assistant messages - accumulate text content

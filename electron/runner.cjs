@@ -233,8 +233,20 @@ function startCursorAgent(message, sessionId, onLog, options = {}) {
     // Define buffer and handlers before wiring streams so references are valid
     let buffer = '';
 
+    const stripAnsi = (s) => {
+      try {
+        return String(s || '')
+          .replace(/\x1B\[[0-?]*[ -\/]*[@-~]/g, '')
+          .replace(/\u001b\[[0-9;]*[A-Za-z]/g, '')
+          .replace(/\x1b\[[0-9;]*[A-Za-z]/g, '')
+          .replace(/\[[0-9;]*m/g, '')
+          .replace(/\r(?!\n)/g, '\n')
+          .replace(/[^\x09\x0A\x0D\x20-\x7E]/g, '');
+      } catch { return String(s || ''); }
+    };
+
     const handleData = (data) => {
-      const str = data.toString();
+      const str = stripAnsi(data.toString());
       // Update activity timestamp
       lastActivity = Date.now();
       
@@ -273,6 +285,9 @@ function startCursorAgent(message, sessionId, onLog, options = {}) {
       for (const raw of objs) {
         try {
           const obj = JSON.parse(raw);
+          if (onLog) {
+            try { onLog('json', JSON.stringify(obj)); } catch {}
+          }
           if (onLog && STREAM_DEBUG) onLog('info', `Successfully parsed JSON: ${obj.type || 'unknown-type'}`);
           
           const normalized = normalizeSuccessObject(obj);
@@ -333,7 +348,10 @@ function startCursorAgent(message, sessionId, onLog, options = {}) {
         for (const raw of objs) {
           try {
             const obj = JSON.parse(raw);
-            if (onLog) onLog('info', `Exit handler: Successfully parsed JSON: ${obj.type || 'unknown-type'}`);
+            if (onLog) {
+              try { onLog('json', JSON.stringify(obj)); } catch {}
+            }
+            if (onLog && STREAM_DEBUG) onLog('info', `Exit handler: Successfully parsed JSON: ${obj.type || 'unknown-type'}`);
             
             const normalized = normalizeSuccessObject(obj);
             if (normalized) {
