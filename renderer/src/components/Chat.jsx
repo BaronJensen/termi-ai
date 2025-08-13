@@ -769,6 +769,7 @@ export default function Chat({ cwd, initialMessage, projectId }) {
   const unsubRef = useRef(null);
   const streamIndexRef = useRef(-1);
   const runIdRef = useRef(null);
+  const runTimeoutRef = useRef(null);
 
   // Session storage functions
   const getSessionStorageKey = () => `cursovable-sessions-${projectId || 'legacy'}`;
@@ -1216,6 +1217,8 @@ export default function Chat({ cwd, initialMessage, projectId }) {
       // Prepare streaming message and subscribe to logs for this run
       const runId = `${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
       runIdRef.current = runId;
+      // Reset any previous local timeout and start a new one for this run
+      if (runTimeoutRef.current) { try { clearTimeout(runTimeoutRef.current); } catch {} runTimeoutRef.current = null; }
       
       // Create streaming assistant message
       let streamIdx;
@@ -1227,6 +1230,27 @@ export default function Chat({ cwd, initialMessage, projectId }) {
       
       // Track accumulated assistant text
       let accumulatedText = '';
+
+      // Start a local timeout aligned with settings
+      try {
+        const { cursorAgentTimeoutMs } = loadSettings();
+        const ms = typeof cursorAgentTimeoutMs === 'number' && cursorAgentTimeoutMs > 0 ? cursorAgentTimeoutMs : 900000;
+        runTimeoutRef.current = setTimeout(() => {
+          // Only act if this run is still the active one
+          if (runIdRef.current !== runId) return;
+          setMessages(m => {
+            const idx = streamIndexRef.current;
+            const timeoutText = '**Terminal timeout detected (client timer)**: No result received before timeout. The process may still be running in the background.';
+            if (idx >= 0 && idx < m.length) {
+              const updated = [...m];
+              updated[idx] = { who: 'assistant', text: timeoutText, isStreaming: false, rawData: { error: 'client_timeout' } };
+              return updated;
+            }
+            return [...m, { who: 'assistant', text: timeoutText, isStreaming: false, rawData: { error: 'client_timeout' } }];
+          });
+          setBusy(false);
+        }, ms);
+      } catch {}
       
       // Subscribe to log stream for this run
       unsubRef.current = window.cursovable.onCursorLog(async (payload) => {
@@ -1400,7 +1424,7 @@ export default function Chat({ cwd, initialMessage, projectId }) {
                     } catch (e) {
                       console.warn('Working directory lookup failed:', e);
                     }
-                  } else {
+                   } else {
                     // If we didn't get any assistant content, show a fallback message
                     setMessages(m => {
                       const idx = streamIndexRef.current;
@@ -1411,9 +1435,10 @@ export default function Chat({ cwd, initialMessage, projectId }) {
                       }
                       return m;
                     });
-                  }
+                   }
                   
                   // Clean up streaming state and allow new input
+                  if (runTimeoutRef.current) { try { clearTimeout(runTimeoutRef.current); } catch {} runTimeoutRef.current = null; }
                   if (unsubRef.current) { 
                     try { unsubRef.current(); } catch {} 
                     unsubRef.current = null; 
@@ -1486,6 +1511,7 @@ export default function Chat({ cwd, initialMessage, projectId }) {
                 }
                 
                 // Clean up streaming state and allow new input
+                if (runTimeoutRef.current) { try { clearTimeout(runTimeoutRef.current); } catch {} runTimeoutRef.current = null; }
                 if (unsubRef.current) { 
                   try { unsubRef.current(); } catch {} 
                   unsubRef.current = null; 
@@ -1587,6 +1613,7 @@ export default function Chat({ cwd, initialMessage, projectId }) {
         }
         
         // Clean up streaming state and allow new input
+        if (runTimeoutRef.current) { try { clearTimeout(runTimeoutRef.current); } catch {} runTimeoutRef.current = null; }
         if (unsubRef.current) { 
           try { unsubRef.current(); } catch {} 
           unsubRef.current = null; 
@@ -1622,6 +1649,7 @@ export default function Chat({ cwd, initialMessage, projectId }) {
       await checkTerminalStatus();
     } finally {
       // Clean up streaming state
+      if (runTimeoutRef.current) { try { clearTimeout(runTimeoutRef.current); } catch {} runTimeoutRef.current = null; }
       if (unsubRef.current) { try { unsubRef.current(); } catch {} unsubRef.current = null; }
       streamIndexRef.current = -1;
       runIdRef.current = null;
