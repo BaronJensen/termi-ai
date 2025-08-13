@@ -30,13 +30,16 @@ export default function ProjectView({ projectId, onBack, initialMessage }) {
   const [activeTab, setActiveTab] = useState('vite'); // 'vite' | 'cursor' | 'console'
   const [viteLogs, setViteLogs] = useState([]);
   const [cursorLogs, setCursorLogs] = useState([]);
+  const [rawCursorLogs, setRawCursorLogs] = useState([]);
   const [consoleLogs, setConsoleLogs] = useState([]);
   const LOG_STORE_LIMIT = 1000; // keep memory bounded
   const LOG_RENDER_LIMIT = 300; // render fewer lines for performance
   const viteBufferRef = useRef([]);
   const cursorBufferRef = useRef([]);
+  const rawCursorBufferRef = useRef([]);
   const consoleBufferRef = useRef([]);
   const flushScheduledRef = useRef(false);
+  const [showRawTerminal, setShowRawTerminal] = useState(false);
   const viteLogScroller = useRef(null);
   const cursorLogScroller = useRef(null);
   const consoleLogScroller = useRef(null);
@@ -139,6 +142,13 @@ export default function ProjectView({ projectId, onBack, initialMessage }) {
       cursorBufferRef.current = [];
       return merged.length > LOG_STORE_LIMIT ? merged.slice(-LOG_STORE_LIMIT) : merged;
     });
+    // Flush raw cursor
+    setRawCursorLogs((prev) => {
+      if (!rawCursorBufferRef.current.length) return prev;
+      const merged = prev.concat(rawCursorBufferRef.current);
+      rawCursorBufferRef.current = [];
+      return merged.length > LOG_STORE_LIMIT ? merged.slice(-LOG_STORE_LIMIT) : merged;
+    });
     // Flush console
     setConsoleLogs((prev) => {
       if (!consoleBufferRef.current.length) return prev;
@@ -166,6 +176,21 @@ export default function ProjectView({ projectId, onBack, initialMessage }) {
     const raw = String(payload.line || '');
     const normalized = sanitizeTerminalText(raw);
     const lines = normalized.split(/\n/);
+    const tsString = new Date(ts).toLocaleTimeString();
+    for (const ln of lines) {
+      const trimmed = ln.replace(/\s+$/g, '');
+      if (trimmed.length === 0) continue;
+      bufferRef.current.push({ level, line: trimmed, ts, tss: tsString, ...(runId ? { runId } : {}) });
+    }
+    scheduleFlush();
+  }
+
+  function appendRawLogsBuffered(bufferRef, payload) {
+    const ts = payload.ts || Date.now();
+    const level = payload.level || 'info';
+    const runId = payload.runId;
+    const raw = String(payload.line || '');
+    const lines = raw.split(/\n/);
     const tsString = new Date(ts).toLocaleTimeString();
     for (const ln of lines) {
       const trimmed = ln.replace(/\s+$/g, '');
@@ -421,6 +446,7 @@ export default function ProjectView({ projectId, onBack, initialMessage }) {
     });
     const unsubC = window.cursovable.onCursorLog((payload) => {
       appendSanitizedLogsBuffered(cursorBufferRef, payload);
+      appendRawLogsBuffered(rawCursorBufferRef, payload);
     });
     return () => { try { unsubV && unsubV(); } catch {} try { unsubC && unsubC(); } catch {} };
   }, []);
@@ -445,6 +471,7 @@ export default function ProjectView({ projectId, onBack, initialMessage }) {
   // Auto-scroll logs
   useEffect(() => { if (viteLogScroller.current) viteLogScroller.current.scrollTop = viteLogScroller.current.scrollHeight; }, [viteLogs]);
   useEffect(() => { if (cursorLogScroller.current) cursorLogScroller.current.scrollTop = cursorLogScroller.current.scrollHeight; }, [cursorLogs]);
+  useEffect(() => { if (showRawTerminal && cursorLogScroller.current) cursorLogScroller.current.scrollTop = cursorLogScroller.current.scrollHeight; }, [rawCursorLogs, showRawTerminal]);
   useEffect(() => { if (consoleLogScroller.current) consoleLogScroller.current.scrollTop = consoleLogScroller.current.scrollHeight; }, [consoleLogs]);
 
   // Capture webview console messages (buffered)
@@ -853,9 +880,12 @@ export default function ProjectView({ projectId, onBack, initialMessage }) {
               {activeTab==='cursor' && (
                 <>
                   <div className="term-scroll" ref={cursorLogScroller}>
-                    {cursorLogs.slice(-LOG_RENDER_LIMIT).map((l, i) => (
-                      <div key={i} className={`ln ${l.level || 'info'}`}>[{l.tss || new Date(l.ts).toLocaleTimeString()}] {l.line}</div>
-                    ))}
+                    {(showRawTerminal ? rawCursorLogs : cursorLogs)
+                      .slice(-LOG_RENDER_LIMIT)
+                      .filter((l) => showRawTerminal ? true : (l.level !== 'stream'))
+                      .map((l, i) => (
+                        <div key={i} className={`ln ${l.level || 'info'}`}>[{l.tss || new Date(l.ts).toLocaleTimeString()}] {l.line}</div>
+                      ))}
                   </div>
                   <div className="agent-input">
                     <div style={{color: '#cde3ff', fontSize: '11px', marginBottom: '4px'}}>
@@ -866,8 +896,13 @@ export default function ProjectView({ projectId, onBack, initialMessage }) {
                         </span>
                       )}
                     </div>
-                    <div style={{color: '#cde3ff', fontSize: '10px', marginBottom: '0px', opacity: 0.7}}>
-                      Status: <span id="terminal-status">{terminalStatusText}</span>
+                    <div style={{display:'flex', alignItems:'center', justifyContent:'space-between'}}>
+                      <div style={{color: '#cde3ff', fontSize: '10px', marginBottom: '0px', opacity: 0.7}}>
+                        Status: <span id="terminal-status">{terminalStatusText}</span>
+                      </div>
+                      <label style={{color:'#cde3ff', fontSize:'10px', display:'flex', alignItems:'center', gap:6}}>
+                        <input type="checkbox" checked={showRawTerminal} onChange={(e)=>setShowRawTerminal(e.target.checked)} /> Raw stream
+                      </label>
                     </div>
                   </div>
                 </>

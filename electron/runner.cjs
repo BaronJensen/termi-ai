@@ -192,6 +192,8 @@ function startCursorAgent(message, sessionId, onLog, options = {}) {
   let lastActivity = Date.now();
   
   const wait = new Promise((resolve, reject) => {
+    const STREAM_DEBUG = process.env.CURSOVABLE_STREAM_DEBUG === '1' || options.debugStream === true;
+    let lastBufferWarnAt = 0;
     const args = ['-p', '--output-format="stream-json"'];
     // If using token auth, append -a <API_TOKEN>
     if (options.useTokenAuth && options.apiKey) {
@@ -242,30 +244,40 @@ function startCursorAgent(message, sessionId, onLog, options = {}) {
       
       // Prevent buffer from growing indefinitely (memory safety)
       if (buffer.length > 50000) {
-        if (onLog) onLog('warn', 'Buffer exceeded 50KB limit, truncating to last 25KB');
+        const now = Date.now();
+        if (STREAM_DEBUG && onLog && now - lastBufferWarnAt > 5000) {
+          onLog('warn', 'Buffer exceeded 50KB limit, truncating to last 25KB');
+          lastBufferWarnAt = now;
+        }
         buffer = buffer.slice(-25000);
       }
       
       // Log buffer size if it gets large (potential memory issue)
       if (buffer.length > 10000 && onLog) {
-        onLog('warn', `Buffer is getting large: ${buffer.length} characters`);
-        onLog('info', debugBufferContent(buffer, 200));
+        const now = Date.now();
+        if (now - lastBufferWarnAt > 5000) {
+          if (STREAM_DEBUG) {
+            onLog('warn', `Buffer is getting large: ${buffer.length} characters`);
+            onLog('info', debugBufferContent(buffer, 200));
+          }
+          lastBufferWarnAt = now;
+        }
       }
       
       // Try to parse any JSON objects found
       const objs = extractJsonObjects(buffer);
-      if (objs.length > 0 && onLog) {
+      if (objs.length > 0 && onLog && STREAM_DEBUG) {
         onLog('info', `Extracted ${objs.length} potential JSON objects from buffer`);
       }
       
       for (const raw of objs) {
         try {
           const obj = JSON.parse(raw);
-          if (onLog) onLog('info', `Successfully parsed JSON: ${obj.type || 'unknown-type'}`);
+          if (onLog && STREAM_DEBUG) onLog('info', `Successfully parsed JSON: ${obj.type || 'unknown-type'}`);
           
           const normalized = normalizeSuccessObject(obj);
           if (normalized) {
-            if (onLog) onLog('info', 'Received success JSON from cursor-agent');
+            if (onLog && STREAM_DEBUG) onLog('info', 'Received success JSON from cursor-agent');
             settled = true;
             clearTimeout(timeoutId);
             clearTimeout(idleTimeoutId);
@@ -279,15 +291,21 @@ function startCursorAgent(message, sessionId, onLog, options = {}) {
             resolve(normalized);
           }
         } catch (parseError) {
-          if (onLog) onLog('error', `Failed to parse extracted JSON: ${parseError.message}`);
-          if (onLog) onLog('error', `Raw content: ${raw.substring(0, 200)}...`);
+          if (onLog && STREAM_DEBUG) onLog('error', `Failed to parse extracted JSON: ${parseError.message}`);
+          if (onLog && STREAM_DEBUG) onLog('error', `Raw content: ${raw.substring(0, 200)}...`);
         }
       }
       
       // If we have a very large buffer and no JSON objects, log it for debugging
       if (buffer.length > 5000 && objs.length === 0 && onLog) {
-        onLog('warn', 'Large buffer with no JSON objects detected');
-        onLog('info', debugBufferContent(buffer, 300));
+        const now = Date.now();
+        if (now - lastBufferWarnAt > 5000) {
+          if (STREAM_DEBUG) {
+            onLog('warn', 'Large buffer with no JSON objects detected');
+            onLog('info', debugBufferContent(buffer, 300));
+          }
+          lastBufferWarnAt = now;
+        }
       }
     };
 

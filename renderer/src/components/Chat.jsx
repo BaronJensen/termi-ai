@@ -1235,7 +1235,7 @@ export default function Chat({ cwd, initialMessage, projectId }) {
         }
         
         try {
-          // Parse each line as JSON
+          // Parse each line as JSON (cursor-agent emits line-delimited JSON)
           const lines = payload.line.split('\n').filter(line => line.trim());
           
           for (const line of lines) {
