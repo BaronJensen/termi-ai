@@ -20,6 +20,7 @@ export const handleJsonLogLine = async (parsed, {
   streamIndexRef,
   setToolCalls,
   toolCalls,
+  toolCallsRef,
   setHideToolCallIndicators,
   accumulatedText,
   setAccumulatedText,
@@ -112,6 +113,39 @@ export const handleJsonLogLine = async (parsed, {
       }
       return newMap;
     });
+    // also mirror into ref when available so final snapshot can include latest
+    if (typeof window !== 'undefined' && window.requestAnimationFrame) {
+      try {
+        const dataToStore = normalizeToolCallData(parsed);
+        if (dataToStore && dataToStore.callId) {
+          const { callId, toolCallData, subtype } = dataToStore;
+          if (toolCallsRef && toolCallsRef.current) {
+            const existing = toolCallsRef.current.get(callId);
+            if (existing) {
+              toolCallsRef.current.set(callId, {
+                ...existing,
+                toolCall: toolCallData,
+                isCompleted: subtype === 'completed' || subtype === 'end' || subtype === 'finished',
+                isStarted: subtype === 'started' || subtype === 'start',
+                completedAt: (subtype === 'completed' || subtype === 'end' || subtype === 'finished') ? Date.now() : existing.completedAt,
+                rawData: parsed,
+                lastUpdated: Date.now()
+              });
+            } else {
+              toolCallsRef.current.set(callId, {
+                toolCall: toolCallData,
+                isCompleted: subtype === 'completed' || subtype === 'end' || subtype === 'finished',
+                isStarted: subtype === 'started' || subtype === 'start',
+                startedAt: Date.now(),
+                completedAt: (subtype === 'completed' || subtype === 'end' || subtype === 'finished') ? Date.now() : null,
+                rawData: parsed,
+                lastUpdated: Date.now()
+              });
+            }
+          }
+        }
+      } catch {}
+    }
   }
   
   // Final result: replace streamed text with final text
@@ -135,7 +169,8 @@ export const handleJsonLogLine = async (parsed, {
     
     setMessages(m => {
       const idx = streamIndexRef.current;
-      const toolCallsSnapshot = Array.from(toolCalls.entries()).map(([id, info]) => ({ id, ...info }));
+      const callsSource = (toolCallsRef && toolCallsRef.current instanceof Map) ? toolCallsRef.current : toolCalls;
+      const toolCallsSnapshot = Array.from(callsSource.entries()).map(([id, info]) => ({ id, ...info }));
       if (idx >= 0 && idx < m.length) {
         const updated = [...m];
         updated[idx] = {
@@ -329,6 +364,7 @@ export const createLogStreamHandler = ({
   streamIndexRef,
   setToolCalls,
   toolCalls,
+  toolCallsRef,
   setHideToolCallIndicators,
   accumulatedText,
   setAccumulatedText,

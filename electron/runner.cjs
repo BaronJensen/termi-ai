@@ -292,6 +292,8 @@ function startCursorAgent(message, sessionId, onLog, options = {}) {
 
     // Define buffer and handlers before wiring streams so references are valid
     let buffer = '';
+    // Track seen content to deduplicate cursor-agent's duplicate JSON formats
+    const seenContent = new Set();
     // Minimal incremental JSON buffering: forward all JSON to renderer; renderer handles UI logic
 
     // Use shared utility for stripping ANSI/control characters
@@ -303,14 +305,39 @@ function startCursorAgent(message, sessionId, onLog, options = {}) {
       
       // Append to buffer first
       buffer += str;
-      
-      buffer += str;
       // Extract and emit any full JSON objects/arrays from buffer
       const { items, lastConsumedIndex } = extractJsonObjectsWithRanges(buffer);
       for (const { json: raw } of items) {
         try {
           const obj = JSON.parse(raw);
-          if (onLog) { try { onLog('json', stableSerialize(obj)); } catch {} }
+          
+          // Create a content-based key for deduplication
+          let contentKey = null;
+          if (obj.type === 'assistant' && obj.message && obj.message.content) {
+            // Extract the actual text content for deduplication
+            const textContent = obj.message.content
+              .filter(c => c && c.type === 'text' && typeof c.text === 'string')
+              .map(c => c.text)
+              .join('');
+            if (textContent) {
+              contentKey = `assistant:${textContent}`;
+            }
+          } else if (obj.type === 'result') {
+            // For results, use the result text as key
+            const resultText = typeof obj.result === 'string' ? obj.result : '';
+            if (resultText) {
+              contentKey = `result:${resultText}`;
+            }
+          }
+          
+          // Only emit if we haven't seen this content before
+          if (!contentKey || !seenContent.has(contentKey)) {
+            if (contentKey) {
+              seenContent.add(contentKey);
+            }
+            // Forward all parsed JSON to renderer; renderer decides how to use it
+            if (onLog) { try { onLog('json', stableSerialize(obj)); } catch {} }
+          }
           // Resolve on success objects to finish the run
           const normalized = normalizeSuccessObject(obj);
           if (normalized) {
@@ -354,8 +381,8 @@ function startCursorAgent(message, sessionId, onLog, options = {}) {
         }
       }
 
-      // Forward raw lines only in debug mode to reduce noise and duplication
-      if (STREAM_DEBUG && onLog) onLog('stream', str);
+      // Always forward raw lines so we can debug terminal output end-to-end
+      if (onLog) onLog('stream', str);
       
       // If we have a very large buffer, log it for debugging
       if (buffer.length > 5000 && onLog) {
@@ -393,7 +420,32 @@ function startCursorAgent(message, sessionId, onLog, options = {}) {
         for (const { json: raw } of items) {
           try {
             const obj = JSON.parse(raw);
-            if (onLog) { try { onLog('json', stableSerialize(obj)); } catch {} }
+            
+            // Create a content-based key for deduplication (same logic as handleData)
+            let contentKey = null;
+            if (obj.type === 'assistant' && obj.message && obj.message.content) {
+              const textContent = obj.message.content
+                .filter(c => c && c.type === 'text' && typeof c.text === 'string')
+                .map(c => c.text)
+                .join('');
+              if (textContent) {
+                contentKey = `assistant:${textContent}`;
+              }
+            } else if (obj.type === 'result') {
+              const resultText = typeof obj.result === 'string' ? obj.result : '';
+              if (resultText) {
+                contentKey = `result:${resultText}`;
+              }
+            }
+            
+            // Only emit if we haven't seen this content before
+            if (!contentKey || !seenContent.has(contentKey)) {
+              if (contentKey) {
+                seenContent.add(contentKey);
+              }
+              if (onLog) { try { onLog('json', stableSerialize(obj)); } catch {} }
+            }
+            
             const normalized = normalizeSuccessObject(obj);
             if (normalized) {
               settled = true;

@@ -57,6 +57,7 @@ export function useChatSend({
   const runTimeoutRef = useRef(null);
   const lastChunkRef = useRef('');
   const sawJsonRef = useRef(false);
+  const toolCallsRef = useRef(new Map());
 
   const send = useCallback(async (textOverride) => {
     const text = (typeof textOverride === 'string' ? textOverride : input).trim();
@@ -122,6 +123,9 @@ export function useChatSend({
         );
       } catch {}
       
+      // Keep a live mirror of toolCalls in a ref for snapshotting at result time
+      try { toolCallsRef.current = toolCalls instanceof Map ? new Map(toolCalls) : new Map(); } catch { toolCallsRef.current = new Map(); }
+
       // Subscribe to log stream for this run
       const logHandler = createLogStreamHandler({
         runId,
@@ -133,6 +137,7 @@ export function useChatSend({
         streamIndexRef,
         setToolCalls,
         toolCalls,
+        toolCallsRef,
         setHideToolCallIndicators,
         accumulatedText,
         setAccumulatedText: (text) => { accumulatedText = text; },
