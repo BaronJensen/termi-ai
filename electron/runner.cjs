@@ -144,8 +144,17 @@ function extractJsonObjectsWithRanges(text) {
   const items = [];
   let i = 0;
   let lastConsumedIndex = -1;
+  let maxJsonSize = 0; // Track the largest JSON object found
+  const startTime = Date.now();
+  const MAX_PARSE_TIME = 5000; // 5 second timeout for parsing
 
   while (i < text.length) {
+    // Add timeout protection for very large buffers
+    if (Date.now() - startTime > MAX_PARSE_TIME) {
+      console.warn(`JSON parsing timeout after ${MAX_PARSE_TIME}ms, buffer size: ${text.length}`);
+      break;
+    }
+    
     const ch0 = text[i];
     if (ch0 === '{' || ch0 === '[') {
       let depth = 0;
@@ -169,7 +178,14 @@ function extractJsonObjectsWithRanges(text) {
                 JSON.parse(jsonStr);
                 items.push({ json: jsonStr, start, end });
                 lastConsumedIndex = end;
-              } catch {}
+                maxJsonSize = Math.max(maxJsonSize, jsonStr.length);
+              } catch (parseError) {
+                // Log parsing errors for debugging large JSON objects
+                if (jsonStr.length > 10000) { // Only log errors for large objects
+                  console.warn(`Failed to parse large JSON (${jsonStr.length} chars): ${parseError.message}`);
+                  console.warn(`JSON preview: ${jsonStr.substring(0, 200)}...`);
+                }
+              }
               break;
             }
           }
@@ -177,6 +193,11 @@ function extractJsonObjectsWithRanges(text) {
       }
     }
     i++;
+  }
+
+  // Log if we found very large JSON objects
+  if (maxJsonSize > 100000 && process.env.CURSOVABLE_STREAM_DEBUG === '1') {
+    console.log(`Found JSON objects up to ${maxJsonSize} characters in size`);
   }
 
   return { items, lastConsumedIndex };
@@ -307,6 +328,15 @@ function startCursorAgent(message, sessionId, onLog, options = {}) {
       buffer += str;
       // Extract and emit any full JSON objects/arrays from buffer
       const { items, lastConsumedIndex } = extractJsonObjectsWithRanges(buffer);
+      
+      // Debug logging for large JSON objects
+      if (items.length > 0 && STREAM_DEBUG && onLog) {
+        const largeItems = items.filter(item => item.json.length > 50000);
+        if (largeItems.length > 0) {
+          onLog('info', `Extracted ${items.length} JSON objects, including ${largeItems.length} large ones (${largeItems.map(item => item.json.length).join(', ')} chars)`);
+        }
+      }
+      
       for (const { json: raw } of items) {
         try {
           const obj = JSON.parse(raw);
@@ -360,22 +390,23 @@ function startCursorAgent(message, sessionId, onLog, options = {}) {
       }
 
       // Prevent buffer from growing indefinitely (memory safety)
-      if (buffer.length > 50000) {
+      // Increased limits to handle large JSON objects (file content, patches, etc.)
+      if (buffer.length > 500000) { // 500KB limit instead of 50KB
         const now = Date.now();
         if (STREAM_DEBUG && onLog && now - lastBufferWarnAt > 5000) {
-          onLog('warn', 'Buffer exceeded 50KB limit, truncating to last 25KB');
+          onLog('warn', 'Buffer exceeded 500KB limit, truncating to last 250KB');
           lastBufferWarnAt = now;
         }
-        buffer = buffer.slice(-25000);
+        buffer = buffer.slice(-250000);
       }
       
       // Log buffer size if it gets large (potential memory issue)
-      if (buffer.length > 10000 && onLog) {
+      if (buffer.length > 100000 && onLog) { // 100KB threshold instead of 10KB
         const now = Date.now();
         if (now - lastBufferWarnAt > 5000) {
           if (STREAM_DEBUG) {
             onLog('warn', `Buffer is getting large: ${buffer.length} characters`);
-            onLog('info', debugBufferContent(buffer, 200));
+            onLog('info', debugBufferContent(buffer, 500)); // Show more content for debugging
           }
           lastBufferWarnAt = now;
         }
@@ -385,12 +416,12 @@ function startCursorAgent(message, sessionId, onLog, options = {}) {
       if (onLog) onLog('stream', str);
       
       // If we have a very large buffer, log it for debugging
-      if (buffer.length > 5000 && onLog) {
+      if (buffer.length > 50000 && onLog) { // 50KB threshold instead of 5KB
         const now = Date.now();
         if (now - lastBufferWarnAt > 5000) {
           if (STREAM_DEBUG) {
             onLog('warn', 'Large buffer with no JSON objects detected');
-            onLog('info', debugBufferContent(buffer, 300));
+            onLog('info', debugBufferContent(buffer, 500)); // Show more content for debugging
           }
           lastBufferWarnAt = now;
         }
