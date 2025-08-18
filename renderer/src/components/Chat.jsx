@@ -1,13 +1,15 @@
 
 import React, { useEffect, useRef, useState } from 'react';
-import Bubble from './Chat/Bubble';
 import Header from './Chat/Header';
 import MessageList from './Chat/MessageList';
 import InputBar from './Chat/InputBar';
 import ToolCallIndicator from './Chat/ToolCallIndicator';
 import SessionList from './Chat/SessionList';
+import StatusIndicators from './Chat/StatusIndicators';
+import SearchBar from './Chat/SearchBar';
+import MessagesContainer from './Chat/MessagesContainer';
 import { useChatSend } from './Chat/hooks/useChatSend';
-import { loadSettings } from '../store/settings';
+
 import { styles } from './Chat/styles';
 
 export default function Chat({ cwd, initialMessage, projectId }) {
@@ -62,7 +64,6 @@ export default function Chat({ cwd, initialMessage, projectId }) {
   const [currentSessionId, setCurrentSessionId] = useState(null); // Current active session
   const [showSessionList, setShowSessionList] = useState(false); // Toggle session list UI
   const [isCreatingNewSession, setIsCreatingNewSession] = useState(false); // Creating new session state
-  const [globalActionLogExpanded, setGlobalActionLogExpanded] = useState(true); // Global action log expanded state
   // Model selection (empty string means default/auto; don't send to CLI)
   const modelStorageKey = `cursovable-model-${projectId || 'legacy'}`;
   const suggestedModels = [
@@ -88,11 +89,6 @@ export default function Chat({ cwd, initialMessage, projectId }) {
   }, [model, modelStorageKey]);
   const scroller = useRef(null);
   const unsubRef = useRef(null);
-  const streamIndexRef = useRef(-1);
-  const runIdRef = useRef(null);
-  const runTimeoutRef = useRef(null);
-  const lastChunkRef = useRef('');
-  const sawJsonRef = useRef(false);
 
   // Session storage functions
   const getSessionStorageKey = () => `cursovable-sessions-${projectId || 'legacy'}`;
@@ -220,7 +216,6 @@ export default function Chat({ cwd, initialMessage, projectId }) {
     }
   };
 
-  // (Removed debug/session-first-message helpers)
 
   // Save messages to current session whenever they change
   useEffect(() => {
@@ -310,32 +305,7 @@ export default function Chat({ cwd, initialMessage, projectId }) {
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [showSearch, searchQuery, filteredMessages.length]);
 
-  // Export conversation to JSON
-  const exportConversation = () => {
-    try {
-      const dataStr = JSON.stringify(messages, null, 2);
-      const dataBlob = new Blob([dataStr], { type: 'application/json' });
-      const url = URL.createObjectURL(dataBlob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `cursovable-conversation-${new Date().toISOString().split('T')[0]}.json`;
-      link.click();
-      URL.revokeObjectURL(url);
-    } catch (error) {
-      console.error('Failed to export conversation:', error);
-      alert('Failed to export conversation');
-    }
-  };
-
-  // Clear conversation
-  const clearConversation = () => {
-    if (confirm('Are you sure you want to clear all messages? This action cannot be undone.')) {
-      setMessages([]);
-      setToolCalls(new Map());
-      setHideToolCallIndicators(false);
-    }
-  };
-
+ 
   async function checkTerminalStatus() {
     try {
       const status = await window.cursovable.getTerminalStatus();
@@ -360,106 +330,6 @@ export default function Chat({ cwd, initialMessage, projectId }) {
       }]);
     }
   }
-
-  async function forceCleanup() {
-    try {
-      const result = await window.cursovable.forceTerminalCleanup();
-      await checkTerminalStatus();
-      setMessages(m => [...m, { who: 'assistant', text: `**Cleanup completed:** ${result.message}. Cleaned ${result.processesCleaned} processes.`, rawData: { cleanup: result } }]);
-    } catch (err) {
-      setMessages(m => [...m, { who: 'assistant', text: `**Cleanup failed:** ${err.message}`, rawData: { error: err.message } }]);
-    }
-  }
-
-  // Force reset streaming state if something goes wrong
-  function forceResetStreamingState() {
-    if (unsubRef.current) { 
-      try { unsubRef.current(); } catch {} 
-      unsubRef.current = null; 
-    }
-    streamIndexRef.current = -1;
-    runIdRef.current = null;
-    setBusy(false);
-    
-    // Reset tool call indicator visibility
-    setHideToolCallIndicators(false);
-    
-    // Clear tool calls with animations if any exist
-    if (toolCalls.size > 0) {
-      clearAllToolCallsWithAnimation();
-    }
-    
-    // Add a message to inform the user
-    setMessages(m => [...m, { 
-      who: 'assistant', 
-      text: '**Streaming state reset:** Cleared all active streams and tool calls.', 
-      rawData: { action: 'reset_streaming_state' }
-    }]);
-  }
-
-  // Clear all tool calls manually
-  function clearToolCalls() {
-    setToolCalls(new Map());
-    setMessages(m => [...m, { 
-      who: 'assistant', 
-      text: '**Tool calls cleared:** All tool call indicators have been removed.', 
-      rawData: { action: 'clear_tool_calls' }
-    }]);
-  }
-
-  // Keep all tool calls permanently - no auto-cleanup
-  // The action log will show the complete history
-
-  // Enhanced cleanup function that clears all tool calls
-  function clearAllToolCallsWithAnimation() {
-    if (toolCalls.size === 0) return;
-    
-    setToolCalls(new Map());
-    
-    // Add a message to inform the user
-    setMessages(m => [...m, { 
-      who: 'assistant', 
-      text: '**All tool calls cleared:** All tool call indicators have been removed.', 
-      rawData: { action: 'clear_all_tool_calls' }
-    }]);
-  }
-
-  // Clear only completed tool calls
-  function clearCompletedToolCallsWithAnimation() {
-    const completedCallIds = Array.from(toolCalls.entries())
-      .filter(([_, toolCallInfo]) => toolCallInfo.isCompleted)
-      .map(([callId, _]) => callId);
-    
-    if (completedCallIds.length === 0) return;
-    
-    setToolCalls(current => {
-      const updated = new Map(current);
-      completedCallIds.forEach(callId => updated.delete(callId));
-      return updated;
-    });
-    
-    // Add a message to inform the user
-    setMessages(m => [...m, { 
-      who: 'assistant', 
-      text: `**Completed tools cleared:** ${completedCallIds.length} completed tool call indicators have been removed.`, 
-      rawData: { action: 'clear_completed_tool_calls', count: completedCallIds.length }
-    }]);
-  }
-
-  // Force cleanup all tool calls immediately (no animations, for debugging)
-  function forceClearAllToolCalls() {
-    if (toolCalls.size === 0) return;
-    
-    setToolCalls(new Map());
-    
-    // Add a message to inform the user
-    setMessages(m => [...m, { 
-      who: 'assistant', 
-      text: `**Force cleared:** All ${toolCalls.size} tool call indicators have been immediately removed.`, 
-      rawData: { action: 'force_clear_all_tool_calls', count: toolCalls.size }
-    }]);
-  }
-
 
 
   useEffect(() => {
@@ -537,194 +407,32 @@ export default function Chat({ cwd, initialMessage, projectId }) {
 
       
       {/* Search bar */}
-      {showSearch && (
-        <div className="search-container copyable-container" style={{
-          padding: '8px 12px',
-          margin: '8px 0',
-          backgroundColor: '#0b1018',
-          borderRadius: '4px',
-          fontSize: '12px',
-          fontFamily: 'monospace',
-          border: '1px solid #1d2633',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '8px',
-          color: '#e6e6e6'
-        }}>
-          <span>🔍</span>
-          <input
-            type="text"
-            placeholder="Search messages..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            style={{
-              flex: 1,
-              background: '#1a2331',
-              border: '1px solid #27354a',
-              color: '#e6e6e6',
-              padding: '4px 8px',
-              borderRadius: '3px',
-              fontSize: '12px',
-              outline: 'none'
-            }}
-            aria-label="Search messages"
-          />
-          {searchQuery && (
-            <button
-              onClick={() => {
-                setSearchQuery('');
-                setCurrentSearchIndex(0);
-              }}
-              style={{
-                fontSize: '10px',
-                padding: '2px 6px',
-                backgroundColor: '#6b7280',
-                color: '#e6e6e6',
-                border: 'none',
-                borderRadius: '3px',
-                cursor: 'pointer'
-              }}
-              aria-label="Clear search"
-            >
-              ✕
-            </button>
-          )}
-          <span style={{ fontSize: '10px', opacity: 0.7 }}>
-            {filteredMessages.length} / {messages.length} messages
-          </span>
-          {searchQuery && filteredMessages.length > 0 && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <button
-                onClick={() => navigateSearch('prev')}
-                style={{
-                  fontSize: '10px',
-                  padding: '2px 6px',
-                  backgroundColor: '#6b7280',
-                  color: '#e6e6e6',
-                  border: 'none',
-                  borderRadius: '3px',
-                  cursor: 'pointer'
-                }}
-                title="Previous result"
-                aria-label="Go to previous search result"
-              >
-                ↑
-              </button>
-              <span style={{ fontSize: '10px', minWidth: '20px', textAlign: 'center' }}>
-                {currentSearchIndex + 1}
-              </span>
-              <button
-                onClick={() => navigateSearch('next')}
-                style={{
-                  fontSize: '10px',
-                  padding: '2px 6px',
-                  backgroundColor: '#6b7280',
-                  color: '#e6e6e6',
-                  border: 'none',
-                  borderRadius: '3px',
-                  cursor: 'pointer'
-                }}
-                title="Next result"
-                aria-label="Go to next search result"
-              >
-                ↓
-              </button>
-            </div>
-          )}
-        </div>
-      )}
+      <SearchBar
+        showSearch={showSearch}
+        searchQuery={searchQuery}
+        setSearchQuery={setSearchQuery}
+        currentSearchIndex={currentSearchIndex}
+        setCurrentSearchIndex={setCurrentSearchIndex}
+        filteredMessages={filteredMessages}
+        messages={messages}
+        navigateSearch={navigateSearch}
+      />
       
 
       
-      <div className="messages" ref={scroller}>
-        <MessageList messages={filteredMessages} toolCalls={toolCalls} searchQuery={searchQuery} cwd={cwd || ''} />
-
-        {/* Tool Call Indicators - Only show while conversation is active */}
-        {!hideToolCallIndicators && Array.from(toolCalls.entries()).map(([callId, toolCallInfo], index) => {
-          // Only show tool calls that have actual tool call data
-          if (!toolCallInfo.toolCall) return null;
-          
-          console.log('Rendering tool call:', { callId, toolCallInfo });
-          
-          try {
-            return (
-              <ToolCallIndicator 
-                key={`tool-${callId}`}
-                toolCall={toolCallInfo.toolCall}
-                isCompleted={toolCallInfo.isCompleted}
-                rawData={toolCallInfo.rawData}
-                animationDelay={index * 0.1} // Stagger animations
-                cwd={cwd || ''}
-              />
-            );
-          } catch (error) {
-            console.error('Error rendering tool call indicator:', error, { callId, toolCallInfo });
-            // Return a fallback indicator instead of crashing
-            return (
-              <div key={`tool-error-${callId}`} style={{
-                padding: '8px 12px',
-                margin: '8px 0',
-                background: '#1f2937',
-                border: '1px solid #ef4444',
-                borderRadius: '8px',
-                color: '#ef4444',
-                fontSize: '12px',
-                fontFamily: 'monospace'
-              }}>
-                ⚠️ Tool call error: {callId}
-              </div>
-            );
-          }
-        })}
-        
-
-      </div>
+      <MessagesContainer
+        scroller={scroller}
+        filteredMessages={filteredMessages}
+        toolCalls={toolCalls}
+        searchQuery={searchQuery}
+        cwd={cwd}
+        hideToolCallIndicators={hideToolCallIndicators}
+      />
       
    
       
       {/* Status indicators at the bottom */}
-      {busy && (
-        <div className="status-indicators copyable-container" style={{
-          padding: '16px',
-          margin: '12px 0',
-          background: 'linear-gradient(135deg, #0b1018 0%, #1a2331 100%)',
-          borderRadius: '12px',
-          border: '1px solid #1d2633',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '16px',
-          fontSize: '14px',
-          color: '#e6e6e6',
-          boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
-          transition: 'all 0.3s ease'
-        }}>
-          <div className="spinner" style={{
-            width: '20px',
-            height: '20px',
-            border: '3px solid #1a2331',
-            borderTop: '3px solid #3c6df0',
-            borderRadius: '50%',
-            animation: 'spin 1s linear infinite'
-          }}></div>
-          <div className="copyable-text" style={{ display: 'flex', flexDirection: 'column', gap: '4px', flex: 1 }}>
-            <span style={{ fontWeight: '500', color: '#3c6df0' }}>🤔 Thinking...</span>
-            <span style={{ fontSize: '12px', opacity: 0.7, color: '#c9d5e1' }}>
-              Processing your request with cursor-agent...
-            </span>
-          </div>
-          <button
-            onClick={() => {
-              const text = '🤔 Thinking... Processing your request with cursor-agent...';
-              navigator.clipboard.writeText(text);
-            }}
-            className="copy-button"
-            title="Copy status message"
-            aria-label="Copy status message"
-          >
-            Copy
-          </button>
-        </div>
-      )}
+      <StatusIndicators busy={busy} />
       
       <InputBar
         value={input}
