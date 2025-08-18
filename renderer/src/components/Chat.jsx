@@ -5,6 +5,7 @@ import Header from './Chat/Header';
 import MessageList from './Chat/MessageList';
 import InputBar from './Chat/InputBar';
 import ToolCallIndicator from './Chat/ToolCallIndicator';
+import SessionList from './Chat/SessionList';
 import { loadSettings } from '../store/settings';
 import { styles } from './Chat/styles';
 
@@ -1163,151 +1164,16 @@ export default function Chat({ cwd, initialMessage, projectId }) {
         onNewSession={() => { createNewSession(); setShowSessionList(false); }}
       />
 
-      {/* Session list UI */}
-      {showSessionList && (
-        <div style={{
-          padding: '12px',
-          margin: '8px 0',
-          backgroundColor: '#0b1018',
-          borderRadius: '8px',
-          border: '1px solid #1d2633',
-          maxHeight: '300px',
-          overflowY: 'auto'
-        }}>
-          <div style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            marginBottom: '12px',
-            paddingBottom: '8px',
-            borderBottom: '1px solid #1d2633'
-          }}>
-            <h3 style={{ 
-              margin: 0, 
-              fontSize: '14px', 
-              color: '#3c6df0',
-              fontWeight: '600'
-            }}>
-              Session History
-            </h3>
-            <button
-              onClick={() => createNewSession()}
-              style={{
-                fontSize: '12px',
-                padding: '6px 12px',
-                backgroundColor: '#10b981',
-                color: '#ffffff',
-                border: 'none',
-                borderRadius: '6px',
-                cursor: 'pointer',
-                fontWeight: '500'
-              }}
-            >
-              + New Session
-            </button>
-          </div>
-          
-          {sessions.length === 0 ? (
-            <div style={{
-              textAlign: 'center',
-              color: '#6b7280',
-              fontSize: '12px',
-              padding: '20px'
-            }}>
-              No sessions yet. Create your first session!
-            </div>
-          ) : (
-            sessions
-              .sort((a, b) => b.updatedAt - a.updatedAt)
-              .map(session => (
-                <div
-                  key={session.id}
-                  style={{
-                    padding: '8px 12px',
-                    margin: '4px 0',
-                    backgroundColor: session.id === currentSessionId ? '#1a2331' : '#111827',
-                    border: session.id === currentSessionId ? '1px solid #3c6df0' : '1px solid #374151',
-                    borderRadius: '6px',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    transition: 'all 0.2s ease'
-                  }}
-                  onClick={() => {
-                    if (session.id !== currentSessionId) {
-                      loadSession(session.id);
-                      setShowSessionList(false);
-                    }
-                  }}
-                >
-                  <div style={{ flex: 1 }}>
-                    <div style={{
-                      fontSize: '12px',
-                      color: session.id === currentSessionId ? '#3c6df0' : '#e6e6e6',
-                      fontWeight: session.id === currentSessionId ? '600' : '400',
-                      marginBottom: '2px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '6px'
-                    }}>
-                      {session.name}
-                      {/* Removed first message badge in list */}
-                    </div>
-                    <div style={{
-                      fontSize: '10px',
-                      color: '#6b7280',
-                      display: 'flex',
-                      gap: '8px'
-                    }}>
-                      <span>{(session.messages || []).length} messages</span>
-                      <span>•</span>
-                      <span>{new Date(session.updatedAt).toLocaleString()}</span>
-                      {session.cursorSessionId && (
-                        <>
-                          <span>•</span>
-                          <span style={{ color: '#10b981' }} title={`Linked to cursor-agent session: ${session.cursorSessionId}`}>🔗</span>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                  
-                  {session.id === currentSessionId && (
-                    <span style={{
-                      fontSize: '10px',
-                      color: '#10b981',
-                      fontWeight: '600',
-                      marginRight: '8px'
-                    }}>
-                      ACTIVE
-                    </span>
-                  )}
-                  
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (confirm(`Delete session "${session.name}"? This cannot be undone.`)) {
-                        deleteSession(session.id);
-                      }
-                    }}
-                    style={{
-                      fontSize: '10px',
-                      padding: '2px 6px',
-                      backgroundColor: '#ef4444',
-                      color: '#ffffff',
-                      border: 'none',
-                      borderRadius: '3px',
-                      cursor: 'pointer'
-                    }}
-                    title="Delete session"
-                  >
-                    🗑️
-                  </button>
-                </div>
-              ))
-          )}
-        </div>
-      )}
+      <SessionList
+        showSessionList={showSessionList}
+        sessions={sessions}
+        currentSessionId={currentSessionId}
+        createNewSession={createNewSession}
+        loadSession={loadSession}
+        deleteSession={deleteSession}
+        setShowSessionList={setShowSessionList}
+      />
+
       
       {/* Search bar */}
       {showSearch && (
@@ -1450,48 +1316,7 @@ export default function Chat({ cwd, initialMessage, projectId }) {
           }
         })}
         
-        {/* Debug: Show tool call count - Only show while conversation is active */}
-        {!hideToolCallIndicators && toolCalls.size > 0 && (
-          <div style={{ 
-            fontSize: '10px', 
-            color: '#6b7280', 
-            padding: '8px 12px',
-            fontFamily: 'monospace',
-            background: 'rgba(15, 23, 42, 0.8)',
-            borderRadius: '8px',
-            border: '1px solid #374151',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '12px',
-            animation: 'fadeInUp 0.3s ease-out',
-            boxShadow: '0 2px 8px rgba(0, 0, 0, 0.2)'
-          }}>
-            <span style={{ 
-              background: '#3c6df0', 
-              color: 'white', 
-              borderRadius: '50%', 
-              width: '18px', 
-              height: '18px', 
-              display: 'flex', 
-              alignItems: 'center', 
-              justifyContent: 'center',
-              fontSize: '9px',
-              fontWeight: 'bold',
-              animation: toolCalls.size > 0 ? 'pulse 2s ease-in-out infinite' : 'none'
-            }}>
-              {toolCalls.size}
-            </span>
-            <span style={{ fontWeight: '500' }}>Active Tools</span>
-            <span style={{ color: '#10b981', display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <span style={{ fontSize: '8px' }}>✓</span>
-              {Array.from(toolCalls.values()).filter(t => t.isCompleted).length}
-            </span>
-            <span style={{ color: '#f59e0b', display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <span style={{ fontSize: '8px' }}>⚡</span>
-              {Array.from(toolCalls.values()).filter(t => !t.isCompleted).length}
-            </span>
-          </div>
-        )}
+
       </div>
       
    
