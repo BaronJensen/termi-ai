@@ -5,6 +5,7 @@ let pty = null;
 try { pty = require('node-pty'); } catch {}
 const fs = require('fs');
 const path = require('path');
+const { stripAnsiAndControls: stripAnsi } = require('./utils/ansi.cjs');
 
 function extractJsonObjects(text) {
   // Enhanced JSON extraction that handles nested structures, arrays, and special characters
@@ -122,6 +123,65 @@ function extractJsonObjects(text) {
   return results;
 }
 
+// Stable serializer to canonicalize JSON (sorts object keys recursively)
+function stableSerialize(value) {
+  if (value === null || typeof value !== 'object') {
+    return JSON.stringify(value);
+  }
+  if (Array.isArray(value)) {
+    return '[' + value.map((v) => stableSerialize(v)).join(',') + ']';
+  }
+  const keys = Object.keys(value).sort();
+  const parts = [];
+  for (const k of keys) {
+    parts.push(JSON.stringify(k) + ':' + stableSerialize(value[k]));
+  }
+  return '{' + parts.join(',') + '}';
+}
+
+// Extract complete JSON items with their ranges so we can trim the buffer
+function extractJsonObjectsWithRanges(text) {
+  const items = [];
+  let i = 0;
+  let lastConsumedIndex = -1;
+
+  while (i < text.length) {
+    const ch0 = text[i];
+    if (ch0 === '{' || ch0 === '[') {
+      let depth = 0;
+      let inString = false;
+      let escapeNext = false;
+      const start = i;
+
+      for (; i < text.length; i++) {
+        const ch = text[i];
+        if (escapeNext) { escapeNext = false; continue; }
+        if (ch === '\\') { escapeNext = true; continue; }
+        if (ch === '"') { inString = !inString; continue; }
+        if (!inString) {
+          if (ch === '{' || ch === '[') depth++;
+          else if (ch === '}' || ch === ']') {
+            depth--;
+            if (depth === 0) {
+              const end = i;
+              const jsonStr = text.slice(start, end + 1);
+              try {
+                JSON.parse(jsonStr);
+                items.push({ json: jsonStr, start, end });
+                lastConsumedIndex = end;
+              } catch {}
+              break;
+            }
+          }
+        }
+      }
+    }
+    i++;
+  }
+
+  return { items, lastConsumedIndex };
+}
+
 function debugBufferContent(buffer, maxLength = 500) {
   // Helper function to debug buffer content
   if (!buffer || buffer.length === 0) {
@@ -218,7 +278,7 @@ function startCursorAgent(message, sessionId, onLog, options = {}) {
     const env = { ...process.env };
     // If apiKey provided, pass as OPENAI_API_KEY to the child process only
     if (options.apiKey && typeof options.apiKey === 'string') {
-      env.OPENAI_API_KEY = options.apiKey;
+      env.CURSOR_CLI_API_KEY = options.apiKey;
     }
 
     // Log a safe, non-sensitive confirmation that token auth is enabled
@@ -232,28 +292,46 @@ function startCursorAgent(message, sessionId, onLog, options = {}) {
 
     // Define buffer and handlers before wiring streams so references are valid
     let buffer = '';
+    // Minimal incremental JSON buffering: forward all JSON to renderer; renderer handles UI logic
 
-    const stripAnsi = (s) => {
-      try {
-        return String(s || '')
-          .replace(/\x1B\[[0-?]*[ -\/]*[@-~]/g, '')
-          .replace(/\u001b\[[0-9;]*[A-Za-z]/g, '')
-          .replace(/\x1b\[[0-9;]*[A-Za-z]/g, '')
-          .replace(/\[[0-9;]*m/g, '')
-          .replace(/\r(?!\n)/g, '\n')
-          .replace(/[^\x09\x0A\x0D\x20-\x7E]/g, '');
-      } catch { return String(s || ''); }
-    };
+    // Use shared utility for stripping ANSI/control characters
 
     const handleData = (data) => {
       const str = stripAnsi(data.toString());
       // Update activity timestamp
       lastActivity = Date.now();
       
-      // forward raw lines to UI for streaming feedback
-      if (onLog) onLog('stream', str);
+      // Append to buffer first
       buffer += str;
       
+      buffer += str;
+      // Extract and emit any full JSON objects/arrays from buffer
+      const { items, lastConsumedIndex } = extractJsonObjectsWithRanges(buffer);
+      for (const { json: raw } of items) {
+        try {
+          const obj = JSON.parse(raw);
+          if (onLog) { try { onLog('json', stableSerialize(obj)); } catch {} }
+          // Resolve on success objects to finish the run
+          const normalized = normalizeSuccessObject(obj);
+          if (normalized) {
+            settled = true;
+            clearTimeout(timeoutId);
+            clearTimeout(idleTimeoutId);
+            try { 
+              if (childRef && typeof childRef.kill === 'function') {
+                childRef.kill('SIGTERM');
+              } else if (childRef && childRef.pid) {
+                process.kill(childRef.pid, 'SIGTERM');
+              }
+            } catch {}
+            resolve(normalized);
+          }
+        } catch {}
+      }
+      if (lastConsumedIndex >= 0) {
+        buffer = buffer.slice(lastConsumedIndex + 1);
+      }
+
       // Prevent buffer from growing indefinitely (memory safety)
       if (buffer.length > 50000) {
         const now = Date.now();
@@ -275,44 +353,12 @@ function startCursorAgent(message, sessionId, onLog, options = {}) {
           lastBufferWarnAt = now;
         }
       }
+
+      // Forward raw lines only in debug mode to reduce noise and duplication
+      if (STREAM_DEBUG && onLog) onLog('stream', str);
       
-      // Try to parse any JSON objects found
-      const objs = extractJsonObjects(buffer);
-      if (objs.length > 0 && onLog && STREAM_DEBUG) {
-        onLog('info', `Extracted ${objs.length} potential JSON objects from buffer`);
-      }
-      
-      for (const raw of objs) {
-        try {
-          const obj = JSON.parse(raw);
-          if (onLog) {
-            try { onLog('json', JSON.stringify(obj)); } catch {}
-          }
-          if (onLog && STREAM_DEBUG) onLog('info', `Successfully parsed JSON: ${obj.type || 'unknown-type'}`);
-          
-          const normalized = normalizeSuccessObject(obj);
-          if (normalized) {
-            if (onLog && STREAM_DEBUG) onLog('info', 'Received success JSON from cursor-agent');
-            settled = true;
-            clearTimeout(timeoutId);
-            clearTimeout(idleTimeoutId);
-            try { 
-              if (childRef && typeof childRef.kill === 'function') {
-                childRef.kill('SIGTERM');
-              } else if (childRef && childRef.pid) {
-                process.kill(childRef.pid, 'SIGTERM');
-              }
-            } catch {}
-            resolve(normalized);
-          }
-        } catch (parseError) {
-          if (onLog && STREAM_DEBUG) onLog('error', `Failed to parse extracted JSON: ${parseError.message}`);
-          if (onLog && STREAM_DEBUG) onLog('error', `Raw content: ${raw.substring(0, 200)}...`);
-        }
-      }
-      
-      // If we have a very large buffer and no JSON objects, log it for debugging
-      if (buffer.length > 5000 && objs.length === 0 && onLog) {
+      // If we have a very large buffer, log it for debugging
+      if (buffer.length > 5000 && onLog) {
         const now = Date.now();
         if (now - lastBufferWarnAt > 5000) {
           if (STREAM_DEBUG) {
@@ -341,18 +387,13 @@ function startCursorAgent(message, sessionId, onLog, options = {}) {
     const childExitHandler = (code) => {
       if (onLog) onLog('info', `cursor-agent exited with code ${code}`);
       // If not already resolved, try one last parse
-      if (buffer && !settled) {
-        const objs = extractJsonObjects(buffer);
-        if (onLog) onLog('info', `Exit handler: Extracted ${objs.length} potential JSON objects from final buffer`);
-        
-        for (const raw of objs) {
+      // Final pass on remaining buffer
+      if (buffer) {
+        const { items } = extractJsonObjectsWithRanges(buffer);
+        for (const { json: raw } of items) {
           try {
             const obj = JSON.parse(raw);
-            if (onLog) {
-              try { onLog('json', JSON.stringify(obj)); } catch {}
-            }
-            if (onLog && STREAM_DEBUG) onLog('info', `Exit handler: Successfully parsed JSON: ${obj.type || 'unknown-type'}`);
-            
+            if (onLog) { try { onLog('json', stableSerialize(obj)); } catch {} }
             const normalized = normalizeSuccessObject(obj);
             if (normalized) {
               settled = true;
@@ -361,10 +402,7 @@ function startCursorAgent(message, sessionId, onLog, options = {}) {
               resolve(normalized);
               return;
             }
-          } catch (parseError) {
-            if (onLog) onLog('error', `Exit handler: Failed to parse extracted JSON: ${parseError.message}`);
-            if (onLog) onLog('error', `Exit handler: Raw content: ${raw.substring(0, 200)}...`);
-          }
+          } catch {}
         }
       }
       // As a fallback, reject with raw output

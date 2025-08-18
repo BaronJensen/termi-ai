@@ -26,31 +26,43 @@ export const handleJsonLogLine = async (parsed, {
   lastChunkRef,
   setBusy,
   runTimeoutRef,
-  unsubRef,
-  streamIndexRef
+  unsubRef
 }) => {
   console.log('Parsed log line:', parsed);
   
-  // Handle assistant messages - accumulate text content
-  if (parsed.type === 'assistant' && parsed.message && parsed.message.content) {
-    for (const content of parsed.message.content) {
-      if (content.type === 'text' && content.text) {
-        const newText = appendWithOverlap(accumulatedText, content.text, lastChunkRef.current);
-        setAccumulatedText(newText);
-        lastChunkRef.current = content.text;
+  // Handle assistant messages - accumulate text content (role: assistant only)
+  if (
+    parsed.type === 'assistant' &&
+    parsed.message && parsed.message.role === 'assistant' &&
+    parsed.message.content
+  ) {
+    const chunkText = parsed.message.content
+      .filter(c => c && c.type === 'text' && typeof c.text === 'string')
+      .map(c => c.text)
+      .join('');
+    if (chunkText) {
+      const newText = appendWithOverlap(accumulatedText, chunkText, lastChunkRef.current);
+      setAccumulatedText(newText);
+      lastChunkRef.current = chunkText;
         
-        setMessages(m => {
-          const idx = streamIndexRef.current;
-          if (idx >= 0 && idx < m.length) {
-            const updated = [...m];
+      setMessages(m => {
+        const idx = streamIndexRef.current;
+        if (idx >= 0 && idx < m.length) {
+          const updated = [...m];
+          const currentText = String((updated[idx] && updated[idx].text) || '').trim();
+          const currentWords = currentText ? currentText.split(/\s+/).filter(Boolean).length : 0;
+          const newWords = String(newText || '').trim().split(/\s+/).filter(Boolean).length;
+          const hasShown = currentWords >= 1; // Bubble already visible
+          const meetsThreshold = newWords >= 5; // Show only after 5 words
+          if (hasShown || meetsThreshold) {
             updated[idx] = { ...updated[idx], text: newText, isStreaming: true };
-            return updated;
           }
-          return m;
-        });
+          return updated;
+        }
+        return m;
+      });
         
         await new Promise(resolve => setTimeout(resolve, 10));
-      }
     }
   }
   
@@ -123,23 +135,26 @@ export const handleJsonLogLine = async (parsed, {
     
     setMessages(m => {
       const idx = streamIndexRef.current;
+      const toolCallsSnapshot = Array.from(toolCalls.entries()).map(([id, info]) => ({ id, ...info }));
       if (idx >= 0 && idx < m.length) {
         const updated = [...m];
-        const toolCallsSnapshot = Array.from(toolCalls.entries()).map(([id, info]) => ({ id, ...info }));
-        // Freeze the streamed bubble as-is
-        updated[idx] = { ...updated[idx], isStreaming: false };
-        // Insert a new bubble with the final result
-        const finalBubble = {
+        updated[idx] = {
           who: 'assistant',
           text: finalText,
           isStreaming: false,
           rawData: { result: 'success', text: finalText, toolCalls: toolCallsSnapshot },
           showActionLog: true,
         };
-        updated.splice(idx + 1, 0, finalBubble);
         return updated;
       }
-      return m;
+      // No streaming bubble present: append a single final bubble
+      return [...m, {
+        who: 'assistant',
+        text: finalText,
+        isStreaming: false,
+        rawData: { result: 'success', text: finalText, toolCalls: toolCallsSnapshot },
+        showActionLog: true,
+      }];
     });
     
     // Clean up
@@ -176,7 +191,7 @@ export const handleStreamLogLine = async (line, {
   unsubRef,
   sawJsonRef
 }) => {
-  // Only if we haven't seen any json for this run; otherwise ignore raw stream to avoid duplication
+  // If we already saw JSON this run, ignore raw stream lines to avoid duplication
   if (sawJsonRef.current) {
     return false;
   }
@@ -191,159 +206,30 @@ export const handleStreamLogLine = async (line, {
       parsed = JSON.parse(candidate);
     }
     
-    console.log('Parsed log line:', parsed);
-    
-    // Handle assistant messages - accumulate text content
-    if (parsed.type === 'assistant' && parsed.message && parsed.message.content) {
-      for (const content of parsed.message.content) {
-        if (content.type === 'text' && content.text) {
-          const newText = appendWithOverlap(accumulatedText, content.text, lastChunkRef.current);
-          setAccumulatedText(newText);
-          lastChunkRef.current = content.text;
-          
-          // Update the streaming message with accumulated text
-          setMessages(m => {
-            const idx = streamIndexRef.current;
-            if (idx >= 0 && idx < m.length) {
-              const updated = [...m];
-              updated[idx] = { ...updated[idx], text: newText, isStreaming: true };
-              return updated;
-            }
-            return m;
-          });
-          
-          await new Promise(resolve => setTimeout(resolve, 10));
-        }
-      }
-    }
-    
-    // Extract session ID from cursor-agent response and update session if needed
-    if (parsed.session_id && parsed.session_id !== currentSessionId) {
-      const currentSession = sessions.find(s => s.id === currentSessionId);
-      if (currentSession) {
-        const updatedSessions = sessions.map(session => 
-          session.id === currentSessionId 
-            ? { ...session, cursorSessionId: parsed.session_id, updatedAt: Date.now() }
-            : session
-        );
-        setSessions(updatedSessions);
-        saveSessions(updatedSessions);
-        console.log(`Session ${currentSessionId} linked to cursor-agent session: ${parsed.session_id}`);
-      }
-    }
-    
-    // Handle tool calls (support multiple formats)
-    if (parsed.type === 'tool_call' || parsed.type === 'tool' || parsed.type === 'function_call' || parsed.tool_call || parsed.tool || parsed.name === 'tool') {
-      const { callId, toolCallData, subtype } = normalizeToolCallData(parsed);
-      
-      console.log('Tool call received (normalized):', { callId, subtype, toolCallData });
-      
-      // Store tool call info
-      setToolCalls(prev => {
-        const newMap = new Map(prev);
-        const existing = newMap.get(callId);
-        
-        if (existing) {
-          newMap.set(callId, {
-            ...existing,
-            toolCall: toolCallData,
-            isCompleted: subtype === 'completed' || subtype === 'end' || subtype === 'finished',
-            isStarted: subtype === 'started' || subtype === 'start',
-            completedAt: (subtype === 'completed' || subtype === 'end' || subtype === 'finished') ? Date.now() : existing.completedAt,
-            rawData: parsed,
-            lastUpdated: Date.now()
-          });
-        } else {
-          newMap.set(callId, {
-            toolCall: toolCallData,
-            isCompleted: subtype === 'completed' || subtype === 'end' || subtype === 'finished',
-            isStarted: subtype === 'started' || subtype === 'start',
-            startedAt: Date.now(),
-            completedAt: (subtype === 'completed' || subtype === 'end' || subtype === 'finished') ? Date.now() : null,
-            rawData: parsed,
-            lastUpdated: Date.now()
-          });
-        }
-        
-        console.log('Tool calls after update:', newMap.size);
-        return newMap;
-      });
-    }
-    
-    // Stop streaming when we get a result (legacy path)
-    if (parsed.type === 'result') {
-      // Mark all active tool calls as completed
-      setToolCalls(prev => {
-        const newMap = new Map();
-        for (const [callId, toolCallInfo] of prev.entries()) {
-          newMap.set(callId, {
-            ...toolCallInfo,
-            isCompleted: true,
-            completedAt: Date.now(),
-            lastUpdated: Date.now()
-          });
-        }
-        return newMap;
-      });
-      
-      // Hide tool call indicators after result
-      setHideToolCallIndicators(true);
-      
-      const finalText = typeof parsed.result === 'string' ? parsed.result : (parsed.output || accumulatedText || '');
-      lastChunkRef.current = '';
-      
-      setMessages(m => {
-        const idx = streamIndexRef.current;
-        if (idx >= 0 && idx < m.length) {
-          const updated = [...m];
-          const toolCallsSnapshot = Array.from(toolCalls.entries()).map(([id, info]) => ({ id, ...info }));
-          updated[idx] = { ...updated[idx], isStreaming: false };
-          const finalBubble = {
-            who: 'assistant',
-            text: finalText,
-            isStreaming: false,
-            rawData: { result: 'success', text: finalText, toolCalls: toolCallsSnapshot },
-            showActionLog: true,
-          };
-          updated.splice(idx + 1, 0, finalBubble);
-          return updated;
-        }
-        return m;
-      });
-      
-      // Clean up streaming state and allow new input
-      if (runTimeoutRef.current) { try { clearTimeout(runTimeoutRef.current); } catch {} runTimeoutRef.current = null; }
-      if (unsubRef.current) { 
-        try { unsubRef.current(); } catch {} 
-        unsubRef.current = null; 
-      }
-      streamIndexRef.current = -1;
-      setBusy(false);
-      
-      return true; // Signal completion
-    }
-    
-  } catch (parseError) {
-    // This line is not valid JSON - check if it's our end marker
-    if (line.includes('123[*****END*****]123')) {
-      return handleEndMarker({
-        setToolCalls,
-        setHideToolCallIndicators,
+    // Re-use JSON handler for consistency
+    const isComplete = await handleJsonLogLine(parsed, {
+      runId,
+      currentSessionId,
+      sessions,
+      setSessions,
+      saveSessions,
         setMessages,
         streamIndexRef,
+      setToolCalls,
         toolCalls,
+      setHideToolCallIndicators,
         accumulatedText,
+      setAccumulatedText,
+      lastChunkRef,
         setBusy,
         runTimeoutRef,
         unsubRef
       });
-    }
     
-    // Skip other lines that aren't valid JSON
+    return isComplete;
+  } catch {
     return false;
   }
-  
-  return false; // Not complete
 };
 
 /**
@@ -481,8 +367,7 @@ export const createLogStreamHandler = ({
             lastChunkRef,
             setBusy,
             runTimeoutRef,
-            unsubRef,
-            streamIndexRef
+            unsubRef
           });
           
           if (isComplete) return;

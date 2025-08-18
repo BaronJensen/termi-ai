@@ -8,7 +8,7 @@ import {
 } from './chatUtils';
 import { 
   addUserMessage, 
-  createStreamingMessage, 
+  createStreamingMessage,
   getSessionIdForCursor,
   cleanupStreamingState
 } from './sessionManagement';
@@ -102,10 +102,8 @@ export function useChatSend({
         runTimeoutRef.current = null; 
       }
       
-      // Create streaming assistant message
-      const streamIdx = createStreamingMessage({ setMessages, streamIndexRef });
-      
       // Track accumulated assistant text
+      const streamIdx = createStreamingMessage({ setMessages, streamIndexRef });
       let accumulatedText = '';
       lastChunkRef.current = '';
       sawJsonRef.current = false;
@@ -147,8 +145,13 @@ export function useChatSend({
       
       unsubRef.current = window.cursovable.onCursorLog(logHandler);
 
-      // Use cursor-agent session ID if available, otherwise use our internal session ID
-      const sessionIdToUse = getSessionIdForCursor({ sessions, currentSessionId });
+      // For brand new sessions, don't resume until the second message.
+      // If this session lacks a cursorSessionId, pass undefined so runner starts fresh.
+      let sessionIdToUse;
+      try {
+        const currentSession = sessions.find(s => s.id === currentSessionId);
+        sessionIdToUse = currentSession && currentSession.cursorSessionId ? currentSession.cursorSessionId : undefined;
+      } catch { sessionIdToUse = undefined; }
 
       const { cursorAgentTimeoutMs } = loadSettings();
       

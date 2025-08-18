@@ -4,6 +4,7 @@ const path = require('path');
 const { spawn } = require('child_process');
 const fs = require('fs');
 const os = require('os');
+const { stripAnsiAndControls: stripAnsi } = require('./utils/ansi.cjs');
 
 // PTY module - will be loaded lazily when needed
 let pty = null;
@@ -59,21 +60,7 @@ function resolveCommandPath(command, envPath) {
   return null;
 }
 
-// Remove ANSI escape sequences and non-printable control chars
-function stripAnsi(input) {
-  try {
-    const s = String(input || '');
-    return s
-      // CSI (Control Sequence Introducer) sequences like \x1B[31m
-      .replace(/\x1B\[[0-?]*[ -\/]*[@-~]/g, '')
-      // ESC-prefixed sequences
-      .replace(/\u001b\[[0-9;]*[A-Za-z]/g, '')
-      // Other non-printable except tab/newline/carriage return
-      .replace(/[^\x09\x0A\x0D\x20-\x7E]/g, '');
-  } catch {
-    return String(input || '');
-  }
-}
+// Using shared ANSI/control char stripper from utils
 
 // Dev: allow insecure localhost and certificate errors (must be set before ready)
 if (process.env.RENDERER_URL) {
