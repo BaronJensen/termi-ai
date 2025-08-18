@@ -465,8 +465,8 @@ export default function Dashboard({ onOpenProject }) {
         <span role="img" aria-hidden="true">⚙️</span>
       </IconButton>
       <div className="ds-hero">
-        <div className="ds-hero-title">Build something <span className="accent">Cursovable</span></div>
-        <div className="ds-hero-subtitle">Create apps and websites by chatting with AI</div>
+        <div className="ds-hero-title">Build <span className="accent">Cursovable</span> projects with AI</div>
+        <div className="ds-hero-subtitle">Create apps locally with AI</div>
         <div className="ds-hero-bar">
           <textarea
             className="ds-textarea hero-one-line"
