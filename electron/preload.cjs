@@ -66,5 +66,8 @@ contextBridge.exposeInMainWorld('cursovable', {
   getGitBranches: (opts) => ipcRenderer.invoke('git-branches', opts),
   gitCommit: (opts) => ipcRenderer.invoke('git-commit', opts),
   getReflog: (opts) => ipcRenderer.invoke('git-reflog', opts),
-  restoreLocalCommit: (opts) => ipcRenderer.invoke('git-restore-local', opts)
+  restoreLocalCommit: (opts) => ipcRenderer.invoke('git-restore-local', opts),
+  // Debug mode APIs
+  setDebugMode: (opts) => ipcRenderer.invoke('debug-mode-set', opts),
+  getDebugMode: () => ipcRenderer.invoke('debug-mode-get')
 });

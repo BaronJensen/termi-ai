@@ -1,0 +1,674 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Session Mapping Tests</title>
+    <style>
+        body {
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            background: #0f1419;
+            color: #e6e6e6;
+            padding: 20px;
+            margin: 0;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        h1 {
+            color: #3c6df0;
+            border-bottom: 2px solid #1d2633;
+            padding-bottom: 10px;
+        }
+        .test-section {
+            background: #1a1f2e;
+            border: 1px solid #1d2633;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        button {
+            background: #3c6df0;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+            font-size: 14px;
+        }
+        button:hover {
+            background: #2952cc;
+        }
+        button.success {
+            background: #10b981;
+        }
+        button.danger {
+            background: #ef4444;
+        }
+        .console-output {
+            background: #0b1018;
+            border: 1px solid #1d2633;
+            border-radius: 4px;
+            padding: 15px;
+            margin: 10px 0;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            font-size: 12px;
+            max-height: 400px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+        }
+        .mock-data {
+            background: #1a1f2e;
+            border: 1px solid #1d2633;
+            border-radius: 4px;
+            padding: 10px;
+            margin: 10px 0;
+            font-size: 11px;
+            overflow-x: auto;
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+            border-left: 4px solid #3c6df0;
+            background: rgba(60, 109, 240, 0.1);
+        }
+        .status.success {
+            border-left-color: #10b981;
+            background: rgba(16, 185, 129, 0.1);
+        }
+        .status.error {
+            border-left-color: #ef4444;
+            background: rgba(239, 68, 68, 0.1);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧪 Session Mapping Test Suite</h1>
+        
+        <div class="status">
+            <strong>Purpose:</strong> Test the session mapping functionality that links internal session IDs with cursor-agent session IDs.
+        </div>
+
+        <div class="test-section">
+            <h2>🎯 Quick Tests</h2>
+            <p>Run individual tests to debug specific functionality:</p>
+            
+            <button onclick="runSessionMappingTest()">Test Session Mapping</button>
+            <button onclick="runLogRouterTest()">Test Log Router</button>
+            <button onclick="runFullTestSuite()">Run All Tests</button>
+            <button class="success" onclick="simulateCursorAgentResponse()">Simulate Cursor Response</button>
+            <button class="danger" onclick="clearConsole()">Clear Console</button>
+        </div>
+
+        <div class="test-section">
+            <h2>📊 Mock Data</h2>
+            <p>Sample cursor-agent responses used for testing:</p>
+            <div class="mock-data" id="mock-data">
+                Loading mock data...
+            </div>
+        </div>
+
+        <div class="test-section">
+            <h2>📝 Console Output</h2>
+            <div class="console-output" id="console-output">
+                Console output will appear here...
+            </div>
+        </div>
+
+        <div class="test-section">
+            <h2>🔍 Current Session State</h2>
+            <button onclick="showCurrentState()">Show Current State</button>
+            <div class="console-output" id="session-state">
+                Click "Show Current State" to see current session data...
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Override console.log to capture output
+        const originalConsoleLog = console.log;
+        const originalConsoleError = console.error;
+        const originalConsoleWarn = console.warn;
+        
+        const consoleOutput = document.getElementById('console-output');
+        
+        function appendToConsole(message, type = 'log') {
+            const timestamp = new Date().toLocaleTimeString();
+            const color = type === 'error' ? '#ef4444' : type === 'warn' ? '#f59e0b' : '#e6e6e6';
+            consoleOutput.innerHTML += `<span style="color: ${color}">[${timestamp}] ${message}</span>\n`;
+            consoleOutput.scrollTop = consoleOutput.scrollHeight;
+        }
+        
+        console.log = (...args) => {
+            originalConsoleLog(...args);
+            appendToConsole(args.join(' '), 'log');
+        };
+        
+        console.error = (...args) => {
+            originalConsoleError(...args);
+            appendToConsole('ERROR: ' + args.join(' '), 'error');
+        };
+        
+        console.warn = (...args) => {
+            originalConsoleWarn(...args);
+            appendToConsole('WARN: ' + args.join(' '), 'warn');
+        };
+
+        // Mock data from your terminal logs
+        const mockCursorAgentResponses = {
+            session1: {
+                runId: '1703123456789-abc123',
+                sessionId: 'a655af1f-adb8-4211-8220-a8bd5c09d5fe',
+                responses: [
+                    {
+                        level: 'json',
+                        line: JSON.stringify({
+                            "apiKeySource": "login",
+                            "cwd": "/Users/jensenbaronville/dev/projects/auto-cto",
+                            "model": "GPT-5",
+                            "permissionMode": "default",
+                            "session_id": "a655af1f-adb8-4211-8220-a8bd5c09d5fe",
+                            "subtype": "init",
+                            "type": "system"
+                        }),
+                        runId: '1703123456789-abc123',
+                        sessionId: 'temp-1703123456789-abc123',
+                        ts: Date.now()
+                    },
+                    {
+                        level: 'json',
+                        line: JSON.stringify({
+                            "message": {
+                                "content": [{"text": "hi. Avoid running build tools or scripts, we are already running the project", "type": "text"}],
+                                "role": "user"
+                            },
+                            "session_id": "a655af1f-adb8-4211-8220-a8bd5c09d5fe",
+                            "type": "user"
+                        }),
+                        runId: '1703123456789-abc123',
+                        sessionId: 'a655af1f-adb8-4211-8220-a8bd5c09d5fe',
+                        ts: Date.now()
+                    },
+                    {
+                        level: 'json',
+                        line: JSON.stringify({
+                            "message": {
+                                "content": [{"text": "Got", "type": "text"}],
+                                "role": "assistant"
+                            },
+                            "session_id": "a655af1f-adb8-4211-8220-a8bd5c09d5fe",
+                            "type": "assistant"
+                        }),
+                        runId: '1703123456789-abc123',
+                        sessionId: 'a655af1f-adb8-4211-8220-a8bd5c09d5fe',
+                        ts: Date.now()
+                    },
+                    {
+                        level: 'json',
+                        line: JSON.stringify({
+                            "duration_api_ms": 10804,
+                            "duration_ms": 10804,
+                            "is_error": false,
+                            "request_id": "4b891e24-b683-4a63-a645-5ad9f29cf240",
+                            "result": "Got it I'll avoid running build tools or scripts.\n\nHow can I help right now?\n- Review the current diffs and summarize changes\n- Stage and craft a commit (including new docs and `index.html`, remove `snake.html`)\n- Restore `snake.html` if deletion was accidental\n- Create a PR once the commit is ready\n- Something else?",
+                            "session_id": "a655af1f-adb8-4211-8220-a8bd5c09d5fe",
+                            "subtype": "success",
+                            "type": "result"
+                        }),
+                        runId: '1703123456789-abc123',
+                        sessionId: 'a655af1f-adb8-4211-8220-a8bd5c09d5fe',
+                        ts: Date.now()
+                    }
+                ]
+            },
+            session2: {
+                runId: '1703123456790-def456',
+                sessionId: '0b21192b-6aaa-4ecf-90fa-9ee0dd2be31d',
+                responses: [
+                    {
+                        level: 'json',
+                        line: JSON.stringify({
+                            "apiKeySource": "login",
+                            "cwd": "/Users/jensenbaronville/dev/projects/auto-cto",
+                            "model": "GPT-5",
+                            "permissionMode": "default",
+                            "session_id": "0b21192b-6aaa-4ecf-90fa-9ee0dd2be31d",
+                            "subtype": "init",
+                            "type": "system"
+                        }),
+                        runId: '1703123456790-def456',
+                        sessionId: 'temp-1703123456790-def456',
+                        ts: Date.now()
+                    },
+                    {
+                        level: 'json',
+                        line: JSON.stringify({
+                            "message": {
+                                "content": [{"text": "hi. Avoid running build tools or scripts, we are already running the project", "type": "text"}],
+                                "role": "user"
+                            },
+                            "session_id": "0b21192b-6aaa-4ecf-90fa-9ee0dd2be31d",
+                            "type": "user"
+                        }),
+                        runId: '1703123456790-def456',
+                        sessionId: '0b21192b-6aaa-4ecf-90fa-9ee0dd2be31d',
+                        ts: Date.now()
+                    },
+                    {
+                        level: 'json',
+                        line: JSON.stringify({
+                            "message": {
+                                "content": [{"text": "Got it", "type": "text"}],
+                                "role": "assistant"
+                            },
+                            "session_id": "0b21192b-6aaa-4ecf-90fa-9ee0dd2be31d",
+                            "type": "assistant"
+                        }),
+                        runId: '1703123456790-def456',
+                        sessionId: '0b21192b-6aaa-4ecf-90fa-9ee0dd2be31d',
+                        ts: Date.now()
+                    }
+                ]
+            }
+        };
+
+        // Mock session state
+        let mockSessions = [
+            {
+                id: 'session-1703123456789-abc123',
+                name: 'Session 1',
+                cursorSessionId: null,
+                createdAt: Date.now() - 10000,
+                updatedAt: Date.now() - 10000,
+                messages: []
+            },
+            {
+                id: 'session-1703123456790-def456', 
+                name: 'Session 2',
+                cursorSessionId: null,
+                createdAt: Date.now() - 5000,
+                updatedAt: Date.now() - 5000,
+                messages: []
+            }
+        ];
+
+        // Mock functions
+        const mockSetSessions = (updateFn) => {
+            if (typeof updateFn === 'function') {
+                mockSessions = updateFn(mockSessions);
+            } else {
+                mockSessions = updateFn;
+            }
+            console.log('📝 Mock setSessions called, updated sessions:', mockSessions.map(s => ({
+                id: s.id,
+                name: s.name,
+                cursorSessionId: s.cursorSessionId
+            })));
+        };
+
+        const mockSaveSessions = (sessions) => {
+            console.log('💾 Mock saveSessions called with:', sessions.map(s => ({
+                id: s.id,
+                name: s.name,
+                cursorSessionId: s.cursorSessionId
+            })));
+        };
+
+        // Mock updateSessionWithCursorId function
+        const mockUpdateSessionWithCursorId = (sessionId, cursorSessionId) => {
+            console.log(`🔄 Mock updateSessionWithCursorId called with sessionId: ${sessionId}, cursorSessionId: ${cursorSessionId}`);
+            console.log(`🔄 Current mock sessions:`, mockSessions.map(s => ({ id: s.id, name: s.name, cursorSessionId: s.cursorSessionId })));
+            
+            mockSetSessions(prevSessions => {
+                let updatedSessions = [...prevSessions];
+                
+                // If we have a sessionId, update the existing session
+                if (sessionId) {
+                    const existingSession = prevSessions.find(s => s.id === sessionId);
+                    if (existingSession) {
+                        // Update the existing (possibly temporary) session with the real cursor session ID
+                        updatedSessions = updatedSessions.map(session => 
+                            session.id === sessionId 
+                                ? { ...session, cursorSessionId, updatedAt: Date.now() }
+                                : session
+                        );
+                        console.log(`✅ Mock updated session ${sessionId} with cursor session ID: ${cursorSessionId}`);
+                    } else {
+                        console.warn(`❌ Mock session ${sessionId} not found, cannot update with cursor session ID`);
+                    }
+                } else {
+                    // If no sessionId provided, try to find a temporary session (one without cursorSessionId)
+                    const tempSession = prevSessions.find(s => !s.cursorSessionId);
+                    if (tempSession) {
+                        // Update the temporary session with the real cursor session ID
+                        updatedSessions = updatedSessions.map(session => 
+                            session.id === tempSession.id 
+                                ? { ...session, cursorSessionId, updatedAt: Date.now() }
+                                : session
+                        );
+                        console.log(`✅ Mock updated temporary session ${tempSession.id} with cursor session ID: ${cursorSessionId}`);
+                    } else {
+                        // If no temporary session exists, create a new session with the cursorSessionId
+                        const newSession = {
+                            id: `session-${Date.now()}-${Math.random().toString(36).slice(2,8)}`,
+                            name: 'New Session',
+                            messages: [],
+                            cursorSessionId,
+                            createdAt: Date.now(),
+                            updatedAt: Date.now()
+                        };
+                        updatedSessions.push(newSession);
+                        console.log(`✅ Mock created new session ${newSession.id} with cursor session ID: ${cursorSessionId}`);
+                    }
+                }
+                
+                mockSaveSessions(updatedSessions);
+                console.log(`🔄 Mock sessions after update:`, updatedSessions.map(s => ({ id: s.id, name: s.name, cursorSessionId: s.cursorSessionId })));
+                return updatedSessions;
+            });
+        };
+
+        // Mock the message handlers since we can't import ES modules directly
+        window.handleJsonLogLine = async function(parsed, options) {
+            console.log('🔥 Mock handleJsonLogLine called with parsed:', parsed);
+            console.log('🔥 Has session_id:', !!parsed.session_id, 'session_id:', parsed.session_id);
+            console.log('🔥 updateSessionWithCursorId available:', !!options.updateSessionWithCursorId);
+            
+            // Extract session ID if present and find the correct session to route this message to
+            let targetSessionId = options.currentSessionId;
+            console.log('Session routing:', {
+                currentSessionId: options.currentSessionId,
+                parsedSessionId: parsed.session_id,
+                sessionsCount: options.sessions.length,
+                sessionIds: options.sessions.map(s => ({ id: s.id, cursorSessionId: s.cursorSessionId }))
+            });
+            
+            if (parsed.session_id) {
+                // Find the session that has this cursor-agent session ID
+                const sessionWithCursorId = options.sessions.find(s => s.cursorSessionId === parsed.session_id);
+                if (sessionWithCursorId) {
+                    targetSessionId = sessionWithCursorId.id;
+                    console.log(`Routing message to session: ${targetSessionId} (cursor-agent session: ${parsed.session_id})`);
+                } else {
+                    // New cursor-agent session detected
+                    console.log(`🆔 New cursor-agent session detected: ${parsed.session_id}`);
+                    console.log(`🆔 Current sessionId: ${options.currentSessionId}`);
+                    console.log(`🆔 Available sessions:`, options.sessions.map(s => ({ id: s.id, name: s.name, cursorSessionId: s.cursorSessionId })));
+                    
+                    // Check if we have a current session without a cursorSessionId (temporary session)
+                    const currentSession = options.sessions.find(s => s.id === options.currentSessionId);
+                    console.log(`🆔 Found current session:`, currentSession ? { id: currentSession.id, name: currentSession.name, cursorSessionId: currentSession.cursorSessionId } : null);
+                    
+                    if (currentSession && !currentSession.cursorSessionId) {
+                        // Update the temporary session with the real cursor session ID
+                        console.log(`🆔 Updating temporary session ${options.currentSessionId} with cursor session ID: ${parsed.session_id}`);
+                        if (options.updateSessionWithCursorId) {
+                            options.updateSessionWithCursorId(options.currentSessionId, parsed.session_id);
+                        }
+                        targetSessionId = options.currentSessionId;
+                    } else {
+                        // Either no current session or current session already has a cursorSessionId
+                        // Let updateSessionWithCursorId handle creating a new session or finding a temp session
+                        console.log(`🆔 No suitable session found, letting updateSessionWithCursorId handle it`);
+                        console.log(`🆔 Current session exists: ${!!currentSession}, has cursorSessionId: ${currentSession?.cursorSessionId}`);
+                        if (options.updateSessionWithCursorId) {
+                            options.updateSessionWithCursorId(null, parsed.session_id);
+                        }
+                        // targetSessionId will remain currentSessionId for now
+                    }
+                }
+            }
+            
+            console.log('Final target session ID:', targetSessionId);
+            return false; // Not complete
+        };
+
+        // Test functions
+        async function testSessionMapping() {
+            console.log('🧪 Starting Session Mapping Tests');
+            console.log('=====================================');
+            
+            // Test 1: First session mapping
+            console.log('\n🧪 TEST 1: First Session Mapping');
+            console.log('--------------------------------');
+            
+            const session1Responses = mockCursorAgentResponses.session1.responses;
+            const currentSessionId = 'session-1703123456789-abc123';
+            
+            console.log(`Testing with currentSessionId: ${currentSessionId}`);
+            console.log(`Initial sessions:`, mockSessions.map(s => ({ id: s.id, cursorSessionId: s.cursorSessionId })));
+            
+            // Process first response (system init with session_id)
+            const firstResponse = JSON.parse(session1Responses[0].line);
+            console.log('\nProcessing first response (system init):', firstResponse);
+            
+            try {
+                await window.handleJsonLogLine(firstResponse, {
+                    runId: mockCursorAgentResponses.session1.runId,
+                    currentSessionId,
+                    sessions: mockSessions,
+                    setMessages: () => {},
+                    streamIndexRef: { current: -1 },
+                    setSessionToolCalls: () => {},
+                    getCurrentSessionToolCalls: () => new Map(),
+                    toolCallsRef: { current: new Map() },
+                    setSessionHideToolCallIndicators: () => {},
+                    accumulatedText: '',
+                    setAccumulatedText: () => {},
+                    lastChunkRef: { current: '' },
+                    setSessionBusy: () => {},
+                    runTimeoutRef: { current: null },
+                    unsubRef: { current: null },
+                    updateSessionWithCursorId: mockUpdateSessionWithCursorId
+                });
+                
+                console.log('\n✅ First response processed successfully');
+                console.log('Sessions after first response:', mockSessions.map(s => ({ id: s.id, cursorSessionId: s.cursorSessionId })));
+                
+            } catch (error) {
+                console.error('❌ Error processing first response:', error);
+            }
+            
+            // Test 2: Second session mapping
+            console.log('\n🧪 TEST 2: Second Session Mapping');
+            console.log('--------------------------------');
+            
+            const session2Responses = mockCursorAgentResponses.session2.responses;
+            const currentSessionId2 = 'session-1703123456790-def456';
+            
+            console.log(`Testing with currentSessionId: ${currentSessionId2}`);
+            console.log(`Sessions before second test:`, mockSessions.map(s => ({ id: s.id, cursorSessionId: s.cursorSessionId })));
+            
+            // Process second session's first response
+            const secondSessionFirstResponse = JSON.parse(session2Responses[0].line);
+            console.log('\nProcessing second session first response:', secondSessionFirstResponse);
+            
+            try {
+                await window.handleJsonLogLine(secondSessionFirstResponse, {
+                    runId: mockCursorAgentResponses.session2.runId,
+                    currentSessionId: currentSessionId2,
+                    sessions: mockSessions,
+                    setMessages: () => {},
+                    streamIndexRef: { current: -1 },
+                    setSessionToolCalls: () => {},
+                    getCurrentSessionToolCalls: () => new Map(),
+                    toolCallsRef: { current: new Map() },
+                    setSessionHideToolCallIndicators: () => {},
+                    accumulatedText: '',
+                    setAccumulatedText: () => {},
+                    lastChunkRef: { current: '' },
+                    setSessionBusy: () => {},
+                    runTimeoutRef: { current: null },
+                    unsubRef: { current: null },
+                    updateSessionWithCursorId: mockUpdateSessionWithCursorId
+                });
+                
+                console.log('\n✅ Second session response processed successfully');
+                console.log('Final sessions state:', mockSessions.map(s => ({ id: s.id, cursorSessionId: s.cursorSessionId })));
+                
+            } catch (error) {
+                console.error('❌ Error processing second session response:', error);
+            }
+            
+            // Test 3: Verify session mapping worked
+            console.log('\n🧪 TEST 3: Verification');
+            console.log('----------------------');
+            
+            const session1 = mockSessions.find(s => s.id === 'session-1703123456789-abc123');
+            const session2 = mockSessions.find(s => s.id === 'session-1703123456790-def456');
+            
+            console.log('Session 1:', session1 ? { id: session1.id, cursorSessionId: session1.cursorSessionId } : 'Not found');
+            console.log('Session 2:', session2 ? { id: session2.id, cursorSessionId: session2.cursorSessionId } : 'Not found');
+            
+            // Verify expectations
+            const session1HasCorrectId = session1?.cursorSessionId === 'a655af1f-adb8-4211-8220-a8bd5c09d5fe';
+            const session2HasCorrectId = session2?.cursorSessionId === '0b21192b-6aaa-4ecf-90fa-9ee0dd2be31d';
+            
+            console.log('\n📊 Test Results:');
+            console.log(`Session 1 cursor ID mapping: ${session1HasCorrectId ? '✅ PASS' : '❌ FAIL'}`);
+            console.log(`Session 2 cursor ID mapping: ${session2HasCorrectId ? '✅ PASS' : '❌ FAIL'}`);
+            
+            if (session1HasCorrectId && session2HasCorrectId) {
+                console.log('\n🎉 ALL TESTS PASSED! Session mapping is working correctly.');
+            } else {
+                console.log('\n💥 TESTS FAILED! Session mapping has issues.');
+            }
+            
+            console.log('\n=====================================');
+            console.log('🧪 Session Mapping Tests Complete');
+        }
+
+        // Test log router functionality
+        function testLogRouter() {
+            console.log('\n🧪 Testing Log Router');
+            console.log('=====================');
+            
+            // Mock log router
+            const mockLogRouter = {
+                handlers: new Map(),
+                
+                registerHandler(runId, handler) {
+                    console.log(`🔧 Mock router: registered handler for runId ${runId}`);
+                    this.handlers.set(runId, handler);
+                    console.log(`🔧 Mock router: total handlers: ${this.handlers.size}`);
+                },
+                
+                routeLog(payload) {
+                    console.log(`🔧 Mock router: routing log for runId ${payload.runId}`);
+                    const handler = this.handlers.get(payload.runId);
+                    if (handler) {
+                        console.log(`✅ Mock router: found handler, calling it`);
+                        handler(payload);
+                    } else {
+                        console.log(`❌ Mock router: no handler found for runId ${payload.runId}`);
+                        console.log(`Available handlers:`, Array.from(this.handlers.keys()));
+                    }
+                }
+            };
+            
+            // Test handler registration
+            const mockHandler = (payload) => {
+                console.log(`📨 Mock handler received:`, payload);
+            };
+            
+            mockLogRouter.registerHandler('test-run-123', mockHandler);
+            
+            // Test routing
+            mockLogRouter.routeLog({
+                runId: 'test-run-123',
+                level: 'json',
+                line: '{"test": "data"}',
+                sessionId: 'test-session'
+            });
+            
+            // Test routing with wrong runId
+            mockLogRouter.routeLog({
+                runId: 'wrong-run-456',
+                level: 'json', 
+                line: '{"test": "data"}',
+                sessionId: 'test-session'
+            });
+        }
+
+        // Display mock data
+        document.getElementById('mock-data').innerHTML = JSON.stringify(mockCursorAgentResponses, null, 2);
+
+        // Test runner functions
+        window.runSessionMappingTest = async function() {
+            console.log('🚀 Running Session Mapping Test...');
+            try {
+                await testSessionMapping();
+            } catch (error) {
+                console.error('Test failed:', error);
+            }
+        };
+
+        window.runLogRouterTest = function() {
+            console.log('🚀 Running Log Router Test...');
+            try {
+                testLogRouter();
+            } catch (error) {
+                console.error('Test failed:', error);
+            }
+        };
+
+        window.runFullTestSuite = async function() {
+            console.log('🚀 Running Full Test Suite...');
+            try {
+                await testSessionMapping();
+                testLogRouter();
+                console.log('🎉 Full test suite completed!');
+            } catch (error) {
+                console.error('Test suite failed:', error);
+            }
+        };
+
+        window.simulateCursorAgentResponse = function() {
+            console.log('🎭 Simulating cursor-agent response...');
+            
+            if (!mockCursorAgentResponses) {
+                console.error('Mock data not loaded yet');
+                return;
+            }
+            
+            // Simulate the first response from session 1
+            const response = mockCursorAgentResponses.session1.responses[0];
+            console.log('Simulating response:', response);
+            
+            // This would normally go through the log router
+            if (window.cursovableLogRouter) {
+                window.cursovableLogRouter.routeLog(response);
+            } else {
+                console.warn('Log router not available in test environment');
+            }
+        };
+
+        window.clearConsole = function() {
+            document.getElementById('console-output').innerHTML = '';
+            console.log('🧹 Console cleared');
+        };
+
+        window.showCurrentState = function() {
+            const stateDiv = document.getElementById('session-state');
+            const state = {
+                mockSessions: mockSessions || 'Not loaded',
+                timestamp: new Date().toISOString(),
+                logRouterAvailable: !!window.cursovableLogRouter,
+                testFunctionsAvailable: {
+                    testSessionMapping: !!window.testSessionMapping,
+                    testLogRouter: !!window.testLogRouter
+                }
+            };
+            stateDiv.innerHTML = JSON.stringify(state, null, 2);
+        };
+
+        console.log('🧪 Session Mapping Test Suite Ready');
+        console.log('Available functions: testSessionMapping(), testLogRouter()');
+        console.log('Available test buttons: runSessionMappingTest(), runLogRouterTest()');
+    </script>
+</body>
+</html>

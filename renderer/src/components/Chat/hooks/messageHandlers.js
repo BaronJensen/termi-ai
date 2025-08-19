@@ -28,6 +28,12 @@ export const handleJsonLogLine = async (parsed, {
   unsubRef,
   updateSessionWithCursorId
 }) => {
+  console.log('🔥 handleJsonLogLine called with parsed:', parsed);
+  console.log('🔥 Has session_id:', !!parsed.session_id, 'session_id:', parsed.session_id);
+  console.log('🔥 updateSessionWithCursorId available:', !!updateSessionWithCursorId);
+  console.log('🔥 Parsed message type:', parsed.type);
+  console.log('🔥 Full parsed object:', JSON.stringify(parsed, null, 2));
+  
   console.log('Parsed log line:', parsed);
   console.log('Tool call detection:', {
     type: parsed.type,
@@ -75,47 +81,57 @@ export const handleJsonLogLine = async (parsed, {
   
   // Extract session ID if present and find the correct session to route this message to
   let targetSessionId = currentSessionId;
-  console.log('Session routing:', {
+  console.log('🔥 Session routing:', {
     currentSessionId,
     parsedSessionId: parsed.session_id,
     sessionsCount: sessions.length,
-    sessionIds: sessions.map(s => ({ id: s.id, cursorSessionId: s.cursorSessionId }))
+    sessionIds: sessions.map(s => ({ id: s.id, name: s.name, cursorSessionId: s.cursorSessionId }))
   });
   
   if (parsed.session_id) {
+    console.log(`🔥 Processing message with session_id: ${parsed.session_id}`);
+    console.log(`🔥 Current sessions in message handler:`, sessions.map(s => ({ id: s.id, name: s.name, cursorSessionId: s.cursorSessionId })));
+    console.log(`🔥 Current session ID: ${currentSessionId}`);
+    
     // Find the session that has this cursor-agent session ID
     const sessionWithCursorId = sessions.find(s => s.cursorSessionId === parsed.session_id);
     if (sessionWithCursorId) {
       targetSessionId = sessionWithCursorId.id;
-      console.log(`Routing message to session: ${targetSessionId} (cursor-agent session: ${parsed.session_id})`);
+      console.log(`✅ Routing message to existing session: ${targetSessionId} (cursor-agent session: ${parsed.session_id})`);
     } else {
-      // New cursor-agent session detected
+      // New cursor-agent session detected - update the session that started this terminal
       console.log(`🆔 New cursor-agent session detected: ${parsed.session_id}`);
-      console.log(`🆔 Current sessionId: ${currentSessionId}`);
-      console.log(`🆔 Available sessions:`, sessions.map(s => ({ id: s.id, name: s.name, cursorSessionId: s.cursorSessionId })));
       
-      // Check if we have a current session without a cursorSessionId (temporary session)
-      const currentSession = sessions.find(s => s.id === currentSessionId);
-      console.log(`🆔 Found current session:`, currentSession ? { id: currentSession.id, name: currentSession.name, cursorSessionId: currentSession.cursorSessionId } : null);
+      // Get the session object from the log router (passed from the runner)
+      // This tells us exactly which session started this terminal
+      const sessionObject = window.cursovableLogRouter?.getCurrentRunSession?.(runId);
       
-      if (currentSession && !currentSession.cursorSessionId) {
-        // Update the temporary session with the real cursor session ID
-        console.log(`🆔 Updating temporary session ${currentSessionId} with cursor session ID: ${parsed.session_id}`);
+      if (sessionObject) {
+        console.log(`🆔 Found session object from runner:`, sessionObject);
+        
+        // Update that specific session with the cursor session ID
         if (updateSessionWithCursorId) {
-          updateSessionWithCursorId(currentSessionId, parsed.session_id);
+          console.log(`🆔 Updating session ${sessionObject.id} with cursor session ID: ${parsed.session_id}`);
+          try {
+            updateSessionWithCursorId(sessionObject.id, parsed.session_id);
+            console.log(`🆔 updateSessionWithCursorId called successfully`);
+          } catch (error) {
+            console.error(`❌ Error calling updateSessionWithCursorId:`, error);
+          }
+        } else {
+          console.error(`❌ updateSessionWithCursorId function is not available!`);
         }
-        targetSessionId = currentSessionId;
+        
+        // Use the session ID from the session object for this message
+        targetSessionId = sessionObject.id;
       } else {
-        // Either no current session or current session already has a cursorSessionId
-        // Let updateSessionWithCursorId handle creating a new session or finding a temp session
-        console.log(`🆔 No suitable session found, letting updateSessionWithCursorId handle it`);
-        console.log(`🆔 Current session exists: ${!!currentSession}, has cursorSessionId: ${currentSession?.cursorSessionId}`);
-        if (updateSessionWithCursorId) {
-          updateSessionWithCursorId(null, parsed.session_id);
-        }
-        // targetSessionId will remain currentSessionId for now
+        console.warn(`⚠️  No session object found for run ${runId}`);
+        console.error(`❌ Cannot route message without session object - this should not happen`);
+        return; // Don't process the message if we can't identify the session
       }
     }
+  } else {
+    console.log(`⚠️  Message does not have session_id, using current session: ${currentSessionId}`);
   }
   
   console.log('Final target session ID:', targetSessionId);
@@ -262,7 +278,8 @@ export const handleStreamLogLine = async (line, {
   setSessionBusy,
   runTimeoutRef,
   unsubRef,
-  sawJsonRef
+  sawJsonRef,
+  updateSessionWithCursorId
 }) => {
   // If we already saw JSON this run, ignore raw stream lines to avoid duplication
   if (sawJsonRef.current) {
@@ -294,7 +311,8 @@ export const handleStreamLogLine = async (line, {
       lastChunkRef,
       setSessionBusy,
       runTimeoutRef,
-      unsubRef
+      unsubRef,
+      updateSessionWithCursorId
     });
     
     return isComplete;
@@ -393,7 +411,6 @@ export const handleEndMarker = ({
  */
 export const createLogStreamHandler = ({
   runId,
-  currentSessionId,
   sessions,
   setMessages,
   streamIndexRef,
@@ -408,22 +425,23 @@ export const createLogStreamHandler = ({
   runTimeoutRef,
   unsubRef,
   sawJsonRef,
-  updateSessionWithCursorId
+  updateSessionWithCursorId,
+  getCurrentSessions // Function to get current session state
 }) => {
   return async (payload) => {
-    console.log(`🔍 createLogStreamHandler received payload:`, payload);
-    console.log(`🔍 Expected runId: ${runId}, received runId: ${payload?.runId}`);
-    console.log(`🔍 runId types - expected: ${typeof runId} (${runId}), received: ${typeof payload?.runId} (${payload?.runId})`);
-    console.log(`🔍 runId comparison: ${payload?.runId === runId}`);
+    console.log(`🚀 createLogStreamHandler ENTRY - received payload:`, payload);
+    console.log(`🚀 Expected runId: ${runId}, received runId: ${payload?.runId}`);
+    console.log(`🚀 runId types - expected: ${typeof runId} (${runId}), received: ${typeof payload?.runId} (${payload?.runId})`);
+    console.log(`🚀 runId comparison: ${payload?.runId === runId}`);
     
     // Filter messages by runId to ensure we only process messages for this specific run
     if (!payload || payload.runId !== runId) {
-      console.log(`🚫 Ignoring message for different runId: ${payload?.runId} (expected: ${runId})`);
+      console.log(`🚫 IGNORING message for different runId: ${payload?.runId} (expected: ${runId})`);
       return;
     }
     
-    console.log(`✅ Processing message for runId: ${runId}, sessionId: ${payload.sessionId || 'none'}`);
-    console.log('Message payload:', { level: payload.level, linePreview: payload.line?.substring(0, 100) });
+    console.log(`✅ PROCESSING message for runId: ${runId}, sessionId: ${payload.sessionId || 'none'}`);
+    console.log('🚀 Message payload:', { level: payload.level, linePreview: payload.line?.substring(0, 100) });
     
     try {
       // Prefer clean JSON emitted by the runner; ignore non-JSON stream lines to avoid duplicates
@@ -433,10 +451,18 @@ export const createLogStreamHandler = ({
         const lines = [parsed];
         
         for (const parsed of lines) {
+          // Get current session state to avoid stale closure issues
+          const currentSessions = getCurrentSessions ? getCurrentSessions() : sessions;
+          console.log(`🚀 Using ${getCurrentSessions ? 'fresh' : 'stale'} session state:`, currentSessions.map(s => ({ id: s.id, name: s.name, cursorSessionId: s.cursorSessionId })));
+          
+          // Get the session ID from the log router for this run
+          const sessionObject = window.cursovableLogRouter?.getCurrentRunSession?.(runId);
+          const internalSessionId = sessionObject?.id;
+          
           const isComplete = await handleJsonLogLine(parsed, {
             runId,
-            currentSessionId,
-            sessions,
+            currentSessionId: internalSessionId, // Use the internal session ID from the log router
+            sessions: currentSessions, // Use fresh session state
             setMessages,
             streamIndexRef,
             setSessionToolCalls,
@@ -462,10 +488,14 @@ export const createLogStreamHandler = ({
       const lines = sanitized.split('\n').filter(line => line.trim());
       
       for (const line of lines) {
+        // Get the session ID from the log router for this run
+        const sessionObject = window.cursovableLogRouter?.getCurrentRunSession?.(runId);
+        const internalSessionId = sessionObject?.id;
+        
         const isComplete = await handleStreamLogLine(line, {
           runId,
-          currentSessionId,
-          sessions,
+          currentSessionId: internalSessionId, // Use the internal session ID from the log router
+          sessions: getCurrentSessions ? getCurrentSessions() : sessions, // Use fresh session state
           setMessages,
           streamIndexRef,
           setSessionToolCalls,
@@ -477,7 +507,8 @@ export const createLogStreamHandler = ({
           setSessionBusy,
           runTimeoutRef,
           unsubRef,
-          sawJsonRef
+          sawJsonRef,
+          updateSessionWithCursorId
         });
         
         if (isComplete) return;

@@ -14,6 +14,7 @@ function LegacyApp() {
   const [apiKey, setApiKey] = useState('');
   const [isStarting, setIsStarting] = useState(false);
   const [showDebug, setShowDebug] = useState(false);
+  const [debugMode, setDebugMode] = useState(false);
   const [activeTab, setActiveTab] = useState('vite'); // 'vite' | 'cursor' | 'console'
   const [viteLogs, setViteLogs] = useState([]);
   const [cursorLogs, setCursorLogs] = useState([]);
@@ -48,6 +49,26 @@ function LegacyApp() {
     setPreviewUrl(null);
   }
 
+  async function toggleDebugMode() {
+    try {
+      const newDebugMode = !debugMode;
+      const { ok } = await window.cursovable.setDebugMode({ 
+        enabled: newDebugMode,
+        options: {
+          mockTypingDelay: 100,
+          mockMessageDelay: 2000,
+          mockFinalDelay: 1000
+        }
+      });
+      if (ok) {
+        setDebugMode(newDebugMode);
+        console.log(`🧪 Debug mode ${newDebugMode ? 'enabled' : 'disabled'}`);
+      }
+    } catch (err) {
+      console.error('Failed to toggle debug mode:', err);
+    }
+  }
+
   // Subscribe to Vite and cursor-agent logs
   useEffect(() => {
     const unsubV = window.cursovable.onViteLog((payload) => {
@@ -70,6 +91,19 @@ function LegacyApp() {
       unsubC && unsubC(); 
       unsubF && unsubF();
     };
+  }, []);
+
+  // Check debug mode status on mount
+  useEffect(() => {
+    async function checkDebugMode() {
+      try {
+        const { debugMode: currentDebugMode } = await window.cursovable.getDebugMode();
+        setDebugMode(currentDebugMode);
+      } catch (err) {
+        console.warn('Failed to get debug mode status:', err);
+      }
+    }
+    checkDebugMode();
   }, []);
 
   // Auto scroll logs
@@ -136,6 +170,14 @@ function LegacyApp() {
           </select>
           <button onClick={startPreview} disabled={!folder || isStarting}>Run Vite</button>
           <button className="secondary" onClick={stopPreview}>Stop</button>
+          <button 
+            className={`secondary ${debugMode ? 'active' : ''}`} 
+            onClick={toggleDebugMode}
+            title={debugMode ? 'Debug mode enabled - using mock data' : 'Debug mode disabled - using real cursor-agent'}
+            style={{ marginRight: '8px' }}
+          >
+            {debugMode ? '🧪 Mock' : 'Debug Mode'}
+          </button>
           <button className="secondary" onClick={() => setShowDebug(v => !v)}>
             {showDebug ? 'Hide Debug' : 'Show Debug'}
           </button>
@@ -187,6 +229,11 @@ function LegacyApp() {
                     </div>
                     <div style={{color: '#cde3ff', fontSize: '10px', marginBottom: '8px', opacity: 0.7}}>
                       Status: <span id="terminal-status">Checking...</span>
+                      {debugMode && (
+                        <span style={{marginLeft: '10px', color: '#ff6b35', fontWeight: 'bold'}}>
+                          🧪 DEBUG MODE ACTIVE
+                        </span>
+                      )}
                     </div>
                     <input
                       value={agentInput}

@@ -26,7 +26,7 @@ function loadPTY() {
 
 const { startVite, stopVite } = require('./viteRunner.cjs');
 const { startHtmlServer } = require('./htmlServer.cjs');
-const { runCursorAgent, startCursorAgent } = require('./runner.cjs');
+const { runCursorAgent, startCursorAgent, setDebugMode, getDebugMode } = require('./runner.cjs');
 const { HistoryStore } = require('./historyStore.cjs');
 
 // Ensure PATH includes common Homebrew locations (helps find cursor-agent)
@@ -868,7 +868,7 @@ ipcMain.handle('html-stop', async () => {
   return true;
 });
 
-ipcMain.handle('cursor-run', async (_e, { message, cwd, runId: clientRunId, sessionId, model, timeoutMs, apiKey }) => {
+ipcMain.handle('cursor-run', async (_e, { message, cwd, runId: clientRunId, sessionId, model, timeoutMs, apiKey, debugMode }) => {
   if (!message || !message.trim()) {
     throw new Error('Empty message');
   }
@@ -909,12 +909,34 @@ ipcMain.handle('cursor-run', async (_e, { message, cwd, runId: clientRunId, sess
   // For new sessions without cursorSessionId, use a temporary session ID that will be mapped later
   const effectiveSessionId = sessionId || `temp-${runId}`;
   
-  const { child, wait } = startCursorAgent(message, sessionId, (level, line) => {
+  // Create a session object with all the information needed for tracking
+  const sessionObject = {
+    id: sessionId || `temp-${runId}`, // internal session ID
+    cursorSessionId: sessionId, // cursor session ID (may be null for new sessions)
+    runId: runId // run ID for tracking
+  };
+  
+  const { child, wait } = startCursorAgent(message, sessionObject, (level, line) => {
     try {
       if (line) perfAccumLogBytes.cursor += Buffer.byteLength(String(line));
-      if (win && !win.isDestroyed()) win.webContents.send('cursor-log', { runId, level, line, ts: Date.now(), sessionId: effectiveSessionId });
+      // Include both the cursor session ID and internal session ID for proper tracking
+      const logPayload = { 
+        runId, 
+        level, 
+        line, 
+        ts: Date.now(), 
+        sessionId: effectiveSessionId, // cursor session ID
+        internalSessionId: sessionObject.id   // internal session ID for tracking
+      };
+      if (win && !win.isDestroyed()) win.webContents.send('cursor-log', logPayload);
     } catch {}
-  }, { cwd: workingDir, model, ...(typeof timeoutMs === 'number' ? { timeoutMs } : {}), ...(apiKey ? { apiKey, useTokenAuth: true } : {}) });
+  }, { 
+    cwd: workingDir, 
+    model, 
+    ...(typeof timeoutMs === 'number' ? { timeoutMs } : {}), 
+    ...(apiKey ? { apiKey, useTokenAuth: true } : {}),
+    ...(debugMode ? { debugMode } : {})
+  });
   
   if (child) {
     agentProcs.set(runId, child);
@@ -1525,6 +1547,24 @@ ipcMain.handle('cursor-auth-login', async () => {
   const out = `${stripAnsi(res.stdout)}\n${stripAnsi(res.stderr)}`.toLowerCase();
   const success = res.ok || /login successful/.test(out) || /authentication tokens stored securely/.test(out);
   return { ok: res.ok, success, raw: { stdout: res.stdout, stderr: res.stderr } };
+});
+
+// Debug mode control
+ipcMain.handle('debug-mode-set', async (_e, { enabled, options = {} }) => {
+  try {
+    setDebugMode(enabled, options);
+    return { ok: true, debugMode: getDebugMode() };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
+ipcMain.handle('debug-mode-get', async () => {
+  try {
+    return { ok: true, debugMode: getDebugMode() };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
 });
 
 // Emit a manual log line into the cursor log stream (for debug)

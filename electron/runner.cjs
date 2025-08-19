@@ -6,6 +6,7 @@ try { pty = require('node-pty'); } catch {}
 const fs = require('fs');
 const path = require('path');
 const { stripAnsiAndControls: stripAnsi } = require('./utils/ansi.cjs');
+const { MockDataGenerator } = require('./mockDataGenerator.cjs');
 
 function extractJsonObjects(text) {
   // Enhanced JSON extraction that handles nested structures, arrays, and special characters
@@ -216,6 +217,12 @@ function debugBufferContent(buffer, maxLength = 500) {
   return `Buffer (${buffer.length} chars): "${truncated.replace(/\n/g, '\\n').replace(/\r/g, '\\r')}"`;
 }
 
+function isDebugModeEnabled(options = {}) {
+  return options.debugMode === true || 
+         process.env.CURSOVABLE_DEBUG_MODE === '1' || 
+         process.env.NODE_ENV === 'development' && options.forceDebug !== false;
+}
+
 function ensureDarwinPath(originalPath) {
   if (process.platform !== 'darwin') return originalPath;
   const extras = ['/usr/local/bin', '/opt/homebrew/bin'];
@@ -265,16 +272,117 @@ function normalizeSuccessObject(obj) {
   };
 }
 
-function startCursorAgent(message, sessionId, onLog, options = {}) {
+function startMockCursorAgent(message, sessionObject, onLog, options = {}) {
+  // Extract session information
+  const sessionId = sessionObject?.cursorSessionId || null;
+  const internalSessionId = sessionObject?.id || null;
+  
+  const sessionLabel = internalSessionId ? `Session ${internalSessionId.slice(0, 8)}` : 'Default';
+  
+  if (onLog) onLog('info', `[${sessionLabel}] 🧪 DEBUG MODE: Using mock data generator instead of cursor-agent CLI`);
+  if (onLog) onLog('info', `[${sessionLabel}] Mock message: "${message}"`);
+  if (onLog) onLog('info', `[${sessionLabel}] Internal Session ID: ${internalSessionId || 'none'}`);
+  if (onLog) onLog('info', `[${sessionLabel}] Cursor Session ID: ${sessionId || 'none'}`);
+  
+  const mockGenerator = new MockDataGenerator(message, sessionId, {
+    typingDelay: options.mockTypingDelay || 100,
+    messageDelay: options.mockMessageDelay || 2000,
+    finalDelay: options.mockFinalDelay || 1000
+  });
+  
+  const wait = new Promise((resolve) => {
+    let settled = false;
+    
+    const cleanup = () => {
+      if (settled) return;
+      settled = true;
+      mockGenerator.stop();
+    };
+    
+    mockGenerator.on('data', (data) => {
+      if (settled) return;
+      
+      try {
+        // Parse the mock data to validate it's proper JSON
+        const obj = JSON.parse(data);
+        
+        // Forward the mock data to the renderer
+        if (onLog) {
+          try { onLog('json', JSON.stringify(obj)); } catch {}
+          onLog('stream', data);
+        }
+        
+        // Check if this is a success result
+        const normalized = normalizeSuccessObject(obj);
+        if (normalized) {
+          settled = true;
+          cleanup();
+          resolve(normalized);
+        }
+      } catch (parseError) {
+        // If it's not valid JSON, treat as raw stream data
+        if (onLog) onLog('stream', data);
+      }
+    });
+    
+    mockGenerator.on('exit', (code) => {
+      if (settled) return;
+      if (onLog) onLog('info', `[${sessionLabel}] Mock generator exited with code ${code}`);
+      
+      // If we haven't resolved yet, provide a fallback result
+      if (!settled) {
+        settled = true;
+        cleanup();
+        resolve({
+          type: 'result',
+          subtype: 'success',
+          is_error: false,
+          result: `Mock execution completed for: "${message}"`,
+          raw: { type: 'mock_result', success: true }
+        });
+      }
+    });
+    
+    // Start the mock generator
+    mockGenerator.start();
+    
+    // Set a timeout for the mock execution
+    setTimeout(() => {
+      if (settled) return;
+      if (onLog) onLog('warn', `[${sessionLabel}] Mock execution timeout`);
+      cleanup();
+      resolve({
+        type: 'result',
+        subtype: 'success',
+        is_error: false,
+        result: `Mock execution completed (timeout) for: "${message}"`,
+        raw: { type: 'mock_result', success: true, timeout: true }
+      });
+    }, 10000); // 10 second timeout for mock execution
+  });
+  
+  return { child: mockGenerator, wait };
+}
+
+function startCursorAgent(message, sessionObject, onLog, options = {}) {
+  // Check if debug mode is enabled
+  if (isDebugModeEnabled(options)) {
+    return startMockCursorAgent(message, sessionObject, onLog, options);
+  }
+  
   let timeoutId = null;
   let idleTimeoutId = null;
   let settled = false;
   let childRef = null;
   let lastActivity = Date.now();
   
+  // Extract session information
+  const sessionId = sessionObject?.cursorSessionId || null;
+  const internalSessionId = sessionObject?.id || null;
+  
   // Generate unique terminal name for this session
-  const terminalName = `cursor-session-${sessionId || 'default'}-${Date.now()}`;
-  const sessionLabel = sessionId ? `Session ${sessionId.slice(0, 8)}` : 'Default';
+  const terminalName = `cursor-session-${internalSessionId || 'default'}-${Date.now()}`;
+  const sessionLabel = internalSessionId ? `Session ${internalSessionId.slice(0, 8)}` : 'Default';
   
   const wait = new Promise((resolve, reject) => {
     const STREAM_DEBUG = process.env.CURSOVABLE_STREAM_DEBUG === '1' || options.debugStream === true;
@@ -300,6 +408,11 @@ function startCursorAgent(message, sessionId, onLog, options = {}) {
     const displayArgs = args.map(a => (options && options.apiKey && a === String(options.apiKey)) ? '********' : a);
     if (onLog) onLog('info', `[${sessionLabel}] Running: cursor-agent ${displayArgs.map(a => (a.includes(' ') ? '"'+a+'"' : a)).join(' ')}`);
     if (onLog) onLog('info', `[${sessionLabel}] Working directory: ${options.cwd || process.cwd()}`);
+    
+    // Log the session information being used for this run
+    if (onLog) onLog('info', `[${sessionLabel}] Internal Session ID: ${internalSessionId || 'none'}`);
+    if (onLog) onLog('info', `[${sessionLabel}] Cursor Session ID: ${sessionId || 'none'}`);
+    
     const env = { ...process.env };
     // If apiKey provided, pass as OPENAI_API_KEY to the child process only
     if (options.apiKey && typeof options.apiKey === 'string') {
@@ -590,4 +703,30 @@ async function runCursorAgent(message, sessionId, onLog, options = {}) {
   return wait;
 }
 
-module.exports = { runCursorAgent, startCursorAgent };
+// Global debug mode state
+let globalDebugMode = false;
+
+function setDebugMode(enabled, options = {}) {
+  globalDebugMode = enabled;
+  if (enabled) {
+    console.log('🧪 DEBUG MODE ENABLED: Using mock data generator instead of cursor-agent CLI');
+    if (options.mockTypingDelay) console.log(`   Mock typing delay: ${options.mockTypingDelay}ms`);
+    if (options.mockMessageDelay) console.log(`   Mock message delay: ${options.mockMessageDelay}ms`);
+    if (options.mockFinalDelay) console.log(`   Mock final delay: ${options.mockFinalDelay}ms`);
+  } else {
+    console.log('✅ DEBUG MODE DISABLED: Using real cursor-agent CLI');
+  }
+}
+
+function getDebugMode() {
+  return globalDebugMode;
+}
+
+module.exports = { 
+  runCursorAgent, 
+  startCursorAgent, 
+  setDebugMode, 
+  getDebugMode,
+  isDebugModeEnabled,
+  MockDataGenerator 
+};

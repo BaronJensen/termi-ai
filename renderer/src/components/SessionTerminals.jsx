@@ -180,6 +180,27 @@ export default function SessionTerminals() {
                 >
                   Debug Router
                 </button>
+                <button
+                  onClick={() => {
+                    // Debug button to show session state
+                    if (window.cursovableLogRouter) {
+                      window.cursovableLogRouter.debugSessions();
+                    } else {
+                      console.log('🔧 Log router not available');
+                    }
+                  }}
+                  style={{
+                    padding: '4px 8px',
+                    fontSize: '10px',
+                    backgroundColor: '#7c3aed',
+                    color: '#e9d5ff',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: 'pointer'
+                  }}
+                >
+                  Debug Sessions
+                </button>
                 <label style={{ color: '#cde3ff', fontSize: '10px', display: 'flex', alignItems: 'center', gap: 6 }}>
                   <input
                     type="checkbox"

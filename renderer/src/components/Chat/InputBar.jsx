@@ -9,9 +9,26 @@ export default function InputBar({
   setModel,
   suggestedModels
 }) {
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (value && value.trim()) {
+      onSubmit(value);
+    }
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      if (value && value.trim()) {
+        onSubmit(value);
+      }
+      return;
+    }
+  };
+
   return (
     <div>
-      <form className="input" onSubmit={(e) => { e.preventDefault(); onSubmit(); }}>
+      <form className="input" onSubmit={handleSubmit}>
         <div className="input-field" style={{ position: 'relative', width: '100%', display: 'grid', gridTemplateColumns: '1fr auto', gap: '10px', alignItems: 'center' }}>
           <textarea
             placeholder={'What do you want to do?'}
@@ -22,20 +39,14 @@ export default function InputBar({
               textarea.style.height = 'auto';
               textarea.style.height = Math.min(textarea.scrollHeight, 200) + 'px';
             }}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                onSubmit();
-                return;
-              }
-            }}
+            onKeyDown={handleKeyDown}
             disabled={disabled}
             style={{ height: '64px' }}
             className="copyable-text"
             aria-label="Type your message to the CTO agent"
           />
           <button 
-            disabled={disabled}
+            disabled={disabled || !value?.trim()}
             className="send-button"
             aria-label={disabled ? 'Processing request...' : 'Send message'}
             title={disabled ? 'Processing request...' : 'Send message'}

@@ -28,6 +28,8 @@ export const SessionProvider = ({ children, projectId }) => {
       const storedSessions = localStorage.getItem(`cursovable-sessions-${projectId || 'legacy'}`);
       if (storedSessions) {
         const parsedSessions = JSON.parse(storedSessions);
+        console.log(`🔍 loadSessions: Loaded ${parsedSessions.length} sessions from localStorage:`, 
+          parsedSessions.map(s => ({ id: s.id, name: s.name, cursorSessionId: s.cursorSessionId })));
         return Array.isArray(parsedSessions) ? parsedSessions : [];
       }
     } catch (e) {
@@ -58,19 +60,41 @@ export const SessionProvider = ({ children, projectId }) => {
     // Create the centralized log router
     window.cursovableLogRouter = {
       handlers: new Map(), // runId -> handler function
+      runToSessionMap: new Map(), // runId -> session object mapping
       
-      registerHandler(runId, handler) {
-        console.log(`🔧 Log router: registered handler for runId ${runId}`);
+      registerHandler(runId, handler, sessionObject) {
+        console.log(`🔧 Log router: registered handler for runId ${runId} with session:`, sessionObject);
+        console.log(`🔧 Log router: handler function:`, typeof handler);
         this.handlers.set(runId, handler);
+        this.runToSessionMap.set(runId, sessionObject);
+        console.log(`🔧 Log router: total handlers after registration:`, this.handlers.size);
+        console.log(`🔧 Log router: all registered runIds:`, Array.from(this.handlers.keys()));
+        console.log(`🔧 Log router: run to session mapping:`, Array.from(this.runToSessionMap.entries()));
       },
       
       unregisterHandler(runId) {
         console.log(`🔧 Log router: unregistered handler for runId ${runId}`);
         this.handlers.delete(runId);
+        this.runToSessionMap.delete(runId);
+      },
+      
+      getCurrentRunSession(runId) {
+        const sessionObject = this.runToSessionMap.get(runId);
+        console.log(`🔧 Log router: getCurrentRunSession(${runId}) =`, sessionObject);
+        return sessionObject;
+      },
+      
+      getCurrentRunSessionId(runId) {
+        const sessionObject = this.runToSessionMap.get(runId);
+        const sessionId = sessionObject?.id;
+        console.log(`🔧 Log router: getCurrentRunSessionId(${runId}) = ${sessionId}`);
+        return sessionId;
       },
       
       routeLog(payload) {
         console.log(`🔧 Log router: routeLog called with payload:`, payload);
+        console.log(`🔧 Log router: payload level: ${payload.level}, has line: ${!!payload.line}`);
+        console.log(`🔧 Log router: payload line preview: ${payload.line?.substring(0, 200)}`);
         
         if (!payload || !payload.runId) {
           console.log('⚠️  Log router: payload missing runId, skipping');
@@ -95,8 +119,22 @@ export const SessionProvider = ({ children, projectId }) => {
         console.log('🔧 Log router debug state:', {
           totalHandlers: this.handlers.size,
           registeredRunIds: Array.from(this.handlers.keys()),
-          sessions: sessions.map(s => ({ id: s.id, name: s.name, cursorSessionId: s.cursorSessionId }))
+          runToSessionMap: Array.from(this.runToSessionMap.entries()),
+          sessions: sessions.map(s => ({ id: s.id, name: s.name, cursorSessionId: s.cursorSessionId })),
+          currentSessionId
         });
+      },
+      
+      // Debug function to get current session state
+      debugSessions() {
+        const currentState = {
+          sessions: sessions.map(s => ({ id: s.id, name: s.name, cursorSessionId: s.cursorSessionId })),
+          currentSessionId,
+          updateSessionWithCursorId: !!updateSessionWithCursorId,
+          runToSessionMap: Array.from(this.runToSessionMap.entries())
+        };
+        console.log(`🔧 Log router: debugSessions called, returning:`, currentState);
+        return currentState;
       }
     };
 
@@ -107,60 +145,71 @@ export const SessionProvider = ({ children, projectId }) => {
       // Route the log to the appropriate handler based on runId
       if (window.cursovableLogRouter) {
         console.log(`🔧 SessionProvider routing log with runId: ${payload.runId}`);
+        console.log(`🔧 SessionProvider payload level: ${payload.level}, has line: ${!!payload.line}`);
         window.cursovableLogRouter.routeLog(payload);
       } else {
         console.log('⚠️  Log router not available for routing');
       }
       
       // Also handle terminal logs for display
-      if (payload && payload.sessionId) {
+      if (payload && (payload.sessionId || payload.internalSessionId)) {
         // Map cursorSessionId to internal sessionId
-        let targetSessionId = payload.sessionId;
+        let targetSessionId = null;
         
-        // Check if this is a cursorSessionId that needs to be mapped to an internal sessionId
-        const sessionWithCursorId = sessions.find(s => s.cursorSessionId === payload.sessionId);
-        console.log(`🔍 Looking for session with cursorSessionId: ${payload.sessionId}`);
-        console.log(`🔍 Available sessions for mapping:`, sessions.map(s => ({ id: s.id, name: s.name, cursorSessionId: s.cursorSessionId })));
-        
-        if (sessionWithCursorId) {
-          targetSessionId = sessionWithCursorId.id;
-          console.log(`✅ Mapped cursor session ${payload.sessionId} to internal session ${targetSessionId}`);
-        } else if (payload.sessionId.startsWith('temp-')) {
-          // This is a temporary session ID from a new session, route to current session
-          if (currentSessionId) {
-            targetSessionId = currentSessionId;
-            console.log(`🔄 Mapped temporary session ${payload.sessionId} to current session ${currentSessionId}`);
+        // First try to use internalSessionId if available (most reliable)
+        if (payload.internalSessionId) {
+          targetSessionId = payload.internalSessionId;
+          console.log(`✅ Using internalSessionId from payload: ${targetSessionId}`);
+        } else if (payload.sessionId) {
+          // Check if this is a cursorSessionId that needs to be mapped to an internal sessionId
+          const sessionWithCursorId = sessions.find(s => s.cursorSessionId === payload.sessionId);
+          console.log(`🔍 Looking for session with cursorSessionId: ${payload.sessionId}`);
+          console.log(`🔍 Available sessions for mapping:`, sessions.map(s => ({ id: s.id, name: s.name, cursorSessionId: s.cursorSessionId })));
+          
+          if (sessionWithCursorId) {
+            targetSessionId = sessionWithCursorId.id;
+            console.log(`✅ Mapped cursor session ${payload.sessionId} to internal session ${targetSessionId}`);
+          } else if (payload.sessionId.startsWith('temp-')) {
+            // This is a temporary session ID from a new session, route to current session
+            if (currentSessionId) {
+              targetSessionId = currentSessionId;
+              console.log(`🔄 Mapped temporary session ${payload.sessionId} to current session ${currentSessionId}`);
+            } else {
+              console.log(`⚠️  Temporary session ${payload.sessionId} but no currentSessionId`);
+              return;
+            }
           } else {
-            console.log(`⚠️  Temporary session ${payload.sessionId} but no currentSessionId`);
+            console.log(`⚠️  No internal session found for cursor session ${payload.sessionId}`);
+            console.log('Available sessions:', sessions.map(s => ({ id: s.id, cursorSessionId: s.cursorSessionId })));
             return;
           }
-        } else {
-          console.log(`⚠️  No internal session found for cursor session ${payload.sessionId}`);
-          console.log('Available sessions:', sessions.map(s => ({ id: s.id, cursorSessionId: s.cursorSessionId })));
-          return;
         }
         
-        setTerminalLogs(prev => {
-          const next = new Map(prev);
-          const sessionLogs = next.get(targetSessionId) || { cursor: [] };
+        if (targetSessionId) {
+          setTerminalLogs(prev => {
+            const next = new Map(prev);
+            const sessionLogs = next.get(targetSessionId) || { cursor: [] };
 
-          const newLog = {
-            ...payload,
-            ts: Date.now(),
-            tss: new Date().toLocaleTimeString()
-          };
+            const newLog = {
+              ...payload,
+              ts: Date.now(),
+              tss: new Date().toLocaleTimeString()
+            };
 
-          const updatedLogs = {
-            ...sessionLogs,
-            cursor: [...sessionLogs.cursor, newLog]
-          };
+            const updatedLogs = {
+              ...sessionLogs,
+              cursor: [...sessionLogs.cursor, newLog]
+            };
 
-          next.set(targetSessionId, updatedLogs);
-          console.log(`📝 Added log to session ${targetSessionId}, total logs: ${updatedLogs.cursor.length}`);
-          return next;
-        });
+            next.set(targetSessionId, updatedLogs);
+            console.log(`📝 Added log to session ${targetSessionId}, total logs: ${updatedLogs.cursor.length}`);
+            return next;
+          });
+        } else {
+          console.log(`⚠️  Could not determine target session for log payload:`, payload);
+        }
       } else {
-        console.log('⚠️  Cursor log payload missing sessionId:', payload);
+        console.log('⚠️  Cursor log payload missing sessionId and internalSessionId:', payload);
       }
     });
 
@@ -255,7 +304,8 @@ export const SessionProvider = ({ children, projectId }) => {
       createdAt: Date.now(),
       updatedAt: Date.now(),
       isFirstSession: isFirstSession,
-      cursorSessionId: null
+      cursorSessionId: null,
+      runningTerminal: false
     };
     
     const updatedSessions = [...currentSessions, newSession];
@@ -336,19 +386,50 @@ export const SessionProvider = ({ children, projectId }) => {
     });
   }, [sessions, currentSessionId, saveSessions, loadSession, createNewSession]);
 
-  const updateSessionWithCursorId = useCallback((sessionId, cursorSessionId) => {
-    console.log(`🔄 updateSessionWithCursorId called with sessionId: ${sessionId}, cursorSessionId: ${cursorSessionId}`);
-    console.log(`🔄 Current sessions:`, sessions.map(s => ({ id: s.id, name: s.name, cursorSessionId: s.cursorSessionId })));
-    console.log(`🔄 Current session ID: ${currentSessionId}`);
+  const markSessionRunningTerminal = useCallback((sessionId) => {
+    console.log(`🔄 markSessionRunningTerminal called for session: ${sessionId}`);
     
     setSessions(prevSessions => {
+      // Mark all sessions as not running terminal
+      const updatedSessions = prevSessions.map(session => ({
+        ...session,
+        runningTerminal: false
+      }));
+      
+      // Mark the specified session as running terminal
+      const targetSession = updatedSessions.find(s => s.id === sessionId);
+      if (targetSession) {
+        targetSession.runningTerminal = true;
+        console.log(`✅ Marked session ${sessionId} as running terminal`);
+      } else {
+        console.warn(`❌ Session ${sessionId} not found, cannot mark as running terminal`);
+      }
+      
+      saveSessions(updatedSessions);
+      return updatedSessions;
+    });
+  }, [saveSessions]);
+
+  const updateSessionWithCursorId = useCallback((sessionId, cursorSessionId) => {
+    console.log(`🔄 updateSessionWithCursorId called with sessionId: ${sessionId}, cursorSessionId: ${cursorSessionId}`);
+    console.log(`🔄 Parameter types - sessionId: ${typeof sessionId}, cursorSessionId: ${typeof cursorSessionId}`);
+    console.log(`🔄 Current sessions:`, sessions.map(s => ({ id: s.id, name: s.name, cursorSessionId: s.cursorSessionId, runningTerminal: s.runningTerminal })));
+    console.log(`🔄 Current session ID: ${currentSessionId}`);
+    
+    // Validate parameters
+    if (sessionId === cursorSessionId) {
+      console.warn(`⚠️  WARNING: sessionId and cursorSessionId are the same: ${sessionId}`);
+      console.warn(`⚠️  This suggests the internal session ID is being passed as the cursor session ID`);
+    }
+    
+    setSessions(prevSessions => {
+      console.log(`🔄 setSessions callback - prevSessions:`, prevSessions.map(s => ({ id: s.id, name: s.name, cursorSessionId: s.cursorSessionId, runningTerminal: s.runningTerminal })));
       let updatedSessions = [...prevSessions];
       
-      // If we have a sessionId, update the existing session
       if (sessionId) {
+        // Update the specific session with the cursor session ID
         const existingSession = prevSessions.find(s => s.id === sessionId);
         if (existingSession) {
-          // Update the existing (possibly temporary) session with the real cursor session ID
           updatedSessions = updatedSessions.map(session => 
             session.id === sessionId 
               ? { ...session, cursorSessionId, updatedAt: Date.now() }
@@ -359,62 +440,448 @@ export const SessionProvider = ({ children, projectId }) => {
           console.warn(`❌ Session ${sessionId} not found, cannot update with cursor session ID`);
         }
       } else {
-        // If no sessionId provided, try to find a temporary session (one without cursorSessionId)
-        const tempSession = prevSessions.find(s => !s.cursorSessionId);
-        if (tempSession) {
-          // Update the temporary session with the real cursor session ID
+        // No sessionId provided - find the session running the terminal and update it
+        const runningSession = prevSessions.find(s => s.runningTerminal);
+        if (runningSession) {
           updatedSessions = updatedSessions.map(session => 
-            session.id === tempSession.id 
+            session.id === runningSession.id 
               ? { ...session, cursorSessionId, updatedAt: Date.now() }
               : session
           );
-          console.log(`✅ Updated temporary session ${tempSession.id} with cursor session ID: ${cursorSessionId}`);
+          console.log(`✅ Updated running session ${runningSession.id} with cursor session ID: ${cursorSessionId}`);
         } else {
-          // If no temporary session exists, create a new session with the cursorSessionId
-          const newSession = {
-            id: `session-${Date.now()}-${Math.random().toString(36).slice(2,8)}`,
-            name: 'New Session',
-            messages: [],
-            cursorSessionId,
-            createdAt: Date.now(),
-            updatedAt: Date.now()
-          };
-          updatedSessions.push(newSession);
-          
-          // Set this as the current session
-          setCurrentSessionId(newSession.id);
-          
-          // Initialize state for the new session
-          setToolCallsBySession(prev => {
-            const next = new Map(prev);
-            next.set(newSession.id, new Map());
-            return next;
-          });
-          setHideToolCallIndicatorsBySession(prev => {
-            const next = new Map(prev);
-            next.set(newSession.id, false);
-            return next;
-          });
-          setTerminalLogs(prev => {
-            const next = new Map(prev);
-            next.set(newSession.id, { cursor: [] });
-            return next;
-          });
-          setShowRawTerminal(prev => {
-            const next = new Map(prev);
-            next.set(newSession.id, false);
-            return next;
-          });
-          
-          console.log(`Created new session ${newSession.id} with cursor session ID: ${cursorSessionId}`);
+          // Fallback: update the current session
+          const currentSession = prevSessions.find(s => s.id === currentSessionId);
+          if (currentSession) {
+            updatedSessions = updatedSessions.map(session => 
+              session.id === currentSessionId 
+                ? { ...session, cursorSessionId, updatedAt: Date.now() }
+                : session
+            );
+            console.log(`✅ Updated current session ${currentSessionId} with cursor session ID: ${cursorSessionId}`);
+          } else {
+            // Create a new session if no suitable session found
+            console.log(`🔄 Creating new session with cursor session ID: ${cursorSessionId}`);
+            const newSession = {
+              id: `session-${Date.now()}-${Math.random().toString(36).slice(2,8)}`,
+              name: 'New Session',
+              messages: [],
+              cursorSessionId,
+              runningTerminal: true,
+              createdAt: Date.now(),
+              updatedAt: Date.now()
+            };
+            updatedSessions.push(newSession);
+            setCurrentSessionId(newSession.id);
+            
+            // Initialize state for the new session
+            setToolCallsBySession(prev => {
+              const next = new Map(prev);
+              next.set(newSession.id, new Map());
+              return next;
+            });
+            setHideToolCallIndicatorsBySession(prev => {
+              const next = new Map(prev);
+              next.set(newSession.id, false);
+              return next;
+            });
+            setTerminalLogs(prev => {
+              const next = new Map(prev);
+              next.set(newSession.id, { cursor: [] });
+              return next;
+            });
+            setShowRawTerminal(prev => {
+              const next = new Map(prev);
+              next.set(newSession.id, false);
+              return next;
+            });
+            
+            console.log(`Created new session ${newSession.id} with cursor session ID: ${cursorSessionId}`);
+          }
         }
       }
       
+      console.log(`🔄 About to save sessions:`, updatedSessions.map(s => ({ id: s.id, name: s.name, cursorSessionId: s.cursorSessionId, runningTerminal: s.runningTerminal })));
       saveSessions(updatedSessions);
-      console.log(`🔄 Sessions after update:`, updatedSessions.map(s => ({ id: s.id, name: s.name, cursorSessionId: s.cursorSessionId })));
+      console.log(`🔄 Sessions after save:`, updatedSessions.map(s => ({ id: s.id, name: s.name, cursorSessionId: s.cursorSessionId, runningTerminal: s.runningTerminal })));
+      
       return updatedSessions;
     });
-  }, [saveSessions, setCurrentSessionId, setToolCallsBySession, setHideToolCallIndicatorsBySession, setTerminalLogs, setShowRawTerminal]);
+  }, [sessions, currentSessionId, saveSessions, setCurrentSessionId, setToolCallsBySession, setHideToolCallIndicatorsBySession, setTerminalLogs, setShowRawTerminal]);
+
+  // Centralized message sending function that works with any session
+  const send = useCallback(async (text, fullSessionObj) => {
+    console.log(`🚀 SessionProvider.send called with text: "${text}" and session:`, fullSessionObj);
+    console.log(`🚀 Session object details:`, {
+      id: fullSessionObj?.id,
+      name: fullSessionObj?.name,
+      cursorSessionId: fullSessionObj?.cursorSessionId,
+      messagesCount: fullSessionObj?.messages?.length || 0
+    });
+    
+    if (!fullSessionObj || !fullSessionObj.id) {
+      console.error(`❌ Cannot send message: invalid session object`, fullSessionObj);
+      return;
+    }
+    
+    const sessionId = fullSessionObj.id;
+    
+    // Add user message to the session
+    const userMessage = {
+      id: `msg-${Date.now()}-${Math.random().toString(36).slice(2,8)}`,
+      who: 'user',
+      text: text,
+      timestamp: Date.now()
+    };
+    
+    console.log(`📝 SessionProvider: Adding user message to session ${sessionId}:`, userMessage);
+    
+    setSessions(prevSessions => {
+      const updatedSessions = prevSessions.map(session => 
+        session.id === sessionId 
+          ? { 
+              ...session, 
+              messages: [...(session.messages || []), userMessage],
+              updatedAt: Date.now() 
+            }
+          : session
+      );
+      
+      // Log the updated session
+      const updatedSession = updatedSessions.find(s => s.id === sessionId);
+      console.log(`📝 SessionProvider: Session ${sessionId} now has ${updatedSession?.messages?.length || 0} messages:`, 
+        updatedSession?.messages?.map(m => ({ who: m.who, text: m.text?.substring(0, 50) })));
+      
+      saveSessions(updatedSessions);
+      return updatedSessions;
+    });
+    
+    // Mark session as busy
+    setSessionBusy(sessionId, true);
+    
+    try {
+      // Generate unique run ID for this command
+      const runId = `run-${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
+      console.log(`🚀 Created runId: ${runId} for session: ${sessionId}`);
+      
+      // Create session object for the runner
+      const sessionObject = {
+        id: sessionId,
+        cursorSessionId: fullSessionObj.cursorSessionId || null,
+        runId: runId,
+        initiatedAt: Date.now()
+      };
+      
+      console.log(`🚀 Created session object for runner:`, sessionObject);
+      console.log(`🚀 Original session object had cursorSessionId:`, fullSessionObj.cursorSessionId);
+      
+      // Register the session object in the log router
+      if (window.cursovableLogRouter) {
+        console.log(`🔧 SessionProvider: Registering session object for runId: ${runId} with session: ${sessionId}`);
+        console.log(`🔧 SessionProvider: Log router state before registration:`, {
+          totalHandlers: window.cursovableLogRouter.handlers.size,
+          registeredRunIds: Array.from(window.cursovableLogRouter.handlers.keys())
+        });
+        
+        // Create a simple message handler that can process logs for this run
+        const messageHandler = (payload) => {
+          console.log(`🔧 SessionProvider: Received log for runId ${runId}:`, payload);
+          console.log(`🔧 SessionProvider: Payload level: ${payload.level}, has line: ${!!payload.line}`);
+          console.log(`🔧 SessionProvider: Payload line preview: ${payload.line?.substring(0, 200)}`);
+          
+          // Process the log payload and update the session
+          if (payload && payload.line) {
+            try {
+              // Try to parse JSON logs
+              if (payload.level === 'json') {
+                const parsed = JSON.parse(payload.line);
+                console.log(`🔧 SessionProvider: Successfully parsed JSON for runId ${runId}:`, parsed);
+                console.log(`🔧 SessionProvider: Message type: ${parsed.type}, session_id: ${parsed.session_id}`);
+                
+                // Handle session_id updates
+                if (parsed.session_id && parsed.type === 'session_start') {
+                  console.log(`🔧 SessionProvider: Updating session ${sessionId} with cursor session ID: ${parsed.session_id}`);
+                  console.log(`🔧 SessionProvider: sessionId parameter: ${sessionId}, parsed.session_id: ${parsed.session_id}`);
+                  console.log(`🔧 SessionProvider: Are they the same? ${sessionId === parsed.session_id}`);
+                  updateSessionWithCursorId(sessionId, parsed.session_id);
+                }
+                
+                // Handle assistant messages (including thinking messages)
+                if (parsed.type === 'assistant' && parsed.message) {
+                  const assistantMessage = {
+                    id: `msg-${Date.now()}-${Math.random().toString(36).slice(2,8)}`,
+                    who: 'assistant',
+                    text: parsed.message.content?.[0]?.text || 'Assistant response',
+                    timestamp: Date.now(),
+                    rawData: parsed // Store raw data for debugging
+                  };
+                  
+                  console.log(`📝 SessionProvider: Adding assistant message to session ${sessionId}:`, assistantMessage);
+                  
+                  setSessions(prev => {
+                    const updated = prev.map(s => 
+                      s.id === sessionId 
+                        ? { ...s, messages: [...(s.messages || []), assistantMessage], updatedAt: Date.now() }
+                        : s
+                    );
+                    saveSessions(updated);
+                    return updated;
+                  });
+                }
+                
+                // Handle result messages
+                if (parsed.type === 'result') {
+                  const resultMessage = {
+                    id: `msg-${Date.now()}-${Math.random().toString(36).slice(2,8)}`,
+                    who: 'assistant',
+                    text: parsed.result || 'Command completed',
+                    timestamp: Date.now(),
+                    isResult: true,
+                    rawData: parsed
+                  };
+                  
+                  console.log(`📝 SessionProvider: Adding result message to session ${sessionId}:`, resultMessage);
+                  
+                  setSessions(prev => {
+                    const updated = prev.map(s => 
+                      s.id === sessionId 
+                        ? { ...s, messages: [...(s.messages || []), resultMessage], updatedAt: Date.now() }
+                        : s
+                    );
+                    saveSessions(updated);
+                    return updated;
+                  });
+                }
+                
+                // Handle tool calls
+                if (parsed.type === 'tool_call' && parsed.tool_calls) {
+                  console.log(`🔧 SessionProvider: Processing tool call for session ${sessionId}:`, parsed);
+                  
+                  // Update tool calls for this session
+                  setSessionToolCalls(sessionId, new Map([
+                    ...Array.from(getSessionToolCalls(sessionId)),
+                    [parsed.tool_calls[0]?.id || 'default', parsed]
+                  ]));
+                }
+                
+                // Handle tool results
+                if (parsed.type === 'tool_result') {
+                  console.log(`🔧 SessionProvider: Processing tool result for session ${sessionId}:`, parsed);
+                  
+                  // Add tool result as a message
+                  const toolResultMessage = {
+                    id: `msg-${Date.now()}-${Math.random().toString(36).slice(2,8)}`,
+                    who: 'assistant',
+                    text: parsed.content?.[0]?.text || 'Tool execution completed',
+                    timestamp: Date.now(),
+                    isToolResult: true,
+                    rawData: parsed
+                  };
+                  
+                  setSessions(prev => {
+                    const updated = prev.map(s => 
+                      s.id === sessionId 
+                        ? { ...s, messages: [...(s.messages || []), toolResultMessage], updatedAt: Date.now() }
+                        : s
+                    );
+                    saveSessions(updated);
+                    return updated;
+                  });
+                }
+                
+                // Handle session end
+                if (parsed.type === 'session_end') {
+                  console.log(`🔧 SessionProvider: Session ended for session ${sessionId}:`, parsed);
+                  
+                  const sessionEndMessage = {
+                    id: `msg-${Date.now()}-${Math.random().toString(36).slice(2,8)}`,
+                    who: 'assistant',
+                    text: `Session completed: ${parsed.message || 'Session ended'}`,
+                    timestamp: Date.now(),
+                    isSessionEnd: true,
+                    rawData: parsed
+                  };
+                  
+                  setSessions(prev => {
+                    const updated = prev.map(s => 
+                      s.id === sessionId 
+                        ? { ...s, messages: [...(s.messages || []), sessionEndMessage], updatedAt: Date.now() }
+                        : s
+                    );
+                    saveSessions(updated);
+                    return updated;
+                  });
+                }
+                
+                // Handle stream messages (raw text)
+                if (parsed.type === 'stream' && parsed.content) {
+                  console.log(`🔧 SessionProvider: Processing stream content for session ${sessionId}:`, parsed.content);
+                  
+                  // Add stream content as a message if it's substantial
+                  if (parsed.content.trim() && parsed.content.length > 10) {
+                    const streamMessage = {
+                      id: `msg-${Date.now()}-${Math.random().toString(36).slice(2,8)}`,
+                      who: 'assistant',
+                      text: parsed.content,
+                      timestamp: Date.now(),
+                      isStream: true,
+                      rawData: parsed
+                    };
+                    
+                    setSessions(prev => {
+                      const updated = prev.map(s => 
+                        s.id === sessionId 
+                          ? { ...s, messages: [...(s.messages || []), streamMessage], updatedAt: Date.now() }
+                          : s
+                      );
+                      saveSessions(updated);
+                      return updated;
+                    });
+                  }
+                }
+                
+                // Handle patch messages (file changes)
+                if (parsed.type === 'patch' && parsed.file_path) {
+                  console.log(`🔧 SessionProvider: Processing patch for session ${sessionId}:`, parsed.file_path);
+                  
+                  const patchMessage = {
+                    id: `msg-${Date.now()}-${Math.random().toString(36).slice(2,8)}`,
+                    who: 'assistant',
+                    text: `Updated file: ${parsed.file_path}`,
+                    timestamp: Date.now(),
+                    isPatch: true,
+                    rawData: parsed
+                  };
+                  
+                  setSessions(prev => {
+                    const updated = prev.map(s => 
+                      s.id === sessionId 
+                        ? { ...s, messages: [...(s.messages || []), patchMessage], updatedAt: Date.now() }
+                        : s
+                    );
+                    saveSessions(updated);
+                    return updated;
+                  });
+                }
+                
+                // Handle file operations
+                if (parsed.type === 'file_operation' && parsed.operation) {
+                  console.log(`🔧 SessionProvider: Processing file operation for session ${sessionId}:`, parsed.operation);
+                  
+                  const fileOpMessage = {
+                    id: `msg-${Date.now()}-${Math.random().toString(36).slice(2,8)}`,
+                    who: 'assistant',
+                    text: `File operation: ${parsed.operation} ${parsed.file_path || ''}`,
+                    timestamp: Date.now(),
+                    isFileOperation: true,
+                    rawData: parsed
+                  };
+                  
+                  setSessions(prev => {
+                    const updated = prev.map(s => 
+                      s.id === sessionId 
+                        ? { ...s, messages: [...(s.messages || []), fileOpMessage], updatedAt: Date.now() }
+                        : s
+                    );
+                    saveSessions(updated);
+                    return updated;
+                  });
+                }
+                
+                // Handle command execution
+                if (parsed.type === 'command' && parsed.command) {
+                  console.log(`🔧 SessionProvider: Processing command execution for session ${sessionId}:`, parsed.command);
+                  
+                  const commandMessage = {
+                    id: `msg-${Date.now()}-${Math.random().toString(36).slice(2,8)}`,
+                    who: 'assistant',
+                    text: `Executed command: ${parsed.command}`,
+                    timestamp: Date.now(),
+                    isCommand: true,
+                    rawData: parsed
+                  };
+                  
+                  setSessions(prev => {
+                    const updated = prev.map(s => 
+                      s.id === sessionId 
+                        ? { ...s, messages: [...(s.messages || []), commandMessage], updatedAt: Date.now() }
+                        : s
+                    );
+                    saveSessions(updated);
+                    return updated;
+                  });
+                }
+                
+                // Log any unhandled message types for debugging
+                if (!['session_start', 'assistant', 'result', 'tool_call', 'tool_result', 'session_end', 'stream', 'patch', 'file_operation', 'command'].includes(parsed.type)) {
+                  console.log(`🔧 SessionProvider: Unhandled message type '${parsed.type}' for session ${sessionId}:`, parsed);
+                }
+              }
+            } catch (error) {
+              console.error(`🔧 SessionProvider: Error processing log for runId ${runId}:`, error);
+            }
+          }
+        };
+        
+        window.cursovableLogRouter.registerHandler(runId, messageHandler, sessionObject);
+        console.log(`🔧 SessionProvider: After registration - total handlers:`, window.cursovableLogRouter.handlers.size);
+        console.log(`🔧 SessionProvider: All registered runIds:`, Array.from(window.cursovableLogRouter.handlers.keys()));
+      } else {
+        console.warn(`⚠️  SessionProvider: Log router not available for runId: ${runId}`);
+      }
+      
+      // Call the cursor-agent CLI
+      const result = await window.cursovable.runCursor({
+        message: text,
+        sessionId: sessionId,
+        model: 'gpt-4',
+        timeoutMs: 300000 // 5 minutes
+      });
+      
+      console.log(`🚀 Cursor command completed for session: ${sessionId}, result:`, result);
+      
+      // Clean up the handler after completion
+      if (window.cursovableLogRouter) {
+        window.cursovableLogRouter.unregisterHandler(runId);
+        console.log(`🔧 Unregistered handler for runId: ${runId}`);
+      }
+      
+    } catch (error) {
+      console.error(`❌ Error running cursor command for session: ${sessionId}:`, error);
+      
+      // Clean up the handler on error
+      if (window.cursovableLogRouter) {
+        window.cursovableLogRouter.unregisterHandler(runId);
+        console.log(`🔧 Unregistered handler for runId: ${runId} due to error`);
+      }
+      
+      // Add error message to the session
+      const errorMessage = {
+        id: `msg-${Date.now()}-${Math.random().toString(36).slice(2,8)}`,
+        who: 'assistant',
+        text: `Error: ${error.message}`,
+        timestamp: Date.now(),
+        isError: true
+      };
+      
+      setSessions(prevSessions => {
+        const updatedSessions = prevSessions.map(session => 
+          session.id === sessionId 
+            ? { 
+                ...session, 
+                messages: [...(session.messages || []), errorMessage],
+                updatedAt: Date.now() 
+              }
+            : session
+        );
+        saveSessions(updatedSessions);
+        return updatedSessions;
+      });
+    } finally {
+      // Mark session as not busy
+      setSessionBusy(sessionId, false);
+    }
+  }, [sessions, saveSessions, setSessionBusy, updateSessionWithCursorId]);
 
   // Derive a session name from the first user message
   const deriveSessionNameFromMessage = useCallback((text) => {
@@ -549,6 +1016,10 @@ export const SessionProvider = ({ children, projectId }) => {
     deleteSession,
     updateSessionWithCursorId,
     saveCurrentSession,
+    markSessionRunningTerminal,
+    
+    // Message handling
+    send,
     
     // Utility functions
     deriveSessionNameFromMessage,
