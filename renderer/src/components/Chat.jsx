@@ -9,10 +9,31 @@ import StatusIndicators from './Chat/StatusIndicators';
 import SearchBar from './Chat/SearchBar';
 import MessagesContainer from './Chat/MessagesContainer';
 import { useChatSend } from './Chat/hooks/useChatSend';
+import { useSession } from '../providers/SessionProvider.jsx';
 
 import { styles } from './Chat/styles';
 
 export default function Chat({ cwd, initialMessage, projectId }) {
+  const {
+    sessions,
+    currentSessionId,
+    busyBySession,
+    toolCallsBySession,
+    hideToolCallIndicatorsBySession,
+    createNewSession,
+    loadSession,
+    deleteSession,
+    updateSessionWithCursorId,
+    saveCurrentSession,
+    setSessionBusy,
+    setSessionToolCalls,
+    setSessionHideToolCallIndicators,
+    getCurrentSessionBusy,
+    getCurrentSessionToolCalls,
+    getCurrentSessionHideToolCallIndicators,
+    deriveSessionNameFromMessage
+  } = useSession();
+
   // Add CSS animations and styles
   useEffect(() => {
     const style = document.createElement('style');
@@ -23,45 +44,15 @@ export default function Chat({ cwd, initialMessage, projectId }) {
       document.head.removeChild(style);
     };
   }, []);
-  
-  // Load sessions and initialize on mount
-  useEffect(() => {
-    console.log(`Loading sessions for project: ${projectId || 'legacy'}`);
-    const loadedSessions = loadSessions();
-    console.log(`Found ${loadedSessions.length} existing sessions:`, loadedSessions.map(s => ({id: s.id, name: s.name, messageCount: s.messages?.length || 0})));
-    
-    setSessions(loadedSessions);
-    
-    if (loadedSessions.length > 0) {
-      // Load the most recent session
-      const latestSession = loadedSessions.reduce((latest, session) => 
-        session.updatedAt > latest.updatedAt ? session : latest
-      );
-      console.log(`Loading latest session: ${latestSession.name} (${latestSession.id}) with ${latestSession.messages?.length || 0} messages`);
-      setCurrentSessionId(latestSession.id);
-      setMessages(latestSession.messages || []);
-      setToolCalls(new Map());
-      setHideToolCallIndicators(false);
-    } else {
-      // Create a new session if none exist
-      console.log('No existing sessions found, creating new session');
-      createNewSession(loadedSessions);
-    }
-  }, [projectId]);
 
   
   
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
-  const [busy, setBusy] = useState(false);
   const [terminalStatus, setTerminalStatus] = useState(null);
-  const [toolCalls, setToolCalls] = useState(new Map()); // Track tool calls by call_id
-  const [hideToolCallIndicators, setHideToolCallIndicators] = useState(false); // Hide tool call cards after result
   const [searchQuery, setSearchQuery] = useState(''); // New: search functionality
   const [showSearch, setShowSearch] = useState(false); // New: toggle search visibility
   const [currentSearchIndex, setCurrentSearchIndex] = useState(0); // Track current search result
-  const [sessions, setSessions] = useState([]); // All sessions for this project
-  const [currentSessionId, setCurrentSessionId] = useState(null); // Current active session
   const [showSessionList, setShowSessionList] = useState(false); // Toggle session list UI
   const [isCreatingNewSession, setIsCreatingNewSession] = useState(false); // Creating new session state
   // Model selection (empty string means default/auto; don't send to CLI)
@@ -76,7 +67,6 @@ export default function Chat({ cwd, initialMessage, projectId }) {
   ];
 
 
-  console.log('toolCalls 1', toolCalls);
   const [model, setModel] = useState(() => {
     try {
       const stored = localStorage.getItem(modelStorageKey);
@@ -89,148 +79,93 @@ export default function Chat({ cwd, initialMessage, projectId }) {
   }, [model, modelStorageKey]);
   const scroller = useRef(null);
   const unsubRef = useRef(null);
+  
 
-  // Session storage functions
-  const getSessionStorageKey = () => `cursovable-sessions-${projectId || 'legacy'}`;
   
-  // Derive a session name from the first user message
-  const deriveSessionNameFromMessage = (text) => {
-    if (!text || typeof text !== 'string') return 'Untitled';
-    // Trim, collapse whitespace, strip newlines
-    let name = text.trim().replace(/\s+/g, ' ');
-    // Remove markdown code fences/backticks that could bloat UI
-    name = name.replace(/`{1,3}/g, '');
-    // Limit length to avoid breaking UI
-    const maxLen = 60;
-    if (name.length > maxLen) name = name.slice(0, maxLen - 1) + '…';
-    return name || 'Untitled';
-  };
-
-  const loadSessions = () => {
-    try {
-      const savedSessions = localStorage.getItem(getSessionStorageKey());
-      if (savedSessions) {
-        const parsed = JSON.parse(savedSessions);
-        return Array.isArray(parsed) ? parsed : [];
-      }
-    } catch (error) {
-      console.warn('Failed to load sessions from localStorage:', error);
-    }
-    return [];
-  };
-  
-  const saveSessions = (sessionsToSave) => {
-    try {
-      localStorage.setItem(getSessionStorageKey(), JSON.stringify(sessionsToSave));
-    } catch (error) {
-      console.warn('Failed to save sessions to localStorage:', error);
-    }
-  };
-  
-  const createNewSession = (existingSessions = null) => {
-    const currentSessions = existingSessions || sessions;
-    const newSessionId = `session-${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
-    const isFirstSession = currentSessions.length === 0;
-    const newSession = {
-      id: newSessionId,
-      name: `Session ${new Date().toLocaleString()}`,
-      messages: [],
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-      isFirstSession: isFirstSession // Mark if this is the very first session
+  // Get session status information for debugging
+  const getSessionStatus = () => {
+    return {
+      currentSessionId,
+      currentSessionBusy: getCurrentSessionBusy(),
+      allSessionsBusy: Object.fromEntries(busyBySession),
+      totalBusySessions: busyBySession.size,
+      toolCallsBySession: Object.fromEntries(toolCallsBySession),
+      hideToolCallIndicatorsBySession: Object.fromEntries(hideToolCallIndicatorsBySession)
     };
-    
-    const updatedSessions = [...currentSessions, newSession];
-    setSessions(updatedSessions);
-    saveSessions(updatedSessions);
-    setCurrentSessionId(newSessionId);
-    setMessages([]);
-    setToolCalls(new Map());
-    setHideToolCallIndicators(false);
-    setIsCreatingNewSession(false);
-    
-    console.log(`Created new session: ${newSessionId} (${newSession.name})`);
-    return newSessionId;
-  };
-  
-  const loadSession = (sessionId, sessionsToSearch = null) => {
-    const currentSessions = sessionsToSearch || sessions;
-    const session = currentSessions.find(s => s.id === sessionId);
-    if (session) {
-      console.log(`Loading session ${sessionId} with ${session.messages?.length || 0} messages`);
-      setCurrentSessionId(sessionId);
-      setMessages(session.messages || []);
-      setToolCalls(new Map());
-      setHideToolCallIndicators(false);
-    } else {
-      console.warn(`Session ${sessionId} not found in current sessions`);
-    }
-  };
-  
-  const saveCurrentSession = () => {
-    if (!currentSessionId) {
-      console.warn('No current session ID, cannot save');
-      return;
-    }
-    
-    setSessions(prevSessions => {
-      const updatedSessions = prevSessions.map(session => 
-        session.id === currentSessionId 
-          ? { 
-              ...session, 
-              // Keep name (possibly set from first message); only derive name if still default
-              name: session.name && session.name.startsWith('Session ')
-                ? (messages.find(msg => msg.who === 'user')
-                    ? deriveSessionNameFromMessage(messages.find(msg => msg.who === 'user').text)
-                    : session.name)
-                : session.name,
-              messages, 
-              updatedAt: Date.now() 
-            }
-          : session
-      );
-      
-      // Save to localStorage
-      try {
-        localStorage.setItem(getSessionStorageKey(), JSON.stringify(updatedSessions));
-        console.log(`Session ${currentSessionId} saved with ${messages.length} messages`);
-      } catch (error) {
-        console.error('Failed to save sessions to localStorage:', error);
-      }
-      
-      return updatedSessions;
-    });
-  };
-  
-  const deleteSession = (sessionId) => {
-    const updatedSessions = sessions.filter(s => s.id !== sessionId);
-    setSessions(updatedSessions);
-    saveSessions(updatedSessions);
-    
-    if (currentSessionId === sessionId) {
-      if (updatedSessions.length > 0) {
-        loadSession(updatedSessions[0].id);
-      } else {
-        createNewSession();
-      }
-    }
   };
 
-
-  // Save messages to current session whenever they change
+  // Debug logging for session state
   useEffect(() => {
-    if (currentSessionId && messages.length > 0) {
-      console.log(`Saving session ${currentSessionId} with ${messages.length} messages`);
-      saveCurrentSession();
+    console.log('Session state updated:', getSessionStatus());
+    console.log('Current session tool calls:', getCurrentSessionToolCalls());
+  }, [currentSessionId, busyBySession, toolCallsBySession, hideToolCallIndicatorsBySession]);
+
+  // Emit busy state updates to ProjectView
+  useEffect(() => {
+    if (projectId) {
+      window.dispatchEvent(new CustomEvent('session-busy-update', {
+        detail: {
+          projectId,
+          busyBySession: Array.from(busyBySession.entries())
+        }
+      }));
     }
-  }, [messages, currentSessionId, sessions]);
+  }, [busyBySession, projectId]);
+  
+
+  
+
+  
+
+  
+
+
+
+  // Track if we're currently loading messages to prevent save loops
+  const isLoadingMessagesRef = useRef(false);
+
+  // Load messages for current session when session changes
+  useEffect(() => {
+    if (currentSessionId) {
+      const currentSession = sessions.find(s => s.id === currentSessionId);
+      if (currentSession && currentSession.messages) {
+        console.log(`Loading ${currentSession.messages.length} messages for session ${currentSessionId}`);
+        isLoadingMessagesRef.current = true;
+        setMessages(currentSession.messages);
+        // Reset the flag after a brief delay to allow the save effect to see it
+        setTimeout(() => {
+          isLoadingMessagesRef.current = false;
+        }, 0);
+      } else {
+        console.log(`No messages found for session ${currentSessionId}, starting with empty messages`);
+        isLoadingMessagesRef.current = true;
+        setMessages([]);
+        setTimeout(() => {
+          isLoadingMessagesRef.current = false;
+        }, 0);
+      }
+    }
+  }, [currentSessionId, sessions]);
+
+  // Save messages to current session whenever they change (but not during loading)
+  useEffect(() => {
+    if (currentSessionId && messages.length > 0 && !isLoadingMessagesRef.current) {
+      console.log(`Saving session ${currentSessionId} with ${messages.length} messages`);
+      saveCurrentSession(messages);
+    }
+  }, [messages, currentSessionId, saveCurrentSession]);
 
   // (Removed debug session storage helper)
 
-  // Check terminal status on mount and when busy changes
+  // Check terminal status on mount and when current session's busy state changes
   useEffect(() => {
     checkTerminalStatus();
-  }, [busy]);
+  }, [currentSessionId, busyBySession]);
+  
+  // Debug log when session status changes
+  useEffect(() => {
+    console.log('Session status updated:', getSessionStatus());
+  }, [busyBySession, currentSessionId]);
   
   // Auto-scroll to bottom when new messages are added
   useEffect(() => {
@@ -336,32 +271,32 @@ export default function Chat({ cwd, initialMessage, projectId }) {
     if (scroller.current) {
       scroller.current.scrollTop = scroller.current.scrollHeight;
     }
-  }, [messages, busy]);
+  }, [messages, currentSessionId, busyBySession]);
+
+
 
   // Use the extracted send hook
   const { send, cleanup: cleanupSend } = useChatSend({
     // State setters
     setMessages,
-    setBusy,
-    setToolCalls,
-    setHideToolCallIndicators,
-    setSessions,
+    setSessionBusy, // Use per-session busy state
+    setSessionToolCalls, // Use per-session tool calls
+    setSessionHideToolCallIndicators, // Use per-session hide indicators
     
     // State values
     input,
     setInput,
-    busy,
+    getCurrentSessionBusy, // Get current session's busy state
     cwd,
     model,
     sessions,
     currentSessionId,
-    toolCalls,
+    getCurrentSessionToolCalls, // Get current session's tool calls
     
     // Functions
     deriveSessionNameFromMessage,
-    getSessionStorageKey,
-    saveSessions,
     checkTerminalStatus,
+    updateSessionWithCursorId, // Add function to update session with cursor ID
     
     // Project context
     projectId
@@ -403,6 +338,7 @@ export default function Chat({ cwd, initialMessage, projectId }) {
         loadSession={loadSession}
         deleteSession={deleteSession}
         setShowSessionList={setShowSessionList}
+        busyBySession={busyBySession} // Pass busy state to show which sessions are active
       />
 
       
@@ -420,25 +356,41 @@ export default function Chat({ cwd, initialMessage, projectId }) {
       
 
       
+
+
+      {/* Debug logging for tool calls */}
+      {(() => {
+        const toolCalls = getCurrentSessionToolCalls();
+        const hideIndicators = getCurrentSessionHideToolCallIndicators();
+        console.log('MessagesContainer props:', {
+          toolCalls: toolCalls,
+          toolCallsSize: toolCalls.size,
+          hideIndicators,
+          currentSessionId,
+          isMap: toolCalls instanceof Map
+        });
+        return null;
+      })()}
+
       <MessagesContainer
         scroller={scroller}
         filteredMessages={filteredMessages}
-        toolCalls={toolCalls}
+        toolCalls={getCurrentSessionToolCalls()}
         searchQuery={searchQuery}
         cwd={cwd}
-        hideToolCallIndicators={hideToolCallIndicators}
+        hideToolCallIndicators={getCurrentSessionHideToolCallIndicators()}
       />
       
    
       
       {/* Status indicators at the bottom */}
-      <StatusIndicators busy={busy} />
+      <StatusIndicators busy={getCurrentSessionBusy()} />
       
       <InputBar
         value={input}
         onChange={setInput}
         onSubmit={send}
-        disabled={busy || !cwd}
+        disabled={getCurrentSessionBusy() || !cwd}
         model={model}
         setModel={setModel}
         suggestedModels={suggestedModels}

@@ -7,7 +7,8 @@ export default function SessionList({
   createNewSession,
   loadSession,
   deleteSession,
-  setShowSessionList
+  setShowSessionList,
+  busyBySession
 }) {
   if (!showSessionList) return null;
 
@@ -118,16 +119,29 @@ export default function SessionList({
                 </div>
               </div>
               
-              {session.id === currentSessionId && (
-                <span style={{
-                  fontSize: '10px',
-                  color: '#10b981',
-                  fontWeight: '600',
-                  marginRight: '8px'
-                }}>
-                  ACTIVE
-                </span>
-              )}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                {busyBySession?.get(session.id) && (
+                  <span style={{
+                    fontSize: '10px',
+                    color: '#f59e0b',
+                    fontWeight: '600',
+                    marginRight: '4px'
+                  }} title="Session is currently running">
+                    🔄 RUNNING
+                  </span>
+                )}
+                
+                {session.id === currentSessionId && (
+                  <span style={{
+                    fontSize: '10px',
+                    color: '#10b981',
+                    fontWeight: '600',
+                    marginRight: '4px'
+                  }}>
+                    ACTIVE
+                  </span>
+                )}
+              </div>
               
               <button
                 onClick={(e) => {

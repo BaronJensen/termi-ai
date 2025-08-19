@@ -26,26 +26,24 @@ import {
 export function useChatSend({
   // State setters
   setMessages,
-  setBusy,
-  setToolCalls,
-  setHideToolCallIndicators,
-  setSessions,
+  setSessionBusy, // Changed from setBusy to setSessionBusy
+  setSessionToolCalls, // Changed from setToolCalls to setSessionToolCalls
+  setSessionHideToolCallIndicators, // Changed from setHideToolCallIndicators to setSessionHideToolCallIndicators
   
   // State values
   input,
   setInput,
-  busy,
+  getCurrentSessionBusy, // Changed from busy to getCurrentSessionBusy
   cwd,
   model,
   sessions,
   currentSessionId,
-  toolCalls,
+  getCurrentSessionToolCalls, // Changed from toolCalls to getCurrentSessionToolCalls
   
   // Functions
   deriveSessionNameFromMessage,
-  getSessionStorageKey,
-  saveSessions,
   checkTerminalStatus,
+  updateSessionWithCursorId, // Add function to update session with cursor ID
   
   // Project context
   projectId
@@ -63,7 +61,7 @@ export function useChatSend({
     const text = (typeof textOverride === 'string' ? textOverride : input).trim();
     
     // Validate input
-    const validation = validateInput({ text, cwd, busy });
+    const validation = validateInput({ text, cwd, busy: getCurrentSessionBusy() });
     if (!validation.isValid) {
       if (validation.error) alert(validation.error);
       return;
@@ -77,7 +75,7 @@ export function useChatSend({
     resetTextareaHeight();
     
     // Reset tool call indicator visibility for new conversation
-    setHideToolCallIndicators(false);
+    setSessionHideToolCallIndicators(currentSessionId, false);
     
     // Add user message and potentially update session name
     addUserMessage({
@@ -85,12 +83,10 @@ export function useChatSend({
       currentSessionId,
       sessions,
       setMessages,
-      setSessions,
-      deriveSessionNameFromMessage,
-      getSessionStorageKey
+      deriveSessionNameFromMessage
     });
     
-    setBusy(true);
+    setSessionBusy(currentSessionId, true);
     
     try {
       // Prepare streaming message and subscribe to logs for this run
@@ -118,37 +114,48 @@ export function useChatSend({
           (currentRunId) => {
             // Only act if this run is still the active one
             if (runIdRef.current !== currentRunId) return;
-            handleClientTimeout({ runId: currentRunId, streamIndexRef, setMessages, setBusy });
+            handleClientTimeout({ runId: currentRunId, streamIndexRef, setMessages, setSessionBusy, currentSessionId });
           }
         );
       } catch {}
       
       // Keep a live mirror of toolCalls in a ref for snapshotting at result time
-      try { toolCallsRef.current = toolCalls instanceof Map ? new Map(toolCalls) : new Map(); } catch { toolCallsRef.current = new Map(); }
+      try { toolCallsRef.current = getCurrentSessionToolCalls() instanceof Map ? new Map(getCurrentSessionToolCalls()) : new Map(); } catch { toolCallsRef.current = new Map(); }
 
-      // Subscribe to log stream for this run
+      // Register this run with the global log router instead of subscribing directly
       const logHandler = createLogStreamHandler({
         runId,
         currentSessionId,
         sessions,
-        setSessions,
-        saveSessions,
         setMessages,
         streamIndexRef,
-        setToolCalls,
-        toolCalls,
+        setSessionToolCalls,
+        getCurrentSessionToolCalls,
         toolCallsRef,
-        setHideToolCallIndicators,
+        setSessionHideToolCallIndicators,
         accumulatedText,
         setAccumulatedText: (text) => { accumulatedText = text; },
         lastChunkRef,
-        setBusy,
+        setSessionBusy: () => setSessionBusy(currentSessionId, false),
         runTimeoutRef,
         unsubRef,
-        sawJsonRef
+        sawJsonRef,
+        updateSessionWithCursorId
       });
       
-      unsubRef.current = window.cursovable.onCursorLog(logHandler);
+      // Register this run's handler with the centralized log router
+      if (window.cursovableLogRouter) {
+        console.log(`🔧 useChatSend: Registering handler for runId: ${runId}`);
+        window.cursovableLogRouter.registerHandler(runId, logHandler);
+        unsubRef.current = () => {
+          console.log(`🔧 useChatSend: Unregistering handler for runId: ${runId}`);
+          window.cursovableLogRouter.unregisterHandler(runId);
+        };
+      } else {
+        // Fallback to direct subscription if router not available
+        console.warn('Log router not available, using direct subscription (may cause cross-contamination)');
+        unsubRef.current = window.cursovable.onCursorLog(logHandler);
+      }
 
       // For brand new sessions, don't resume until the second message.
       // If this session lacks a cursorSessionId, pass undefined so runner starts fresh.
@@ -187,13 +194,14 @@ export function useChatSend({
         handleFallbackCompletion({
           streamIndexRef,
           accumulatedText,
-          toolCalls,
-          setToolCalls,
-          setHideToolCallIndicators,
+          toolCalls: getCurrentSessionToolCalls(),
+          setToolCalls: setSessionToolCalls,
+          setHideToolCallIndicators: setSessionHideToolCallIndicators,
           setMessages,
           runTimeoutRef,
           unsubRef,
-          setBusy
+          setSessionBusy,
+          currentSessionId
         });
       }
     } catch (e) {
@@ -210,13 +218,13 @@ export function useChatSend({
         unsubRef,
         streamIndexRef,
         runIdRef,
-        setBusy
+        setSessionBusy: () => setSessionBusy(currentSessionId, false)
       });
     }
   }, [
-    input, setInput, busy, cwd, model, sessions, currentSessionId, toolCalls,
-    setMessages, setBusy, setToolCalls, setHideToolCallIndicators, setSessions,
-    deriveSessionNameFromMessage, getSessionStorageKey, saveSessions, checkTerminalStatus
+    input, setInput, cwd, model, sessions, currentSessionId,
+    setMessages, setSessionBusy, setSessionToolCalls, setSessionHideToolCallIndicators,
+    deriveSessionNameFromMessage, checkTerminalStatus, updateSessionWithCursorId
   ]);
 
   // Return the send function and cleanup function
@@ -228,7 +236,7 @@ export function useChatSend({
         unsubRef,
         streamIndexRef,
         runIdRef,
-        setBusy
+        setSessionBusy: () => setSessionBusy(currentSessionId, false)
       });
     }
   };

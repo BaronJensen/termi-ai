@@ -10,6 +10,15 @@ export default function MessagesContainer({
   cwd, 
   hideToolCallIndicators 
 }) {
+  // Debug logging to help track down toolCalls issues
+  if (toolCalls && !(toolCalls instanceof Map)) {
+    console.warn('MessagesContainer received non-Map toolCalls:', {
+      toolCalls,
+      type: typeof toolCalls,
+      constructor: toolCalls?.constructor?.name,
+      isMap: toolCalls instanceof Map
+    });
+  }
   return (
     <div className="messages" ref={scroller}>
       <MessageList 
@@ -20,7 +29,7 @@ export default function MessagesContainer({
       />
 
       {/* Tool Call Indicators - Only show while conversation is active */}
-      {!hideToolCallIndicators && Array.from(toolCalls.entries()).map(([callId, toolCallInfo], index) => {
+      {!hideToolCallIndicators && toolCalls && toolCalls instanceof Map && Array.from(toolCalls.entries()).map(([callId, toolCallInfo], index) => {
         // Only show tool calls that have actual tool call data
         if (!toolCallInfo.toolCall) return null;
         

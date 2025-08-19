@@ -272,6 +272,10 @@ function startCursorAgent(message, sessionId, onLog, options = {}) {
   let childRef = null;
   let lastActivity = Date.now();
   
+  // Generate unique terminal name for this session
+  const terminalName = `cursor-session-${sessionId || 'default'}-${Date.now()}`;
+  const sessionLabel = sessionId ? `Session ${sessionId.slice(0, 8)}` : 'Default';
+  
   const wait = new Promise((resolve, reject) => {
     const STREAM_DEBUG = process.env.CURSOVABLE_STREAM_DEBUG === '1' || options.debugStream === true;
     let lastBufferWarnAt = 0;
@@ -294,8 +298,8 @@ function startCursorAgent(message, sessionId, onLog, options = {}) {
     
     // Safe display of args (mask API token if present)
     const displayArgs = args.map(a => (options && options.apiKey && a === String(options.apiKey)) ? '********' : a);
-    if (onLog) onLog('info', `Running: cursor-agent ${displayArgs.map(a => (a.includes(' ') ? '"'+a+'"' : a)).join(' ')}`);
-    if (onLog) onLog('info', `Working directory: ${options.cwd || process.cwd()}`);
+    if (onLog) onLog('info', `[${sessionLabel}] Running: cursor-agent ${displayArgs.map(a => (a.includes(' ') ? '"'+a+'"' : a)).join(' ')}`);
+    if (onLog) onLog('info', `[${sessionLabel}] Working directory: ${options.cwd || process.cwd()}`);
     const env = { ...process.env };
     // If apiKey provided, pass as OPENAI_API_KEY to the child process only
     if (options.apiKey && typeof options.apiKey === 'string') {
@@ -306,7 +310,7 @@ function startCursorAgent(message, sessionId, onLog, options = {}) {
     if (options.useTokenAuth) {
       const token = typeof options.apiKey === 'string' ? options.apiKey : '';
       const tokenTail = token ? token.slice(-4) : '';
-      if (onLog) onLog('info', `[auth] Using token auth (-a ********). OPENAI_API_KEY set (${token.length} chars), token ends with …${tokenTail}`);
+      if (onLog) onLog('info', `[${sessionLabel}] [auth] Using token auth (-a ********). OPENAI_API_KEY set (${token.length} chars), token ends with …${tokenTail}`);
     }
     env.PATH = ensureDarwinPath(env.PATH);
     const resolved = resolveCommandPath('cursor-agent', env.PATH) || 'cursor-agent';
@@ -333,7 +337,7 @@ function startCursorAgent(message, sessionId, onLog, options = {}) {
       if (items.length > 0 && STREAM_DEBUG && onLog) {
         const largeItems = items.filter(item => item.json.length > 50000);
         if (largeItems.length > 0) {
-          onLog('info', `Extracted ${items.length} JSON objects, including ${largeItems.length} large ones (${largeItems.map(item => item.json.length).join(', ')} chars)`);
+          onLog('info', `[${sessionLabel}] Extracted ${items.length} JSON objects, including ${largeItems.length} large ones (${largeItems.map(item => item.json.length).join(', ')} chars)`);
         }
       }
       
@@ -394,7 +398,7 @@ function startCursorAgent(message, sessionId, onLog, options = {}) {
       if (buffer.length > 500000) { // 500KB limit instead of 50KB
         const now = Date.now();
         if (STREAM_DEBUG && onLog && now - lastBufferWarnAt > 5000) {
-          onLog('warn', 'Buffer exceeded 500KB limit, truncating to last 250KB');
+          onLog('warn', `[${sessionLabel}] Buffer exceeded 500KB limit, truncating to last 250KB`);
           lastBufferWarnAt = now;
         }
         buffer = buffer.slice(-250000);
@@ -405,8 +409,8 @@ function startCursorAgent(message, sessionId, onLog, options = {}) {
         const now = Date.now();
         if (now - lastBufferWarnAt > 5000) {
           if (STREAM_DEBUG) {
-            onLog('warn', `Buffer is getting large: ${buffer.length} characters`);
-            onLog('info', debugBufferContent(buffer, 500)); // Show more content for debugging
+            onLog('warn', `[${sessionLabel}] Buffer is getting large: ${buffer.length} characters`);
+            onLog('info', `[${sessionLabel}] ${debugBufferContent(buffer, 500)}`); // Show more content for debugging
           }
           lastBufferWarnAt = now;
         }
@@ -420,8 +424,8 @@ function startCursorAgent(message, sessionId, onLog, options = {}) {
         const now = Date.now();
         if (now - lastBufferWarnAt > 5000) {
           if (STREAM_DEBUG) {
-            onLog('warn', 'Large buffer with no JSON objects detected');
-            onLog('info', debugBufferContent(buffer, 500)); // Show more content for debugging
+            onLog('warn', `[${sessionLabel}] Large buffer with no JSON objects detected`);
+            onLog('info', `[${sessionLabel}] ${debugBufferContent(buffer, 500)}`); // Show more content for debugging
           }
           lastBufferWarnAt = now;
         }
@@ -440,10 +444,11 @@ function startCursorAgent(message, sessionId, onLog, options = {}) {
           process.kill(childRef.pid, 'SIGTERM');
         }
       } catch {}
+      if (onLog) onLog('info', `[${sessionLabel}] Cleanup completed`);
     };
 
     const childExitHandler = (code) => {
-      if (onLog) onLog('info', `cursor-agent exited with code ${code}`);
+      if (onLog) onLog('info', `[${sessionLabel}] cursor-agent exited with code ${code}`);
       // If not already resolved, try one last parse
       // Final pass on remaining buffer
       if (buffer) {
@@ -493,7 +498,7 @@ function startCursorAgent(message, sessionId, onLog, options = {}) {
         settled = true;
         clearTimeout(timeoutId);
         clearTimeout(idleTimeoutId);
-        reject(new Error(`cursor-agent exited with code ${code}. Output:\n${buffer}`));
+        reject(new Error(`[${sessionLabel}] cursor-agent exited with code ${code}. Output:\n${buffer}`));
       } else if (!settled) {
         // could have been success without our pattern
         settled = true;
@@ -509,10 +514,10 @@ function startCursorAgent(message, sessionId, onLog, options = {}) {
       try {
         const shell = process.platform === 'win32' ? 'powershell.exe' : (process.env.SHELL || '/bin/zsh');
         const cmdLine = `${resolved} ${args.map(a => (a.includes(' ') ? '"'+a+'"' : a)).join(' ')}`;
-        if (onLog) onLog('info', `Using PTY with shell: ${shell}`);
+        if (onLog) onLog('info', `[${sessionLabel}] Using PTY with shell: ${shell}`);
         
         const p = pty.spawn(shell, [], {
-          name: 'xterm-color',
+          name: terminalName,
           cwd: options.cwd || process.cwd(),
           env
         });
@@ -525,9 +530,9 @@ function startCursorAgent(message, sessionId, onLog, options = {}) {
         // Write command into the PTY so the environment and login shell are used
         p.write(cmdLine + '\r');
         
-        if (onLog) onLog('info', 'PTY terminal created successfully');
+        if (onLog) onLog('info', `[${sessionLabel}] PTY terminal created successfully`);
       } catch (err) {
-        if (onLog) onLog('warn', `PTY failed, falling back to spawn: ${err.message}`);
+        if (onLog) onLog('warn', `[${sessionLabel}] PTY failed, falling back to spawn: ${err.message}`);
         ptyFailed = true;
         // Fall through to spawn below
       }
@@ -535,7 +540,7 @@ function startCursorAgent(message, sessionId, onLog, options = {}) {
     
     // Fallback to spawn if PTY failed or not available
     if (!pty || ptyFailed) {
-      if (onLog) onLog('info', 'Using spawn fallback for terminal');
+      if (onLog) onLog('info', `[${sessionLabel}] Using spawn fallback for terminal`);
       
       const child = spawn(resolved, args, {
         shell: process.platform === 'win32', // support Windows
@@ -546,9 +551,9 @@ function startCursorAgent(message, sessionId, onLog, options = {}) {
       child.stdout.on('data', handleData);
       child.stderr.on('data', handleData);
       child.on('error', (err) => {
-        if (onLog) onLog('error', err.message);
+        if (onLog) onLog('error', `[${sessionLabel}] ${err.message}`);
         cleanup();
-        reject(new Error(`Failed to start cursor-agent: ${err.message}`));
+        reject(new Error(`[${sessionLabel}] Failed to start cursor-agent: ${err.message}`));
       });
       child.on('exit', (code) => childExitHandler(code));
     }
@@ -559,7 +564,7 @@ function startCursorAgent(message, sessionId, onLog, options = {}) {
       if (settled) return;
       const timeSinceActivity = Date.now() - lastActivity;
       if (timeSinceActivity > idleTimeoutMs) {
-        if (onLog) onLog('error', `cursor-agent idle timeout after ${idleTimeoutMs}ms of no output`);
+        if (onLog) onLog('error', `[${sessionLabel}] cursor-agent idle timeout after ${idleTimeoutMs}ms of no output`);
         cleanup();
         resolve({ type: 'raw', output: buffer, idle_timeout: true });
       }
@@ -570,7 +575,7 @@ function startCursorAgent(message, sessionId, onLog, options = {}) {
     if (timeoutMs > 0) {
       timeoutId = setTimeout(() => {
         if (settled) return;
-        if (onLog) onLog('error', `cursor-agent timeout after ${timeoutMs}ms`);
+        if (onLog) onLog('error', `[${sessionLabel}] cursor-agent timeout after ${timeoutMs}ms`);
         cleanup();
         resolve({ type: 'raw', output: buffer, timeout: true });
       }, timeoutMs);

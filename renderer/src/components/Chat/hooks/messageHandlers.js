@@ -14,22 +14,28 @@ export const handleJsonLogLine = async (parsed, {
   runId,
   currentSessionId,
   sessions,
-  setSessions,
-  saveSessions,
   setMessages,
   streamIndexRef,
-  setToolCalls,
-  toolCalls,
+  setSessionToolCalls,
+  getCurrentSessionToolCalls,
   toolCallsRef,
-  setHideToolCallIndicators,
+  setSessionHideToolCallIndicators,
   accumulatedText,
   setAccumulatedText,
   lastChunkRef,
-  setBusy,
+  setSessionBusy,
   runTimeoutRef,
-  unsubRef
+  unsubRef,
+  updateSessionWithCursorId
 }) => {
   console.log('Parsed log line:', parsed);
+  console.log('Tool call detection:', {
+    type: parsed.type,
+    hasToolCall: !!parsed.tool_call,
+    hasTool: !!parsed.tool,
+    hasName: !!parsed.name,
+    isToolCall: parsed.type === 'tool_call' || parsed.type === 'tool' || parsed.type === 'function_call' || parsed.tool_call || parsed.tool || parsed.name === 'tool'
+  });
   
   // Handle assistant messages - accumulate text content (role: assistant only)
   if (
@@ -67,26 +73,60 @@ export const handleJsonLogLine = async (parsed, {
     }
   }
   
-  // Extract session ID if present
-  if (parsed.session_id && parsed.session_id !== currentSessionId) {
-    const currentSession = sessions.find(s => s.id === currentSessionId);
-    if (currentSession) {
-      const updatedSessions = sessions.map(session => 
-        session.id === currentSessionId 
-          ? { ...session, cursorSessionId: parsed.session_id, updatedAt: Date.now() }
-          : session
-      );
-      setSessions(updatedSessions);
-      saveSessions(updatedSessions);
-      console.log(`Session ${currentSessionId} linked to cursor-agent session: ${parsed.session_id}`);
+  // Extract session ID if present and find the correct session to route this message to
+  let targetSessionId = currentSessionId;
+  console.log('Session routing:', {
+    currentSessionId,
+    parsedSessionId: parsed.session_id,
+    sessionsCount: sessions.length,
+    sessionIds: sessions.map(s => ({ id: s.id, cursorSessionId: s.cursorSessionId }))
+  });
+  
+  if (parsed.session_id) {
+    // Find the session that has this cursor-agent session ID
+    const sessionWithCursorId = sessions.find(s => s.cursorSessionId === parsed.session_id);
+    if (sessionWithCursorId) {
+      targetSessionId = sessionWithCursorId.id;
+      console.log(`Routing message to session: ${targetSessionId} (cursor-agent session: ${parsed.session_id})`);
+    } else {
+      // New cursor-agent session detected
+      console.log(`🆔 New cursor-agent session detected: ${parsed.session_id}`);
+      console.log(`🆔 Current sessionId: ${currentSessionId}`);
+      console.log(`🆔 Available sessions:`, sessions.map(s => ({ id: s.id, name: s.name, cursorSessionId: s.cursorSessionId })));
+      
+      // Check if we have a current session without a cursorSessionId (temporary session)
+      const currentSession = sessions.find(s => s.id === currentSessionId);
+      console.log(`🆔 Found current session:`, currentSession ? { id: currentSession.id, name: currentSession.name, cursorSessionId: currentSession.cursorSessionId } : null);
+      
+      if (currentSession && !currentSession.cursorSessionId) {
+        // Update the temporary session with the real cursor session ID
+        console.log(`🆔 Updating temporary session ${currentSessionId} with cursor session ID: ${parsed.session_id}`);
+        if (updateSessionWithCursorId) {
+          updateSessionWithCursorId(currentSessionId, parsed.session_id);
+        }
+        targetSessionId = currentSessionId;
+      } else {
+        // Either no current session or current session already has a cursorSessionId
+        // Let updateSessionWithCursorId handle creating a new session or finding a temp session
+        console.log(`🆔 No suitable session found, letting updateSessionWithCursorId handle it`);
+        console.log(`🆔 Current session exists: ${!!currentSession}, has cursorSessionId: ${currentSession?.cursorSessionId}`);
+        if (updateSessionWithCursorId) {
+          updateSessionWithCursorId(null, parsed.session_id);
+        }
+        // targetSessionId will remain currentSessionId for now
+      }
     }
   }
   
+  console.log('Final target session ID:', targetSessionId);
+  
   // Handle tool calls
   if (parsed.type === 'tool_call' || parsed.type === 'tool' || parsed.type === 'function_call' || parsed.tool_call || parsed.tool || parsed.name === 'tool') {
+    console.log('Processing tool call:', { parsed, targetSessionId });
     const { callId, toolCallData, subtype } = normalizeToolCallData(parsed);
+    console.log('Normalized tool call data:', { callId, toolCallData, subtype });
     
-    setToolCalls(prev => {
+    setSessionToolCalls(targetSessionId, prev => {
       const newMap = new Map(prev);
       const existing = newMap.get(callId);
       
@@ -150,7 +190,7 @@ export const handleJsonLogLine = async (parsed, {
   
   // Final result: replace streamed text with final text
   if (parsed.type === 'result') {
-    setToolCalls(prev => {
+    setSessionToolCalls(targetSessionId, prev => {
       const newMap = new Map();
       for (const [callId, toolCallInfo] of prev.entries()) {
         newMap.set(callId, {
@@ -163,13 +203,13 @@ export const handleJsonLogLine = async (parsed, {
       return newMap;
     });
     
-    setHideToolCallIndicators(true);
+    setSessionHideToolCallIndicators(targetSessionId, true);
     const finalText = typeof parsed.result === 'string' ? parsed.result : (parsed.output || accumulatedText || '');
     lastChunkRef.current = '';
     
     setMessages(m => {
       const idx = streamIndexRef.current;
-      const callsSource = (toolCallsRef && toolCallsRef.current instanceof Map) ? toolCallsRef.current : toolCalls;
+      const callsSource = (toolCallsRef && toolCallsRef.current instanceof Map) ? toolCallsRef.current : getCurrentSessionToolCalls();
       const toolCallsSnapshot = Array.from(callsSource.entries()).map(([id, info]) => ({ id, ...info }));
       if (idx >= 0 && idx < m.length) {
         const updated = [...m];
@@ -196,7 +236,7 @@ export const handleJsonLogLine = async (parsed, {
     if (runTimeoutRef.current) { try { clearTimeout(runTimeoutRef.current); } catch {} runTimeoutRef.current = null; }
     if (unsubRef.current) { try { unsubRef.current(); } catch {} unsubRef.current = null; }
     streamIndexRef.current = -1;
-    setBusy(false);
+    setSessionBusy(targetSessionId, false);
     
     return true; // Signal completion
   }
@@ -211,17 +251,15 @@ export const handleStreamLogLine = async (line, {
   runId,
   currentSessionId,
   sessions,
-  setSessions,
-  saveSessions,
   setMessages,
   streamIndexRef,
-  setToolCalls,
-  toolCalls,
-  setHideToolCallIndicators,
+  setSessionToolCalls,
+  getCurrentSessionToolCalls,
+  setSessionHideToolCallIndicators,
   accumulatedText,
   setAccumulatedText,
   lastChunkRef,
-  setBusy,
+  setSessionBusy,
   runTimeoutRef,
   unsubRef,
   sawJsonRef
@@ -246,20 +284,18 @@ export const handleStreamLogLine = async (line, {
       runId,
       currentSessionId,
       sessions,
-      setSessions,
-      saveSessions,
-        setMessages,
-        streamIndexRef,
-      setToolCalls,
-        toolCalls,
-      setHideToolCallIndicators,
-        accumulatedText,
+      setMessages,
+      streamIndexRef,
+      setSessionToolCalls,
+      getCurrentSessionToolCalls,
+      setSessionHideToolCallIndicators,
+      accumulatedText,
       setAccumulatedText,
       lastChunkRef,
-        setBusy,
-        runTimeoutRef,
-        unsubRef
-      });
+      setSessionBusy,
+      runTimeoutRef,
+      unsubRef
+    });
     
     return isComplete;
   } catch {
@@ -271,18 +307,19 @@ export const handleStreamLogLine = async (line, {
  * Handle end marker for legacy runners
  */
 export const handleEndMarker = ({
-  setToolCalls,
-  setHideToolCallIndicators,
+  setSessionToolCalls,
+  setSessionHideToolCallIndicators,
   setMessages,
   streamIndexRef,
-  toolCalls,
+  getCurrentSessionToolCalls,
   accumulatedText,
-  setBusy,
+  setSessionBusy,
+  currentSessionId,
   runTimeoutRef,
   unsubRef
 }) => {
   // Mark all active tool calls as completed
-  setToolCalls(prev => {
+  setSessionToolCalls(currentSessionId, prev => {
     const newMap = new Map();
     for (const [callId, toolCallInfo] of prev.entries()) {
       newMap.set(callId, {
@@ -296,7 +333,7 @@ export const handleEndMarker = ({
   });
   
   // Hide tool call indicators after result
-  setHideToolCallIndicators(true);
+  setSessionHideToolCallIndicators(currentSessionId, true);
   
   // Mark the streaming message as complete
   if (accumulatedText.trim()) {
@@ -315,7 +352,7 @@ export const handleEndMarker = ({
       const idx = streamIndexRef.current;
       if (idx >= 0 && idx < m.length) {
         const updated = [...m];
-        const toolCallsSnapshot = Array.from(toolCalls.entries()).map(([id, info]) => ({ id, ...info }));
+        const toolCallsSnapshot = Array.from(getCurrentSessionToolCalls().entries()).map(([id, info]) => ({ id, ...info }));
         updated[idx] = {
           ...updated[idx],
           isStreaming: false,
@@ -346,7 +383,7 @@ export const handleEndMarker = ({
     unsubRef.current = null; 
   }
   streamIndexRef.current = -1;
-  setBusy(false);
+  setSessionBusy(currentSessionId, false);
   
   return true; // Signal completion
 };
@@ -358,26 +395,35 @@ export const createLogStreamHandler = ({
   runId,
   currentSessionId,
   sessions,
-  setSessions,
-  saveSessions,
   setMessages,
   streamIndexRef,
-  setToolCalls,
-  toolCalls,
+  setSessionToolCalls,
+  getCurrentSessionToolCalls,
   toolCallsRef,
-  setHideToolCallIndicators,
+  setSessionHideToolCallIndicators,
   accumulatedText,
   setAccumulatedText,
   lastChunkRef,
-  setBusy,
+  setSessionBusy,
   runTimeoutRef,
   unsubRef,
-  sawJsonRef
+  sawJsonRef,
+  updateSessionWithCursorId
 }) => {
   return async (payload) => {
+    console.log(`🔍 createLogStreamHandler received payload:`, payload);
+    console.log(`🔍 Expected runId: ${runId}, received runId: ${payload?.runId}`);
+    console.log(`🔍 runId types - expected: ${typeof runId} (${runId}), received: ${typeof payload?.runId} (${payload?.runId})`);
+    console.log(`🔍 runId comparison: ${payload?.runId === runId}`);
+    
+    // Filter messages by runId to ensure we only process messages for this specific run
     if (!payload || payload.runId !== runId) {
+      console.log(`🚫 Ignoring message for different runId: ${payload?.runId} (expected: ${runId})`);
       return;
     }
+    
+    console.log(`✅ Processing message for runId: ${runId}, sessionId: ${payload.sessionId || 'none'}`);
+    console.log('Message payload:', { level: payload.level, linePreview: payload.line?.substring(0, 100) });
     
     try {
       // Prefer clean JSON emitted by the runner; ignore non-JSON stream lines to avoid duplicates
@@ -391,19 +437,19 @@ export const createLogStreamHandler = ({
             runId,
             currentSessionId,
             sessions,
-            setSessions,
-            saveSessions,
             setMessages,
             streamIndexRef,
-            setToolCalls,
-            toolCalls,
-            setHideToolCallIndicators,
+            setSessionToolCalls,
+            getCurrentSessionToolCalls,
+            toolCallsRef,
+            setSessionHideToolCallIndicators,
             accumulatedText,
             setAccumulatedText,
             lastChunkRef,
-            setBusy,
+            setSessionBusy,
             runTimeoutRef,
-            unsubRef
+            unsubRef,
+            updateSessionWithCursorId
           });
           
           if (isComplete) return;
@@ -420,17 +466,15 @@ export const createLogStreamHandler = ({
           runId,
           currentSessionId,
           sessions,
-          setSessions,
-          saveSessions,
           setMessages,
           streamIndexRef,
-          setToolCalls,
-          toolCalls,
-          setHideToolCallIndicators,
+          setSessionToolCalls,
+          getCurrentSessionToolCalls,
+          setSessionHideToolCallIndicators,
           accumulatedText,
           setAccumulatedText,
           lastChunkRef,
-          setBusy,
+          setSessionBusy,
           runTimeoutRef,
           unsubRef,
           sawJsonRef

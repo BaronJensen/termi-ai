@@ -1,5 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import Chat from '../components/Chat.jsx';
+import SessionTerminals from '../components/SessionTerminals.jsx';
+import { SessionProvider } from '../providers/SessionProvider.jsx';
 import { getProject, updateProject } from '../store/projects';
 import { loadSettings } from '../store/settings';
 import Button from '../ui/Button';
@@ -9,7 +11,7 @@ import Select from '../ui/Select';
 import Textarea from '../ui/Textarea';
 import useDesignSystemStyles from '../ui/useDesignSystemStyles';
 
-export default function ProjectView({ projectId, onBack, initialMessage }) {
+function ProjectViewInner({ projectId, onBack, initialMessage }) {
   useDesignSystemStyles();
   const project = getProject(projectId);
   const [folder, setFolder] = useState(project?.path || null);
@@ -27,7 +29,7 @@ export default function ProjectView({ projectId, onBack, initialMessage }) {
   const [viewportMode, setViewportMode] = useState('desktop'); // 'desktop', 'tablet', 'phone'
   const [isChatVisible, setIsChatVisible] = useState(true);
   const [showDebug, setShowDebug] = useState(false);
-  const [activeTab, setActiveTab] = useState('vite'); // 'vite' | 'cursor' | 'console'
+  const [activeTab, setActiveTab] = useState('vite'); // 'vite' | 'sessions' | 'console' | 'metrics'
   const [viteLogs, setViteLogs] = useState([]);
   const [cursorLogs, setCursorLogs] = useState([]);
   const [rawCursorLogs, setRawCursorLogs] = useState([]);
@@ -451,6 +453,8 @@ export default function ProjectView({ projectId, onBack, initialMessage }) {
     return () => { try { unsubV && unsubV(); } catch {} try { unsubC && unsubC(); } catch {} };
   }, []);
 
+
+
   // Perf stats subscription
   useEffect(() => {
     let unsub = null;
@@ -865,7 +869,7 @@ export default function ProjectView({ projectId, onBack, initialMessage }) {
           <div className="debug-panel">
             <div className="tabs">
               <button className={activeTab==='vite'?'active':''} onClick={() => setActiveTab('vite')}>Preview</button>
-              <button className={activeTab==='cursor'?'active':''} onClick={() => setActiveTab('cursor')}>Terminal</button>
+              <button className={activeTab==='sessions'?'active':''} onClick={() => setActiveTab('sessions')}>Sessions</button>
               <button className={activeTab==='console'?'active':''} onClick={() => setActiveTab('console')}>Web Console</button>
               <button className={activeTab==='metrics'?'active':''} onClick={() => setActiveTab('metrics')}>Metrics</button>
             </div>
@@ -877,41 +881,17 @@ export default function ProjectView({ projectId, onBack, initialMessage }) {
                   ))}
                 </div>
               )}
-              {activeTab==='cursor' && (
-                <>
-                  <div className="term-scroll" ref={cursorLogScroller}>
-                    {(showRawTerminal ? rawCursorLogs : cursorLogs)
-                      .slice(-LOG_RENDER_LIMIT)
-                      .filter((l) => showRawTerminal ? true : (l.level !== 'stream'))
-                      .map((l, i) => (
-                        <div key={i} className={`ln ${l.level || 'info'}`}>[{l.tss || new Date(l.ts).toLocaleTimeString()}] {l.line}</div>
-                      ))}
-                  </div>
-                  <div className="agent-input">
-                    <div style={{color: '#cde3ff', fontSize: '11px', marginBottom: '4px'}}>
-                      Terminal Console: {cursorLogs.length > 0 ? `(${cursorLogs.length} logs)` : '(No logs yet)'}
-                      {cursorLogs.length > 0 && (
-                        <span style={{marginLeft: '10px', color: '#ff8a80'}}>
-                          Active: {cursorLogs[cursorLogs.length - 1]?.runId === 'persistent' ? 'Persistent Terminal' : `Agent (${cursorLogs[cursorLogs.length - 1]?.runId || 'none'})`}
-                        </span>
-                      )}
-                    </div>
-                    <div style={{display:'flex', alignItems:'center', justifyContent:'space-between'}}>
-                      <div style={{color: '#cde3ff', fontSize: '10px', marginBottom: '0px', opacity: 0.7}}>
-                        Status: <span id="terminal-status">{terminalStatusText}</span>
-                      </div>
-                      <label style={{color:'#cde3ff', fontSize:'10px', display:'flex', alignItems:'center', gap:6}}>
-                        <input type="checkbox" checked={showRawTerminal} onChange={(e)=>setShowRawTerminal(e.target.checked)} /> Raw stream
-                      </label>
-                    </div>
-                  </div>
-                </>
-              )}
+
               {activeTab==='console' && (
                 <div className="term-scroll" ref={consoleLogScroller}>
                   {consoleLogs.slice(-LOG_RENDER_LIMIT).map((l, i) => (
                     <div key={i} className={`ln ${l.level || 'info'}`}>[{l.tss || new Date(l.ts).toLocaleTimeString()}] {l.line}</div>
                   ))}
+                </div>
+              )}
+              {activeTab==='sessions' && (
+                <div className="term-scroll" style={{ padding: 0, height: '100%' }}>
+                  <SessionTerminals />
                 </div>
               )}
               {activeTab==='metrics' && (
@@ -1121,6 +1101,18 @@ export default function ProjectView({ projectId, onBack, initialMessage }) {
         </div>
       )}
     </div>
+  );
+}
+
+export default function ProjectView({ projectId, onBack, initialMessage }) {
+  return (
+    <SessionProvider projectId={projectId}>
+      <ProjectViewInner 
+        projectId={projectId} 
+        onBack={onBack} 
+        initialMessage={initialMessage} 
+      />
+    </SessionProvider>
   );
 }
 

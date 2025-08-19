@@ -10,28 +10,13 @@ export const addUserMessage = ({
   currentSessionId,
   sessions,
   setMessages,
-  setSessions,
-  deriveSessionNameFromMessage,
-  getSessionStorageKey
+  deriveSessionNameFromMessage
 }) => {
   setMessages(m => {
     const next = [...m, { who: 'user', text, rawData: { command: text, timestamp: Date.now() } }];
     
-    // If this is the first user message in this session, set the session name from it
-    if (currentSessionId) {
-      const hasUserBefore = m.some(msg => msg.who === 'user');
-      if (!hasUserBefore) {
-        const newName = deriveSessionNameFromMessage(text);
-        setSessions(prev => {
-          const updated = prev.map(s => s.id === currentSessionId ? { ...s, name: newName } : s);
-          // Persist immediately so the header updates survive reloads
-          try { 
-            localStorage.setItem(getSessionStorageKey(), JSON.stringify(updated)); 
-          } catch {}
-          return updated;
-        });
-      }
-    }
+    // Note: Session name updates are now handled by the SessionProvider
+    // This function only adds the user message to the current session
     return next;
   });
 };
@@ -85,8 +70,8 @@ export const getSessionIdForCursor = ({ sessions, currentSessionId }) => {
 /**
  * Mark all tool calls as completed
  */
-export const markAllToolCallsCompleted = ({ setToolCalls }) => {
-  setToolCalls(prev => {
+export const markAllToolCallsCompleted = ({ setToolCalls, currentSessionId }) => {
+  setToolCalls(currentSessionId, prev => {
     const newMap = new Map();
     for (const [callId, toolCallInfo] of prev.entries()) {
       newMap.set(callId, {
@@ -144,7 +129,7 @@ export const cleanupStreamingState = ({
   unsubRef,
   streamIndexRef,
   runIdRef,
-  setBusy
+  setSessionBusy
 }) => {
   if (runTimeoutRef.current) { 
     try { clearTimeout(runTimeoutRef.current); } catch {} 
@@ -156,5 +141,5 @@ export const cleanupStreamingState = ({
   }
   streamIndexRef.current = -1;
   runIdRef.current = null;
-  setBusy(false);
+  setSessionBusy();
 };

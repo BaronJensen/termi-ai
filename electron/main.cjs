@@ -75,6 +75,7 @@ let viteProcess = null;
 let htmlServerRef = null; // { stop, urlPromise }
 let lastViteFolder = null;
 const agentProcs = new Map(); // runId -> childRef
+const sessionProcs = new Map(); // sessionId -> Set of runIds
 let persistentTerminal = null; // Always-available terminal session
 const history = new HistoryStore(app);
 
@@ -115,7 +116,18 @@ function getChildProcessesSnapshot() {
   try {
     for (const [runId, child] of agentProcs.entries()) {
       const pid = child && (child.pid || child.processId || child.process?.pid);
-      if (pid) children.push({ name: `cursor-agent:${runId}`, pid });
+      if (pid) {
+        // Find which session this runId belongs to
+        let sessionId = 'unknown';
+        for (const [sid, runIds] of sessionProcs.entries()) {
+          if (runIds.has(runId)) {
+            sessionId = sid;
+            break;
+          }
+        }
+        const sessionLabel = sessionId ? `Session ${sessionId.slice(0, 8)}` : 'Default';
+        children.push({ name: `cursor-agent:${sessionLabel}:${runId.slice(0, 8)}`, pid });
+      }
     }
   } catch {}
   try {
@@ -124,6 +136,80 @@ function getChildProcessesSnapshot() {
     }
   } catch {}
   return children;
+}
+
+// Session management functions
+function addSessionProcess(sessionId, runId) {
+  if (!sessionProcs.has(sessionId)) {
+    sessionProcs.set(sessionId, new Set());
+  }
+  sessionProcs.get(sessionId).add(runId);
+  console.log(`📱 Session ${sessionId?.slice(0, 8) || 'default'} now has ${sessionProcs.get(sessionId).size} active processes`);
+}
+
+function removeSessionProcess(sessionId, runId) {
+  const session = sessionProcs.get(sessionId);
+  if (session) {
+    session.delete(runId);
+    if (session.size === 0) {
+      sessionProcs.delete(sessionId);
+      console.log(`📱 Session ${sessionId?.slice(0, 8) || 'default'} completed, no more active processes`);
+    } else {
+      console.log(`📱 Session ${sessionId?.slice(0, 8) || 'default'} now has ${session.size} active processes`);
+    }
+  }
+}
+
+function getSessionInfo() {
+  const info = {};
+  for (const [sessionId, runIds] of sessionProcs.entries()) {
+    info[sessionId] = {
+      activeProcesses: runIds.size,
+      runIds: Array.from(runIds),
+      processes: Array.from(runIds).map(runId => {
+        const child = agentProcs.get(runId);
+        return {
+          runId,
+          pid: child?.pid || child?.processId || child?.process?.pid,
+          status: child ? 'active' : 'unknown'
+        };
+      })
+    };
+  }
+  return info;
+}
+
+function killSessionProcesses(sessionId) {
+  const session = sessionProcs.get(sessionId);
+  if (!session) {
+    console.log(`📱 Session ${sessionId?.slice(0, 8) || 'default'} not found`);
+    return { killed: 0, total: 0 };
+  }
+  
+  let killed = 0;
+  const total = session.size;
+  
+  for (const runId of session) {
+    const child = agentProcs.get(runId);
+    if (child) {
+      try {
+        if (typeof child.kill === 'function') {
+          child.kill('SIGTERM');
+        } else if (child.pid) {
+          process.kill(child.pid, 'SIGTERM');
+        }
+        killed++;
+        console.log(`💀 Killed process ${runId.slice(0, 8)} for session ${sessionId?.slice(0, 8) || 'default'}`);
+      } catch (err) {
+        console.warn(`Failed to kill process ${runId.slice(0, 8)}:`, err.message);
+      }
+    }
+    agentProcs.delete(runId);
+  }
+  
+  sessionProcs.delete(sessionId);
+  console.log(`📱 Session ${sessionId?.slice(0, 8) || 'default'} killed ${killed}/${total} processes`);
+  return { killed, total };
 }
 
 function readProcessStatsDarwin(pid) {
@@ -818,14 +904,22 @@ ipcMain.handle('cursor-run', async (_e, { message, cwd, runId: clientRunId, sess
   }
   
   console.log(`🚀 Starting cursor-agent in directory: ${workingDir}`);
+  console.log(`📱 Session: ${sessionId ? `Session ${sessionId.slice(0, 8)}` : 'Default'}`);
+  
+  // For new sessions without cursorSessionId, use a temporary session ID that will be mapped later
+  const effectiveSessionId = sessionId || `temp-${runId}`;
+  
   const { child, wait } = startCursorAgent(message, sessionId, (level, line) => {
     try {
       if (line) perfAccumLogBytes.cursor += Buffer.byteLength(String(line));
-      if (win && !win.isDestroyed()) win.webContents.send('cursor-log', { runId, level, line, ts: Date.now() });
+      if (win && !win.isDestroyed()) win.webContents.send('cursor-log', { runId, level, line, ts: Date.now(), sessionId: effectiveSessionId });
     } catch {}
   }, { cwd: workingDir, model, ...(typeof timeoutMs === 'number' ? { timeoutMs } : {}), ...(apiKey ? { apiKey, useTokenAuth: true } : {}) });
   
-  if (child) agentProcs.set(runId, child);
+  if (child) {
+    agentProcs.set(runId, child);
+    addSessionProcess(sessionId, runId);
+  }
   
   // Update menu to show new process
   updateMenuStatus();
@@ -862,6 +956,7 @@ ipcMain.handle('cursor-run', async (_e, { message, cwd, runId: clientRunId, sess
       }
     }
     agentProcs.delete(runId);
+    removeSessionProcess(sessionId, runId);
     // Update menu after cleanup
     updateMenuStatus();
   }
@@ -873,6 +968,16 @@ ipcMain.handle('cursor-run', async (_e, { message, cwd, runId: clientRunId, sess
 
 ipcMain.handle('get-working-directory', async () => {
   return lastViteFolder || process.cwd();
+});
+
+// Get information about active sessions and their processes
+ipcMain.handle('get-session-info', async () => {
+  return getSessionInfo();
+});
+
+// Kill all processes for a specific session
+ipcMain.handle('kill-session-processes', async (_e, { sessionId }) => {
+  return killSessionProcesses(sessionId);
 });
 
 ipcMain.handle('get-app-info', async () => {

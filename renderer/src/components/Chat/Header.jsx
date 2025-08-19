@@ -6,6 +6,8 @@ export default function Header({
   onToggleSearch,
   showSessionList,
   onToggleSessionList,
+  showSessionTerminals,
+  onToggleSessionTerminals,
   onNewSession
 }) {
   return (
@@ -58,6 +60,7 @@ export default function Header({
         >
           📚
         </button>
+
         <button
           onClick={onNewSession}
           style={{

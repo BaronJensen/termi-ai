@@ -45,13 +45,14 @@ export const handleFallbackCompletion = ({
   setMessages,
   runTimeoutRef,
   unsubRef,
-  setBusy
+  setSessionBusy,
+  currentSessionId
 }) => {
   // Mark all active tool calls as completed
-  markAllToolCallsCompleted({ setToolCalls });
+  markAllToolCallsCompleted({ setToolCalls, currentSessionId });
   
   // Hide tool call indicators after result
-  setHideToolCallIndicators(true);
+  setHideToolCallIndicators(currentSessionId, true);
   
   // Mark streaming as complete
   setMessages(m => {
@@ -90,7 +91,7 @@ export const handleFallbackCompletion = ({
     unsubRef,
     streamIndexRef,
     runIdRef: { current: null }, // We don't have access to runIdRef here
-    setBusy
+    setSessionBusy: () => setSessionBusy(currentSessionId, false)
   });
 };
 
@@ -101,7 +102,8 @@ export const handleClientTimeout = ({
   runId,
   streamIndexRef,
   setMessages,
-  setBusy
+  setSessionBusy,
+  currentSessionId
 }) => {
   setMessages(m => {
     const idx = streamIndexRef.current;
@@ -113,7 +115,7 @@ export const handleClientTimeout = ({
     }
     return [...m, { who: 'assistant', text: timeoutText, isStreaming: false, rawData: { error: 'client_timeout' } }];
   });
-  setBusy(false);
+  setSessionBusy(currentSessionId, false);
 };
 
 /**
