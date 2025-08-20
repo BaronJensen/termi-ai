@@ -26,7 +26,7 @@ function loadPTY() {
 
 const { startVite, stopVite } = require('./viteRunner.cjs');
 const { startHtmlServer } = require('./htmlServer.cjs');
-const { runCursorAgent, startCursorAgent, setDebugMode, getDebugMode } = require('./runner.cjs');
+const { startCursorAgent, setDebugMode, getDebugMode } = require('./runner.cjs');
 const { HistoryStore } = require('./historyStore.cjs');
 
 // Ensure PATH includes common Homebrew locations (helps find cursor-agent)
@@ -868,7 +868,7 @@ ipcMain.handle('html-stop', async () => {
   return true;
 });
 
-ipcMain.handle('cursor-run', async (_e, { message, cwd, runId: clientRunId, sessionId, model, timeoutMs, apiKey, debugMode }) => {
+ipcMain.handle('cursor-run', async (_e, { message, cwd, runId: clientRunId, sessionObject, model, timeoutMs, apiKey, debugMode }) => {
   if (!message || !message.trim()) {
     throw new Error('Empty message');
   }
@@ -903,18 +903,9 @@ ipcMain.handle('cursor-run', async (_e, { message, cwd, runId: clientRunId, sess
     agentProcs.delete(runId);
   }
   
+
   console.log(`🚀 Starting cursor-agent in directory: ${workingDir}`);
-  console.log(`📱 Session: ${sessionId ? `Session ${sessionId.slice(0, 8)}` : 'Default'}`);
-  
-  // For new sessions without cursorSessionId, use a temporary session ID that will be mapped later
-  const effectiveSessionId = sessionId || `temp-${runId}`;
-  
-  // Create a session object with all the information needed for tracking
-  const sessionObject = {
-    id: sessionId || `temp-${runId}`, // internal session ID
-    cursorSessionId: sessionId, // cursor session ID (may be null for new sessions)
-    runId: runId // run ID for tracking
-  };
+  console.log(`📱 Session: ${sessionObject.id ? `Session ${sessionObject.id.slice(0, 8)}` : 'Default'}`);
   
   const { child, wait } = startCursorAgent(message, sessionObject, (level, line) => {
     try {
@@ -925,8 +916,8 @@ ipcMain.handle('cursor-run', async (_e, { message, cwd, runId: clientRunId, sess
         level, 
         line, 
         ts: Date.now(), 
-        sessionId: effectiveSessionId, // cursor session ID
-        internalSessionId: sessionObject.id   // internal session ID for tracking
+        cursorSessionId: sessionObject.cursorSessionId, // cursor session ID
+        id: sessionObject.id   // internal session ID for tracking
       };
       if (win && !win.isDestroyed()) win.webContents.send('cursor-log', logPayload);
     } catch {}
@@ -940,7 +931,7 @@ ipcMain.handle('cursor-run', async (_e, { message, cwd, runId: clientRunId, sess
   
   if (child) {
     agentProcs.set(runId, child);
-    addSessionProcess(sessionId, runId);
+    addSessionProcess(sessionObject.id, runId);
   }
   
   // Update menu to show new process
@@ -978,7 +969,7 @@ ipcMain.handle('cursor-run', async (_e, { message, cwd, runId: clientRunId, sess
       }
     }
     agentProcs.delete(runId);
-    removeSessionProcess(sessionId, runId);
+    removeSessionProcess(sessionObject.id, runId);
     // Update menu after cleanup
     updateMenuStatus();
   }

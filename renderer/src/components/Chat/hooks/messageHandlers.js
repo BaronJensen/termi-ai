@@ -295,6 +295,8 @@ export const handleStreamLogLine = async (line, {
       if (!candidate) throw new Error('no-json');
       parsed = JSON.parse(candidate);
     }
+
+    console.log('🔥 handleStreamLogLine called with parsed:', parsed);
     
     // Re-use JSON handler for consistency
     const isComplete = await handleJsonLogLine(parsed, {
@@ -440,7 +442,7 @@ export const createLogStreamHandler = ({
       return;
     }
     
-    console.log(`✅ PROCESSING message for runId: ${runId}, sessionId: ${payload.sessionId || 'none'}`);
+    console.log(`✅ PROCESSING message for runId: ${runId}, sessionId: ${payload.id || payload.cursorSessionId || 'none'}`);
     console.log('🚀 Message payload:', { level: payload.level, linePreview: payload.line?.substring(0, 100) });
     
     try {

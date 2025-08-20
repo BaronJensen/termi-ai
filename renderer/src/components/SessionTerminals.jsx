@@ -296,9 +296,8 @@ export default function SessionTerminals() {
       {/* Terminal Output for Current Session */}
       {currentSessionId && (() => {
         const sessionLogs = terminalLogs.get(currentSessionId);
-        console.log(`🔍 SessionTerminals: currentSessionId=${currentSessionId}, sessionLogs=`, sessionLogs);
+ 
         if (!sessionLogs) {
-          console.log(`⚠️  No session logs found for session ${currentSessionId}`);
           return null;
         }
 

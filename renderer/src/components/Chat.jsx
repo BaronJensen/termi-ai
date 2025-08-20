@@ -109,28 +109,6 @@ export default function Chat({ cwd, initialMessage, projectId }) {
       };
     };
 
-    // Debug logging for session state
-    useEffect(() => {
-      console.log('Session state updated:', getSessionStatus());
-      console.log('Current session tool calls:', getCurrentSessionToolCalls());
-    }, [sessions, currentSessionId, busyBySession, toolCallsBySession, hideToolCallIndicatorsBySession]);
-
-    // Debug: Log when sessions change in Chat component
-    useEffect(() => {
-      console.log(`🔥 Chat: sessions changed:`, sessions.map(s => ({ id: s.id, name: s.name, cursorSessionId: s.cursorSessionId })));
-      
-      // Check if any session was updated with a cursorSessionId
-      const updatedSessions = sessions.filter(s => s.cursorSessionId);
-      if (updatedSessions.length > 0) {
-        console.log(`🔥 Chat: Found ${updatedSessions.length} sessions with cursorSessionId:`, updatedSessions);
-      }
-    }, [sessions]);
-
-    // Debug: Log when currentSessionId changes in Chat component
-    useEffect(() => {
-      console.log(`🔥 Chat: currentSessionId changed to: ${currentSessionId}`);
-    }, [currentSessionId]);
-
     // Emit busy state updates to ProjectView
     useEffect(() => {
       if (projectId) {
@@ -143,15 +121,6 @@ export default function Chat({ cwd, initialMessage, projectId }) {
       }
     }, [busyBySession, projectId]);
     
-
-    
-
-    
-
-    
-
-
-
     // Track if we're currently loading messages to prevent save loops
     const isLoadingMessagesRef = useRef(false);
 
@@ -218,10 +187,6 @@ export default function Chat({ cwd, initialMessage, projectId }) {
       checkTerminalStatus();
     }, [currentSessionId, busyBySession, checkTerminalStatus]);
     
-    // Debug log when session status changes
-    useEffect(() => {
-      console.log('Session status updated:', getSessionStatus());
-    }, [busyBySession, currentSessionId]);
     
     // Auto-scroll to bottom when new messages are added
     useEffect(() => {
@@ -364,24 +329,6 @@ export default function Chat({ cwd, initialMessage, projectId }) {
           navigateSearch={navigateSearch}
         />
         
-
-        
-
-
-        {/* Debug logging for tool calls */}
-        {(() => {
-          const toolCalls = getCurrentSessionToolCalls();
-          const hideIndicators = getCurrentSessionHideToolCallIndicators();
-          console.log('MessagesContainer props:', {
-            toolCalls: toolCalls,
-            toolCallsSize: toolCalls.size,
-            hideIndicators,
-            currentSessionId,
-            isMap: toolCalls instanceof Map
-          });
-          return null;
-        })()}
-
         <MessagesContainer
           scroller={scroller}
           filteredMessages={filteredMessages}

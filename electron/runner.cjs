@@ -284,7 +284,7 @@ function startMockCursorAgent(message, sessionObject, onLog, options = {}) {
   if (onLog) onLog('info', `[${sessionLabel}] Internal Session ID: ${internalSessionId || 'none'}`);
   if (onLog) onLog('info', `[${sessionLabel}] Cursor Session ID: ${sessionId || 'none'}`);
   
-  const mockGenerator = new MockDataGenerator(message, sessionId, {
+  const mockGenerator = new MockDataGenerator(message, sessionObject, {
     typingDelay: options.mockTypingDelay || 100,
     messageDelay: options.mockMessageDelay || 2000,
     finalDelay: options.mockFinalDelay || 1000
@@ -638,6 +638,7 @@ function startCursorAgent(message, sessionObject, onLog, options = {}) {
         p.onData((data) => handleData(Buffer.from(data)));
         p.onExit(({ exitCode }) => {
           // emulate exit handler
+          if (onLog) onLog('info', `[${sessionLabel}] PTY terminal exited with code ${exitCode}`);
           childExitHandler(exitCode);
         });
         // Write command into the PTY so the environment and login shell are used
@@ -698,8 +699,8 @@ function startCursorAgent(message, sessionObject, onLog, options = {}) {
   return { child: childRef, wait };
 }
 
-async function runCursorAgent(message, sessionId, onLog, options = {}) {
-  const { wait } = startCursorAgent(message, sessionId, onLog, options);
+async function runCursorAgent(message, sessionObject, onLog, options = {}) {
+  const { wait } = startCursorAgent(message, sessionObject, onLog, options);
   return wait;
 }
 

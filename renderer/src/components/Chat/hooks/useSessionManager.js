@@ -400,25 +400,13 @@ export const useSessionManager = (projectId) => {
     }
     
     // Handle terminal logs for display
-    if (payload && (payload.sessionId || payload.internalSessionId)) {
+    if (payload && (payload.cursorSessionId || payload.id)) {
       let targetSessionId = null;
       
-      // First try to use internalSessionId if available (most reliable)
-      if (payload.internalSessionId) {
-        targetSessionId = payload.internalSessionId;
-      } else if (payload.sessionId) {
-        // Check if this is a cursorSessionId that needs to be mapped to an internal sessionId
-        const sessionWithCursorId = sessions.find(s => s.cursorSessionId === payload.sessionId);
-        
-        if (sessionWithCursorId) {
-          targetSessionId = sessionWithCursorId.id;
-        } else if (payload.sessionId.startsWith('temp-')) {
-          // This is a temporary session ID from a new session, route to current session
-          if (currentSessionId) {
-            targetSessionId = currentSessionId;
-          }
-        }
-      }
+      // First try to use id if available (most reliable - this is the internal session ID)
+      if (payload.id) {
+        targetSessionId = payload.id;
+      } 
       
       if (targetSessionId) {
         setTerminalLogs(prev => {
@@ -481,10 +469,10 @@ export const useSessionManager = (projectId) => {
     // Mark session as busy
     setSessionBusy(sessionId, true);
     
+    // Generate unique run ID for this command
+    const runId = `run-${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
+    
     try {
-      // Generate unique run ID for this command
-      const runId = `run-${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
-      
       // Create session object for the runner
       const sessionObject = {
         id: sessionId,
@@ -495,15 +483,16 @@ export const useSessionManager = (projectId) => {
       
       // Register the session object in the log router
       if (window.cursovableLogRouter) {
+        console.log(`🔧 useSessionManager: Creating message handler for runId ${runId}, sessionId ${sessionId}`);
         const messageHandler = createMessageHandler(runId, sessionId);
         window.cursovableLogRouter.registerHandler(runId, messageHandler, sessionObject);
+        console.log(`🔧 useSessionManager: Registered message handler for runId ${runId}`);
       }
       
       // Call the cursor-agent CLI
       const result = await window.cursovable.runCursor({
         message: text,
-        sessionId: sessionId,
-        model: 'gpt-4',
+        sessionObject,
         timeoutMs: 300000 // 5 minutes
       });
       
@@ -623,6 +612,7 @@ export const useSessionManager = (projectId) => {
   
   // Initialize the message handler hook
   const messageHandler = useMessageHandler(addMessageToSession, updateSessionWithCursorId);
+  console.log('🔧 useSessionManager: Initialized message handler with capabilities:', Object.keys(messageHandler));
 
   // ===== TERMINAL COMMUNICATION =====
   
@@ -662,6 +652,12 @@ export const useSessionManager = (projectId) => {
       },
       
       routeLog(payload) {
+        console.log(`🔧 Log router: routing payload for runId ${payload?.runId}:`, {
+          level: payload?.level,
+          hasLine: !!payload?.line,
+          linePreview: payload?.line?.substring(0, 100)
+        });
+        
         if (!payload || !payload.runId) {
           console.log('⚠️  Log router: payload missing runId, skipping');
           return;
@@ -670,12 +666,14 @@ export const useSessionManager = (projectId) => {
         const handler = this.handlers.get(payload.runId);
         if (handler) {
           try {
+            console.log(`🔧 Log router: calling handler for runId ${payload.runId}`);
             handler(payload);
           } catch (error) {
             console.error(`❌ Log router: error in handler for runId ${payload.runId}:`, error);
           }
         } else {
           console.log(`⚠️  Log router: no handler found for runId ${payload.runId}`);
+          console.log(`🔧 Available handlers:`, Array.from(this.handlers.keys()));
         }
       },
       
@@ -750,13 +748,29 @@ export const useSessionManager = (projectId) => {
   // Helper function to create message handlers for each run
   const createMessageHandler = useCallback((runId, sessionId) => {
     return (payload) => {
+      console.log(`🔧 Message handler for runId ${runId}, sessionId ${sessionId}:`, {
+        level: payload?.level,
+        hasLine: !!payload?.line,
+        linePreview: payload?.line?.substring(0, 100)
+      });
+      
       if (payload && payload.line) {
         try {
           // Try to parse JSON logs
           if (payload.level === 'json') {
             const parsed = JSON.parse(payload.line);
+            console.log(`🔧 Parsed JSON message for session ${sessionId}:`, {
+              type: parsed.type,
+              hasSessionId: !!parsed.session_id,
+              hasMessage: !!parsed.message
+            });
             
             // Use the message handler hook to process the message
+            console.log(`🔧 useSessionManager: Routing message to message handler:`, {
+              type: parsed.type,
+              sessionId: sessionId,
+              hasSessionId: !!parsed.session_id
+            });
             messageHandler.handleParsedMessage(parsed, sessionId);
             
             // Handle tool calls separately (they need to update tool state)
@@ -816,6 +830,18 @@ export const useSessionManager = (projectId) => {
     
     // Message handling
     send,
+    messageHandler, // Export the message handler for direct use
+    
+    // Test function to demonstrate message handler usage
+    testMessageHandler: (sessionId) => {
+      console.log('🧪 Testing message handler for session:', sessionId);
+      const testMessage = {
+        type: 'session_start',
+        session_id: 'test-session-123',
+        message: 'Test session start message'
+      };
+      messageHandler.handleParsedMessage(testMessage, sessionId);
+    },
     
     // Utility functions
     deriveSessionNameFromMessage,

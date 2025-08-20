@@ -1,5 +1,16 @@
 import { useCallback } from 'react';
 
+/**
+ * Hook for handling different types of parsed messages from cursor sessions
+ * 
+ * This hook processes various message types and converts them into chat messages
+ * that can be displayed in the UI. It handles session management, tool calls,
+ * file operations, and other cursor agent activities.
+ * 
+ * @param {Function} addMessageToSession - Function to add messages to a session
+ * @param {Function} updateSessionWithCursorId - Function to update session with cursor session ID
+ * @returns {Object} Object with message handling functions
+ */
 export const useMessageHandler = (addMessageToSession, updateSessionWithCursorId) => {
   
   // Handle different types of parsed messages from cursor sessions
