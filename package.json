@@ -13,7 +13,7 @@
     "electron:hot": "wait-on http://localhost:5174 && cross-env RENDERER_URL=http://localhost:5174 nodemon --watch electron --ext cjs,js,json --exec electron . | cat",
     "start": "electron .",
     "rebuild": "electron-rebuild -f -w node-pty",
-    "build:renderer": "vite build --config renderer/vite.config.cjs",
+    "build:renderer": "vite build --config renderer/vite.config.cjs && cp renderer/public/snake-game.html renderer/dist/",
     "build": "yarn build:renderer",
     "pack": "yarn build:renderer && electron-builder --dir",
     "dist": "yarn build:renderer && electron-builder",

@@ -6,6 +6,15 @@ const SessionContext = createContext();
 
 export const useSession = () => {
   const context = useContext(SessionContext);
+  console.log('🔍 useSession hook called, context:', {
+    hasContext: !!context,
+    hasTerminalLogs: !!context?.terminalLogs,
+    hasClearSessionTerminalLogs: !!context?.clearSessionTerminalLogs,
+    hasClearAllTerminalLogs: !!context?.clearAllTerminalLogs,
+    hasGetTerminalLogStats: !!context?.getTerminalLogStats,
+    contextKeys: context ? Object.keys(context) : []
+  });
+  
   if (!context) {
     throw new Error('useSession must be used within a SessionProvider');
   }
@@ -13,9 +22,18 @@ export const useSession = () => {
 };
 
 export const SessionProvider = ({ children, projectId }) => {
+  console.log('🔍 SessionProvider initialized with projectId:', projectId);
+  
   // Use the custom hook to manage all session logic
   const sessionManager = useSessionManager(projectId);
   
+  console.log('🔍 SessionProvider sessionManager created:', {
+    hasSessionManager: !!sessionManager,
+    hasTerminalLogs: !!sessionManager?.terminalLogs,
+    hasClearSessionTerminalLogs: !!sessionManager?.clearSessionTerminalLogs,
+    hasClearAllTerminalLogs: !!sessionManager?.clearAllTerminalLogs,
+    hasGetTerminalLogStats: !!sessionManager?.getTerminalLogStats
+  });
 
   
   // Set up the log router and cursor log handling

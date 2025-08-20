@@ -5,7 +5,7 @@ import ProjectHeader from '../components/ProjectHeader.jsx';
 import ProjectPreview from '../components/ProjectPreview.jsx';
 import DebugPanel from '../components/DebugPanel.jsx';
 import CommitModal from '../components/CommitModal.jsx';
-import { SessionProvider } from '../providers/SessionProvider.jsx';
+import { SessionProvider, useSession } from '../providers/SessionProvider.jsx';
 import { getProject, updateProject } from '../store/projects';
 import { loadSettings } from '../store/settings';
 
@@ -13,6 +13,7 @@ import useDesignSystemStyles from '../ui/useDesignSystemStyles';
 
 function ProjectViewInner({ projectId, onBack, initialMessage }) {
   useDesignSystemStyles();
+  const sessionData = useSession();
   const project = getProject(projectId);
   const [folder, setFolder] = useState(project?.path || null);
 
@@ -50,6 +51,66 @@ function ProjectViewInner({ projectId, onBack, initialMessage }) {
   const [perfStats, setPerfStats] = useState(null);
   // Commit modal state
   const [showCommit, setShowCommit] = useState(false);
+  const [isMiniGameOpen, setIsMiniGameOpen] = useState(false); // Mini-game state
+  const [gameTimeLeft, setGameTimeLeft] = useState(30); // Timer state
+
+  // Mini-game handlers
+  const handlePlayMiniGame = () => {
+    console.log('🎮 Play mini-game button clicked');
+    setIsMiniGameOpen(true);
+    setGameTimeLeft(30); // Reset timer to 30, but don't start counting yet
+    console.log('🎮 Mini-game state set to:', true);
+    console.log('⏰ Timer ready: 30 seconds (will start when session is not busy)');
+  };
+
+  const handleCloseMiniGame = () => {
+    console.log('🚀 Close mini-game button clicked');
+    setIsMiniGameOpen(false);
+    setGameTimeLeft(30); // Reset timer for next time
+    console.log('🎮 Mini-game state set to:', false);
+  };
+
+  // Timer countdown effect - only start when session is NOT busy
+  useEffect(() => {
+    let timer;
+    const isSessionBusy = sessionData?.getCurrentSessionBusy?.() || false;
+    
+    // Only start countdown when mini-game is open AND session is NOT busy
+    if (isMiniGameOpen && !isSessionBusy && gameTimeLeft > 0) {
+      console.log(`⏰ Starting countdown: ${gameTimeLeft}s remaining (session not busy)`);
+      timer = setTimeout(() => {
+        const newTime = gameTimeLeft - 1;
+        console.log(`⏰ Timer countdown: ${newTime}s remaining`);
+        setGameTimeLeft(newTime);
+      }, 1000);
+    } else if (isMiniGameOpen && gameTimeLeft === 0) {
+      // Auto-close the game when timer reaches 0 and trigger preview
+      console.log('⏰ Timer expired - auto-closing mini-game and running preview');
+      handleCloseMiniGame();
+      // Trigger preview to run again
+      if (previewUrl) {
+        console.log('🔄 Restarting preview after mini-game auto-close');
+        startPreview();
+      }
+    }
+    
+    return () => {
+      if (timer) {
+        clearTimeout(timer);
+      }
+    };
+  }, [isMiniGameOpen, gameTimeLeft, sessionData, previewUrl]);
+
+  // Monitor session busy state changes to start timer when session becomes not busy
+  useEffect(() => {
+    if (isMiniGameOpen) {
+      const isSessionBusy = sessionData?.getCurrentSessionBusy?.() || false;
+      if (!isSessionBusy && gameTimeLeft === 30) {
+        console.log('🎯 Session became not busy - starting mini-game countdown!');
+        // Timer will start in the next render cycle
+      }
+    }
+  }, [sessionData, isMiniGameOpen, gameTimeLeft]);
 
   // Inject lightweight loader styles
   useEffect(() => {
@@ -59,6 +120,28 @@ function ProjectViewInner({ projectId, onBack, initialMessage }) {
       @keyframes pv-shimmer {
         0% { background-position: 0% 50%; }
         100% { background-position: 200% 50%; }
+      }
+      @keyframes mini-game-fade-in {
+        0% { opacity: 0; transform: scale(0.95); }
+        100% { opacity: 1; transform: scale(1); }
+      }
+      @keyframes mini-game-slide-up {
+        0% { opacity: 0; transform: translateY(20px); }
+        100% { opacity: 1; transform: translateY(0); }
+      }
+      @keyframes blink-button {
+        0%, 50% { opacity: 1; transform: scale(1); }
+        25%, 75% { opacity: 0.7; transform: scale(1.05); }
+        100% { opacity: 1; transform: scale(1); }
+      }
+      .mini-game-container {
+        animation: mini-game-fade-in 0.4s ease-out;
+      }
+      .mini-game-button {
+        animation: mini-game-slide-up 0.5s ease-out 0.1s both;
+      }
+      .blink-button {
+        animation: blink-button 2s ease-in-out infinite;
       }
       .pv-loader {
         display: flex; align-items: center; justify-content: center; gap: 14px;
@@ -508,6 +591,8 @@ function ProjectViewInner({ projectId, onBack, initialMessage }) {
           viewportMode={viewportMode}
           webviewRef={webviewRef}
           getViewportStyle={getViewportStyle}
+          showMiniGame={isMiniGameOpen}
+          onCloseMiniGame={handleCloseMiniGame}
         />
 
         <DebugPanel
@@ -538,6 +623,10 @@ function ProjectViewInner({ projectId, onBack, initialMessage }) {
               cwd={folder} 
               projectId={projectId}
               {...(initialMessage && { initialMessage })}
+              onPlayMiniGame={handlePlayMiniGame}
+              onCloseMiniGame={handleCloseMiniGame}
+              isMiniGameOpen={isMiniGameOpen}
+              gameTimeLeft={gameTimeLeft}
             />
           )}
         </div>

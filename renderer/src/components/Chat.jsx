@@ -13,18 +13,24 @@ import { useSession } from '../providers/SessionProvider.jsx';
 
 import { styles } from './Chat/styles';
 
-export default function Chat({ cwd, initialMessage, projectId }) {
+export default function Chat({ cwd, initialMessage, projectId, onPlayMiniGame, onCloseMiniGame, isMiniGameOpen, gameTimeLeft }) {
   // Add error boundary for initialization issues
   try {
+    const sessionData = useSession();
+    console.log('🔍 Full session data:', sessionData);
+    
     const {
       sessions,
       currentSessionId,
       busyBySession,
       toolCallsBySession,
       hideToolCallIndicatorsBySession,
+      streamingTextBySession,
+      terminalLogs,
       createNewSession,
       loadSession,
       deleteSession,
+      updateSessionWithCursorId,
       saveCurrentSession,
       markSessionRunningTerminal,
       setSessionBusy,
@@ -34,11 +40,13 @@ export default function Chat({ cwd, initialMessage, projectId }) {
       getCurrentSessionToolCalls,
       getCurrentSessionHideToolCallIndicators,
       getCurrentSessionStreamingText,
+      deriveSessionNameFromMessage,
       send,
       clearSessionTerminalLogs,
       clearAllTerminalLogs,
-      getTerminalLogStats
-    } = useSession();
+      getTerminalLogStats,
+      messageHandler
+    } = sessionData;
 
     // Add CSS animations and styles
     useEffect(() => {
@@ -50,6 +58,23 @@ export default function Chat({ cwd, initialMessage, projectId }) {
         document.head.removeChild(style);
       };
     }, []);
+
+    // Debug terminal logs state
+    useEffect(() => {
+      console.log('🔍 Chat component terminal logs debug:');
+      console.log('terminalLogs:', terminalLogs);
+      console.log('getTerminalLogStats function:', getTerminalLogStats);
+      console.log('clearSessionTerminalLogs function:', clearSessionTerminalLogs);
+      console.log('clearAllTerminalLogs function:', clearAllTerminalLogs);
+      console.log('currentSessionId:', currentSessionId);
+      
+      if (terminalLogs && typeof terminalLogs.get === 'function') {
+        console.log('terminalLogs is a Map with size:', terminalLogs.size);
+        console.log('terminalLogs entries:', Array.from(terminalLogs.entries()));
+      } else {
+        console.warn('terminalLogs is not a Map:', terminalLogs);
+      }
+    }, [terminalLogs, getTerminalLogStats, clearSessionTerminalLogs, clearAllTerminalLogs, currentSessionId]);
 
     
     
@@ -369,10 +394,10 @@ export default function Chat({ cwd, initialMessage, projectId }) {
                 };
                 console.log('🧪 Testing tool call:', testToolCall);
                 // Use the messageHandler from the session manager
-                if (sessionManager && sessionManager.messageHandler) {
-                  sessionManager.messageHandler.handleParsedMessage(testToolCall, currentSessionId);
+                if (messageHandler) {
+                  messageHandler.handleParsedMessage(testToolCall, currentSessionId);
                 } else {
-                  console.warn('sessionManager not found. Cannot trigger tool call.');
+                  console.warn('messageHandler not found. Cannot trigger tool call.');
                 }
               }}
               style={{
@@ -393,19 +418,62 @@ export default function Chat({ cwd, initialMessage, projectId }) {
             
             <strong>Terminal Logs:</strong><br/>
             {(() => {
-              const stats = getTerminalLogStats();
-              return (
-                <>
-                  Total Sessions: {stats.totalSessions}<br/>
-                  Total Logs: {stats.totalLogs}<br/>
-                  Current Session Logs: {stats.sessionDetails[currentSessionId]?.logCount || 0}<br/>
-                </>
-              );
+              try {
+                const stats = getTerminalLogStats();
+                console.log('🔍 Terminal log stats:', stats);
+                return (
+                  <>
+                    Total Sessions: {stats.totalSessions}<br/>
+                    Total Logs: {stats.totalLogs}<br/>
+                    Current Session Logs: {stats.sessionDetails[currentSessionId]?.logCount || 0}<br/>
+                  </>
+                );
+              } catch (error) {
+                console.error('❌ Error getting terminal log stats:', error);
+                return (
+                  <>
+                    Error getting stats: {error.message}<br/>
+                    <button 
+                      onClick={() => {
+                        try {
+                          console.log('🔍 Manual terminal logs check:');
+                          console.log('terminalLogs:', terminalLogs);
+                          console.log('getTerminalLogStats function:', getTerminalLogStats);
+                          console.log('clearSessionTerminalLogs function:', clearSessionTerminalLogs);
+                          console.log('clearAllTerminalLogs function:', clearAllTerminalLogs);
+                        } catch (e) {
+                          console.error('Manual check failed:', e);
+                        }
+                      }}
+                      style={{
+                        padding: '2px 4px',
+                        background: '#f59e0b',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '2px',
+                        cursor: 'pointer',
+                        fontSize: '8px'
+                      }}
+                    >
+                      Debug Functions
+                    </button>
+                  </>
+                );
+              }
             })()}
             
             <div style={{ marginTop: '8px' }}>
               <button 
-                onClick={() => clearSessionTerminalLogs(currentSessionId)}
+                onClick={() => {
+                  try {
+                    console.log('🧹 Clearing terminal logs for session:', currentSessionId);
+                    console.log('Before clear - terminalLogs:', terminalLogs);
+                    clearSessionTerminalLogs(currentSessionId);
+                    console.log('After clear - terminalLogs:', terminalLogs);
+                  } catch (error) {
+                    console.error('❌ Error clearing session terminal logs:', error);
+                  }
+                }}
                 style={{
                   marginRight: '4px',
                   padding: '4px 8px',
@@ -420,7 +488,16 @@ export default function Chat({ cwd, initialMessage, projectId }) {
                 Clear Current Session Logs
               </button>
               <button 
-                onClick={clearAllTerminalLogs}
+                onClick={() => {
+                  try {
+                    console.log('🧹 Clearing all terminal logs');
+                    console.log('Before clear - terminalLogs:', terminalLogs);
+                    clearAllTerminalLogs();
+                    console.log('After clear - terminalLogs:', terminalLogs);
+                  } catch (error) {
+                    console.error('❌ Error clearing all terminal logs:', error);
+                  }
+                }}
                 style={{
                   padding: '4px 8px',
                   background: '#dc2626',
@@ -433,13 +510,51 @@ export default function Chat({ cwd, initialMessage, projectId }) {
               >
                 Clear All Logs
               </button>
+              
+              <button 
+                onClick={() => {
+                  try {
+                    console.log('🧪 Testing terminal log functions:');
+                    console.log('terminalLogs type:', typeof terminalLogs);
+                    console.log('terminalLogs:', terminalLogs);
+                    console.log('clearSessionTerminalLogs type:', typeof clearSessionTerminalLogs);
+                    console.log('clearAllTerminalLogs type:', typeof clearAllTerminalLogs);
+                    console.log('getTerminalLogStats type:', typeof getTerminalLogStats);
+                    
+                    if (typeof getTerminalLogStats === 'function') {
+                      const stats = getTerminalLogStats();
+                      console.log('Stats result:', stats);
+                    } else {
+                      console.warn('getTerminalLogStats is not a function');
+                    }
+                  } catch (error) {
+                    console.error('❌ Error testing terminal log functions:', error);
+                  }
+                }}
+                style={{
+                  marginLeft: '4px',
+                  padding: '4px 8px',
+                  background: '#f59e0b',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '10px'
+                }}
+              >
+                Test Functions
+              </button>
             </div>
           </div>
         )}
    
       
         {/* Status indicators at the bottom */}
-        <StatusIndicators busy={getCurrentSessionBusy()} />
+        <StatusIndicators 
+          busy={getCurrentSessionBusy()} 
+          onPlayMiniGame={onPlayMiniGame}
+          isMiniGameOpen={isMiniGameOpen}
+        />
         
         <InputBar
           value={input}
@@ -449,6 +564,10 @@ export default function Chat({ cwd, initialMessage, projectId }) {
           model={model}
           setModel={setModel}
           suggestedModels={suggestedModels}
+          isMiniGameOpen={isMiniGameOpen}
+          onCloseMiniGame={onCloseMiniGame}
+          isSessionBusy={getCurrentSessionBusy()}
+          gameTimeLeft={gameTimeLeft}
         />
       </>
     );

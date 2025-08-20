@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useMessageHandler } from './useMessageHandler';
 
 export const useSessionManager = (projectId) => {
+  console.log('🔍 useSessionManager hook initialized with projectId:', projectId);
+  
   // Core session state
   const [sessions, setSessions] = useState([]);
   const [currentSessionId, setCurrentSessionId] = useState(null);
@@ -476,24 +478,9 @@ export const useSessionManager = (projectId) => {
     }
   }, [sessions, currentSessionId]);
 
-  // Clear terminal logs for a session to prevent memory overload
-  const clearSessionTerminalLogs = useCallback((sessionId) => {
-    console.log(`🧹 Clearing terminal logs for session ${sessionId}`);
-    setTerminalLogs(prev => {
-      const next = new Map(prev);
-      next.set(sessionId, { cursor: [] });
-      return next;
-    });
-  }, []);
-
-  // Clear all terminal logs for all sessions (global cleanup)
-  const clearAllTerminalLogs = useCallback(() => {
-    console.log(`🧹 Clearing all terminal logs for all sessions`);
-    setTerminalLogs(new Map());
-  }, []);
-
   // Get terminal log statistics for memory monitoring
   const getTerminalLogStats = useCallback(() => {
+    console.log('🔍 getTerminalLogStats called, terminalLogs:', terminalLogs);
     const stats = {
       totalSessions: terminalLogs.size,
       totalLogs: 0,
@@ -509,8 +496,29 @@ export const useSessionManager = (projectId) => {
       };
     }
     
+    console.log('🔍 getTerminalLogStats result:', stats);
     return stats;
   }, [terminalLogs]);
+
+  // Clear terminal logs for a session to prevent memory overload
+  const clearSessionTerminalLogs = useCallback((sessionId) => {
+    console.log(`🧹 clearSessionTerminalLogs called for session ${sessionId}`);
+    console.log(`🧹 Before clear - terminalLogs:`, terminalLogs);
+    setTerminalLogs(prev => {
+      const next = new Map(prev);
+      next.set(sessionId, { cursor: [] });
+      console.log(`🧹 After clear - new terminalLogs:`, next);
+      return next;
+    });
+  }, []);
+
+  // Clear all terminal logs for all sessions (global cleanup)
+  const clearAllTerminalLogs = useCallback(() => {
+    console.log(`🧹 clearAllTerminalLogs called`);
+    console.log(`🧹 Before clear - terminalLogs:`, terminalLogs);
+    setTerminalLogs(new Map());
+    console.log(`🧹 After clear - terminalLogs reset to new Map`);
+  }, []);
 
   // ===== CURSOR COMMAND EXECUTION =====
   
@@ -884,7 +892,7 @@ export const useSessionManager = (projectId) => {
 
   // ===== RETURN VALUES =====
   
-  return {
+  const returnValue = {
     // State
     sessions,
     currentSessionId,
@@ -966,4 +974,15 @@ export const useSessionManager = (projectId) => {
     clearAllTerminalLogs,
     getTerminalLogStats
   };
+  
+  console.log('🔍 useSessionManager returning functions:', {
+    hasClearSessionTerminalLogs: !!returnValue.clearSessionTerminalLogs,
+    hasClearAllTerminalLogs: !!returnValue.clearAllTerminalLogs,
+    hasGetTerminalLogStats: !!returnValue.getTerminalLogStats,
+    hasTerminalLogs: !!returnValue.terminalLogs,
+    terminalLogsType: typeof returnValue.terminalLogs,
+    terminalLogsSize: returnValue.terminalLogs?.size
+  });
+  
+  return returnValue;
 };

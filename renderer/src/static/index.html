@@ -1,0 +1,1609 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="Play a modern Snake with two-player mode, lasers, booms, and speed boosts." />
+  <meta name="theme-color" content="#0f172a" />
+  <title>Snake Game</title>
+  <style>
+    :root {
+      --bg: #0f172a;         /* slate-900 */
+      --panel: #111827;      /* gray-900 */
+      --text: #e5e7eb;       /* gray-200 */
+      --muted: #9ca3af;      /* gray-400 */
+      --accent: #22c55e;     /* green-500 */
+      --accent-dark: #16a34a;/* green-600 */
+      --danger: #ef4444;     /* red-500 */
+      --grid: #1f2937;       /* gray-800 */
+      --snake: #60a5fa;      /* blue-400 */
+      --snake-head: #3b82f6; /* blue-500 */
+      
+      --apple: #f43f5e;      /* rose-500 */
+    }
+
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body {
+      background: radial-gradient(1200px 800px at 50% -10%, #0b1024, var(--bg));
+      color: var(--text);
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto,
+        Ubuntu, Cantarell, Noto Sans, Helvetica Neue, Arial, "Apple Color Emoji",
+        "Segoe UI Emoji", "Segoe UI Symbol";
+      display: grid;
+      place-items: center;
+      padding: 24px;
+    }
+
+    .game-card {
+      width: 100%;
+      max-width: 560px;
+      background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.00));
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 16px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+      padding: 16px;
+      backdrop-filter: blur(6px);
+    }
+
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+
+    .title {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+    }
+
+    .title-badge {
+      background: rgba(34,197,94,0.12);
+      color: var(--accent);
+      padding: 6px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      border: 1px solid rgba(34,197,94,0.25);
+    }
+
+    .scoreboard {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .pill {
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 999px;
+      padding: 6px 10px;
+      font-variant-numeric: tabular-nums;
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    canvas {
+      width: 100%;
+      max-width: 520px;
+      aspect-ratio: 1 / 1;
+      image-rendering: pixelated;
+      background: linear-gradient(180deg, rgba(31,41,55,0.5), rgba(17,24,39,0.8));
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,0.08);
+      display: block;
+      margin: 8px auto 12px auto;
+    }
+
+    .controls {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .hint { color: var(--muted); font-size: 13px; }
+
+    .buttons { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+
+    /* Scores modal */
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      background: rgba(0,0,0,0.45);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 200ms ease;
+      z-index: 50;
+    }
+    .modal-backdrop.show { opacity: 1; pointer-events: auto; }
+    .modal {
+      width: min(480px, calc(100% - 32px));
+      background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.02));
+      border: 1px solid rgba(255,255,255,0.10);
+      border-radius: 14px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+      padding: 12px;
+      color: var(--text);
+    }
+    .modal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+    .modal-title { font-weight: 700; letter-spacing: 0.4px; }
+
+    .history {
+      margin-top: 10px;
+      padding-top: 8px;
+      border-top: 1px solid rgba(255,255,255,0.06);
+    }
+    .history-title {
+      font-size: 13px;
+      color: var(--muted);
+      margin: 0 0 6px 0;
+      font-weight: 600;
+      letter-spacing: 0.3px;
+    }
+    .history-list {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: grid;
+      gap: 6px;
+      max-height: 140px;
+      overflow: auto;
+    }
+    .history-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 8px;
+      padding: 6px 8px;
+      font-size: 12px;
+    }
+    .history-left { display: flex; align-items: center; gap: 8px; }
+    .badge {
+      font-weight: 700;
+      font-size: 10px;
+      padding: 2px 6px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,0.18);
+      background: rgba(255,255,255,0.06);
+    }
+    .result { color: var(--muted); }
+
+    button {
+      appearance: none;
+      border: 1px solid rgba(255,255,255,0.1);
+      background: rgba(255,255,255,0.06);
+      color: var(--text);
+      padding: 8px 12px;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: transform 120ms ease, background 120ms ease, border-color 120ms ease;
+      font-weight: 600;
+    }
+
+    /* Enhanced button styling */
+    button.btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-radius: 12px;
+      background: linear-gradient(180deg, rgba(255,255,255,0.08), rgba(255,255,255,0.04));
+      border-color: rgba(255,255,255,0.14);
+      box-shadow: 0 2px 10px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.06);
+    }
+    button.btn .btn-icon { width: 16px; height: 16px; opacity: 0.95; flex: 0 0 auto; }
+    button.btn .btn-label { line-height: 1; }
+    button.btn .key-hint {
+      margin-left: 2px;
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1;
+      padding: 2px 6px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(255,255,255,0.04);
+    }
+    button.btn:focus-visible {
+      outline: 2px solid rgba(34,197,94,0.7);
+      outline-offset: 2px;
+    }
+
+    button:hover { transform: translateY(-1px); }
+    button:active { transform: translateY(0); }
+
+    .primary { background: linear-gradient(180deg, rgba(34,197,94,0.22), rgba(34,197,94,0.12)); border-color: rgba(34,197,94,0.38); box-shadow: 0 2px 12px rgba(34,197,94,0.22), inset 0 1px 0 rgba(255,255,255,0.08); }
+
+    .danger { background: linear-gradient(180deg, rgba(239,68,68,0.22), rgba(239,68,68,0.12)); border-color: rgba(239,68,68,0.38); box-shadow: 0 2px 12px rgba(239,68,68,0.22), inset 0 1px 0 rgba(255,255,255,0.08); }
+
+    /* Additional colored variants for action buttons */
+    .secondary { background: linear-gradient(180deg, rgba(99,102,241,0.22), rgba(99,102,241,0.12)); border-color: rgba(99,102,241,0.38); box-shadow: 0 2px 12px rgba(99,102,241,0.22), inset 0 1px 0 rgba(255,255,255,0.08); }
+    .info { background: linear-gradient(180deg, rgba(6,182,212,0.22), rgba(6,182,212,0.12)); border-color: rgba(6,182,212,0.38); box-shadow: 0 2px 12px rgba(6,182,212,0.22), inset 0 1px 0 rgba(255,255,255,0.08); }
+    .warning { background: linear-gradient(180deg, rgba(245,158,11,0.22), rgba(245,158,11,0.12)); border-color: rgba(245,158,11,0.38); box-shadow: 0 2px 12px rgba(245,158,11,0.22), inset 0 1px 0 rgba(255,255,255,0.08); }
+
+    /* Variant focus rings */
+    button.btn.secondary:focus-visible { outline: 2px solid rgba(99,102,241,0.7); outline-offset: 2px; }
+    button.btn.info:focus-visible { outline: 2px solid rgba(6,182,212,0.7); outline-offset: 2px; }
+    button.btn.warning:focus-visible { outline: 2px solid rgba(245,158,11,0.7); outline-offset: 2px; }
+
+    .overlay {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 220ms ease;
+    }
+
+    .overlay-text {
+      background: rgba(17,24,39,0.85);
+      border: 1px solid rgba(255,255,255,0.1);
+      padding: 14px 16px;
+      border-radius: 12px;
+      font-weight: 700;
+      letter-spacing: 0.4px;
+      box-shadow: 0 6px 20px rgba(0,0,0,0.35);
+    }
+
+    .canvas-wrap { position: relative; }
+
+    /* Fullscreen styles for the game area */
+    .canvas-wrap:fullscreen,
+    .canvas-wrap:-webkit-full-screen {
+      width: 100vw;
+      height: 100vh;
+      display: grid;
+      place-items: center;
+      background: radial-gradient(1200px 800px at 50% -10%, #0b1024, var(--bg));
+    }
+    .canvas-wrap:fullscreen canvas,
+    .canvas-wrap:-webkit-full-screen canvas {
+      width: min(96vmin, 100vw);
+      max-width: none;
+      aspect-ratio: 1 / 1;
+    }
+
+    .overlay.show { opacity: 1; pointer-events: auto; }
+
+    @keyframes bump {
+      0% { transform: translateY(0) scale(1); }
+      30% { transform: translateY(-1px) scale(1.08); }
+      100% { transform: translateY(0) scale(1); }
+    }
+
+    .pill.bump { animation: bump 260ms ease; }
+  </style>
+</head>
+<body>
+  <div class="game-card">
+    <div class="header">
+      <div class="title">
+        <span class="title-badge">Classic</span>
+        <span>Snake</span>
+      </div>
+      <!-- Scoreboard moved into modal -->
+    </div>
+
+    <div class="canvas-wrap" id="canvasWrap">
+      <canvas id="board" width="520" height="520" aria-label="Snake game board"></canvas>
+      <div class="overlay" id="overlay" hidden>
+        <div class="overlay-text" id="overlayText" role="status" aria-live="polite">Paused</div>
+      </div>
+    </div>
+
+    <div class="controls">
+      <div>
+        <div class="hint" id="hint" aria-hidden="true"></div>
+      </div>
+      <div class="buttons">
+        <button id="pauseBtn" class="btn primary" aria-label="Pause or resume game" title="Space">
+          <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>
+          <span class="btn-label">Pause</span>
+          <span class="key-hint">Space</span>
+        </button>
+
+        <button id="scoresBtn" class="btn secondary" aria-label="Open scoreboard">
+          <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M7 4h10v2H7V4zm-2 4h14v2H5V8zm2 4h10v2H7v-2zm-2 4h14v2H5v-2z"/></svg>
+          <span class="btn-label">Scores</span>
+        </button>
+
+        <button id="rulesBtn" class="btn info" aria-label="Open rules">
+          <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 5a2 2 0 0 1 2-2h12v16H6a2 2 0 0 0-2 2V5zm4-.5V17h10V4H8a1.5 1.5 0 0 0 0 .5z"/></svg>
+          <span class="btn-label">Rules</span>
+        </button>
+
+        <button id="fsBtn" class="btn warning" aria-label="Toggle fullscreen" title="F">
+          <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M7 14H5v5h5v-2H7v-3zm0-4h2V7h3V5H5v5h2zm10 7h-3v2h5v-5h-2v3zm0-12h-5v2h3v3h2V5z"/></svg>
+          <span class="btn-label">Fullscreen</span>
+          <span class="key-hint">F</span>
+        </button>
+
+        <button id="restartBtn" class="btn danger" aria-label="Restart game" title="R (on game over)">
+          <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 6V3l4 4-4 4V8a4 4 0 1 0 4 4h2a6 6 0 1 1-6-6z"/></svg>
+          <span class="btn-label">Restart</span>
+        </button>
+      </div>
+    </div>
+
+    
+    <!-- Scores Modal -->
+    <div id="scoreModal" class="modal-backdrop" hidden aria-hidden="true">
+      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="scoreModalTitle">
+        <div class="modal-header">
+          <div id="scoreModalTitle" class="modal-title">Scoreboard</div>
+          <button id="closeScoresBtn" aria-label="Close scoreboard">Close</button>
+        </div>
+        <div class="scoreboard" style="justify-content: flex-start; gap: 8px;">
+          <div class="pill">P1: <span id="score1">0</span> • Ammo: <span id="ammo1">3</span></div>
+          <div class="pill">Best: <span id="best">0</span></div>
+        </div>
+        <div class="history">
+          <div class="history-title">Recent Games</div>
+          <ul id="historyList" class="history-list"></ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- Rules Modal -->
+    <div id="rulesModal" class="modal-backdrop" hidden aria-hidden="true">
+      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="rulesModalTitle">
+        <div class="modal-header">
+          <div id="rulesModalTitle" class="modal-title">How to Play</div>
+          <button id="closeRulesBtn" aria-label="Close rules">Close</button>
+        </div>
+        <div class="history" style="margin-top:4px">
+          <ul style="list-style: disc; padding-left: 18px; margin: 8px 0; display: grid; gap: 6px;">
+            <li>Move with Arrow Keys.</li>
+            <li>Space pauses/resumes. Click the board to restart after game over.</li>
+            <li>Eat apples to grow, score +1, and speed up slightly.</li>
+            <li>Yellow dot grants a bigger speed boost.</li>
+            <li>Lasers: Shoot with M. Limited ammo; apples recharge. Lasers destroy booms.</li>
+            <li>Booms explode if you linger near them or when their fuse ends. Explosions are lethal in a small radius.</li>
+            <li>Colliding with walls or yourself is lethal.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+  </div>
+  <noscript>This game requires JavaScript to run.</noscript>
+
+  <script>
+    (function () {
+      "use strict";
+
+      // Canvas and rendering context
+      const canvas = /** @type {HTMLCanvasElement} */ (document.getElementById("board"));
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        alert("Your browser does not support Canvas 2D context.");
+        return;
+      }
+
+      // UI elements
+      const score1El = document.getElementById("score1");
+      
+      const bestEl = document.getElementById("best");
+      const ammo1El = document.getElementById("ammo1");
+      
+      const overlay = document.getElementById("overlay");
+      const overlayText = document.getElementById("overlayText");
+      const pauseBtn = document.getElementById("pauseBtn");
+      const restartBtn = document.getElementById("restartBtn");
+      const scoresBtn = document.getElementById("scoresBtn");
+      const scoreModal = document.getElementById("scoreModal");
+      const closeScoresBtn = document.getElementById("closeScoresBtn");
+      const rulesBtn = document.getElementById("rulesBtn");
+      const rulesModal = document.getElementById("rulesModal");
+      const closeRulesBtn = document.getElementById("closeRulesBtn");
+      const fsBtn = document.getElementById("fsBtn");
+      const canvasWrap = document.getElementById("canvasWrap");
+      const hintEl = document.getElementById("hint");
+      
+      const historyListEl = document.getElementById("historyList");
+
+      // Game configuration
+      const gridCellsPerSide = 26; // Board: 26x26
+      const cellSizePx = Math.floor(canvas.width / gridCellsPerSide);
+      const boardSizePx = cellSizePx * gridCellsPerSide;
+
+      // Ensure perfect square canvas and crisp cells
+      canvas.width = boardSizePx;
+      canvas.height = boardSizePx;
+
+      /** @typedef {{ x: number, y: number }} Point */
+
+      // Game state
+      /** @type {Point[]} */
+      let snake1Body = [];
+      
+      // Alive state per player
+      let snake1Alive = true;
+      
+      /** @type {Point} */
+      let snake1Direction = { x: 1, y: 0 }; // P1 moving right initially
+      
+      /** @type {Point} */
+      let applePosition = { x: 10, y: 10 };
+      let isPaused = false;
+      let isGameOver = false;
+      let frameTimerId = null;
+      let score1 = 0;
+      let best = Number(localStorage.getItem("snakeBest") || 0);
+      // Laser ammo
+      const maxAmmo = 3;
+      let ammo1 = maxAmmo;
+      // Single player UI
+      function applyModeUI() { if (hintEl) { hintEl.textContent = ""; } }
+      bestEl.textContent = String(best);
+
+      // Animation state
+      /** @type {Point[]} */
+      let previousSnake1Body = [];
+      /** @type {Point[]} */
+      
+      let p1GrewOnLastMove = false;
+      
+      let animationStartMs = 0;
+      let animationProgress = 1; // 0..1 interpolation between previous and current
+      let rafId = 0;
+
+      // Apple effects
+      let appleSpawnMs = performance.now();
+      let lastEatenEffect = null; // { x,y,startMs }
+
+      // Speed dot (yellow) that increases movement speed when eaten
+      /** @type {Point|null} */
+      let speedDotPosition = null;
+      let speedDotSpawnMs = 0;
+      let nextSpeedDotAtMs = performance.now() + 8000;
+      const speedDotMinIntervalMs = 6000;
+      const speedDotMaxIntervalMs = 12000;
+      let lastSpeedEffect = null; // { x,y,startMs }
+
+      // Booms (proximity mines): explode if a player's head stays within 1 cell for 3s
+      // or after a random fuse time elapses
+      /** @type {Array<{x:number,y:number,spawnMs:number,explodeAtMs:number,p1NearStartMs:number|null,p2NearStartMs:number|null}>} */
+      let booms = [];
+      let nextBoomAtMs = performance.now() + 10000;
+      const boomMinIntervalMs = 9000;
+      const boomMaxIntervalMs = 16000;
+      const boomMaxCount = 5; // maximum simultaneous booms on board
+      const boomProximityMs = 3000;
+      const boomExplodeRadius = 2; // cells (Chebyshev distance)
+      const boomMinLifetimeMs = 6000;
+      const boomMaxLifetimeMs = 12000;
+      // Explosion visual duration (grow more slowly)
+      const explosionDurationMs = 1200;
+      /** @type {Array<{x:number,y:number,startMs:number}>} */
+      let explosionEffects = [];
+
+      // Touch effects (when a player touches the other player)
+      // Each effect is { x: number, y: number, startMs: number }
+      let p1TouchEffect = null;
+      
+
+      // Screen shake (on game over)
+      let shakeStartMs = 0;
+      let shakeDurationMs = 450;
+
+      // Timing (ms per step)
+      const initialSpeedMs = 120;
+      const minSpeedMs = 65;
+      let currentSpeedMs = initialSpeedMs;
+
+      // Audio
+      /** @type {AudioContext | null} */
+      let audioCtx = null;
+      let audioUnlocked = false;
+      let lastMoveSound1Ms = 0;
+      
+
+      // Laser state
+      /** @type {Array<{shooter:1|2, cells: Point[], dir: Point, startMs:number, durationMs:number, color:string}>} */
+      let activeLasers = [];
+      let lastLaser1Ms = 0;
+      
+      const laserCooldownMs = 600;
+      let p1LaserPendingKill = false;
+      
+
+      function getAudioContext() {
+        if (!audioCtx) {
+          const Ctor = window.AudioContext || window.webkitAudioContext;
+          if (Ctor) {
+            audioCtx = new Ctor();
+          }
+        }
+        return audioCtx;
+      }
+
+      function setupAudioUnlock() {
+        if (audioUnlocked) return;
+        const unlock = () => {
+          try {
+            const ctx = getAudioContext();
+            if (ctx && ctx.state === "suspended") ctx.resume();
+            audioUnlocked = true;
+          } catch (_) { /* ignore */ }
+          document.removeEventListener("pointerdown", unlock);
+          document.removeEventListener("keydown", unlock);
+          document.removeEventListener("touchstart", unlock);
+        };
+        document.addEventListener("pointerdown", unlock, { once: true });
+        document.addEventListener("keydown", unlock, { once: true });
+        document.addEventListener("touchstart", unlock, { once: true, passive: true });
+      }
+
+      // Very short, quiet blip for movement per player
+      /**
+       * @param {1|2} playerId
+       * @param {Point} direction
+       * @param {number} speedMs
+       */
+      function playMoveSound(playerId, direction, speedMs) {
+        try {
+          const ctx = getAudioContext();
+          if (!ctx) return;
+          const now = ctx.currentTime;
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+
+          // Frequency mapping varies by player and direction
+          const base = playerId === 1 ? 340 : 300; // keep low to avoid annoyance
+          const dirOffset = direction.x === 1 ? 40
+                            : direction.x === -1 ? -20
+                            : direction.y === -1 ? 60
+                            : direction.y === 1 ? -40 : 0;
+          const speedOffset = Math.max(-30, Math.min(60, (120 - speedMs) * 0.8));
+          const freq = Math.max(140, base + dirOffset + speedOffset);
+
+          const duration = Math.max(0.028, Math.min(0.07, speedMs / 1600));
+          const peak = 0.025; // very quiet
+
+          osc.type = "triangle";
+          osc.frequency.setValueAtTime(freq, now);
+
+          gain.gain.setValueAtTime(0.0001, now);
+          gain.gain.exponentialRampToValueAtTime(peak, now + 0.008);
+          gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+
+          osc.connect(gain).connect(ctx.destination);
+          osc.start(now);
+          osc.stop(now + duration + 0.01);
+        } catch (_) {
+          // ignore if audio unavailable
+        }
+      }
+
+      function playEatSound() {
+        try {
+          const ctx = getAudioContext();
+          if (!ctx) return;
+          const now = ctx.currentTime;
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          const compressor = ctx.createDynamicsCompressor();
+
+          osc.type = "sine";
+          osc.frequency.setValueAtTime(520, now);
+          osc.frequency.exponentialRampToValueAtTime(880, now + 0.08);
+
+          gain.gain.setValueAtTime(0.0001, now);
+          gain.gain.exponentialRampToValueAtTime(0.22, now + 0.01);
+          gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.18);
+
+          osc.connect(gain).connect(compressor).connect(ctx.destination);
+          osc.start(now);
+          osc.stop(now + 0.2);
+        } catch (_) {
+          // no-op if audio is unavailable
+        }
+      }
+
+      function playLoseSound() {
+        try {
+          const ctx = getAudioContext();
+          if (!ctx) return;
+          const now = ctx.currentTime;
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          const filter = ctx.createBiquadFilter();
+          const compressor = ctx.createDynamicsCompressor();
+
+          // Descending, slightly buzzy tone
+          osc.type = "sawtooth";
+          osc.frequency.setValueAtTime(440, now);
+          osc.frequency.exponentialRampToValueAtTime(110, now + 0.4);
+
+          // Tame highs
+          filter.type = "lowpass";
+          filter.frequency.setValueAtTime(800, now);
+
+          // Quick attack, short decay
+          gain.gain.setValueAtTime(0.0001, now);
+          gain.gain.exponentialRampToValueAtTime(0.28, now + 0.02);
+          gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.46);
+
+          osc.connect(gain).connect(filter).connect(compressor).connect(ctx.destination);
+          osc.start(now);
+          osc.stop(now + 0.5);
+        } catch (_) {
+          // no-op if audio is unavailable
+        }
+      }
+
+      function playExplosionSound() {
+        try {
+          const ctx = getAudioContext();
+          if (!ctx) return;
+          const now = ctx.currentTime;
+          const osc1 = ctx.createOscillator();
+          const osc2 = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc1.type = "square";
+          osc2.type = "sawtooth";
+          osc1.frequency.setValueAtTime(220, now);
+          osc1.frequency.exponentialRampToValueAtTime(90, now + 0.25);
+          osc2.frequency.setValueAtTime(120, now);
+          osc2.frequency.exponentialRampToValueAtTime(60, now + 0.25);
+          gain.gain.setValueAtTime(0.0001, now);
+          gain.gain.exponentialRampToValueAtTime(0.3, now + 0.02);
+          gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.28);
+          osc1.connect(gain); osc2.connect(gain); gain.connect(ctx.destination);
+          osc1.start(now); osc2.start(now);
+          osc1.stop(now + 0.3); osc2.stop(now + 0.3);
+        } catch (_) { /* ignore */ }
+      }
+
+      function startGame() {
+        // Player 1 starts left-middle, heading right
+        snake1Body = [
+          { x: 8, y: 13 },
+          { x: 7, y: 13 },
+          { x: 6, y: 13 }
+        ];
+        snake1Direction = { x: 1, y: 0 };
+
+        // Single player only
+        snake1Alive = true;
+
+        applePosition = getRandomFreeCell();
+        // Reset ammo
+        ammo1 = maxAmmo;
+        if (ammo1El) ammo1El.textContent = String(ammo1);
+        // Reset speed dot state and schedule next spawn
+        speedDotPosition = null;
+        speedDotSpawnMs = 0;
+        lastSpeedEffect = null;
+        scheduleNextSpeedDot();
+        // Reset booms and schedule next spawn; also spawn some immediately
+        booms = [];
+        explosionEffects = [];
+        scheduleNextBoom();
+        spawnBooms(2);
+        isPaused = false;
+        isGameOver = false;
+        score1 = 0;
+        currentSpeedMs = initialSpeedMs;
+        score1El.textContent = String(score1);
+        hideOverlay();
+        clearInterval(frameTimerId);
+        frameTimerId = setInterval(tick, currentSpeedMs);
+        previousSnake1Body = snake1Body.map(p => ({ x: p.x, y: p.y }));
+        p1GrewOnLastMove = false;
+        animationStartMs = performance.now();
+        animationProgress = 1;
+        appleSpawnMs = performance.now();
+        cancelAnimationFrame(rafId);
+        rafId = requestAnimationFrame(render);
+      }
+
+      function setSpeed(newMs) {
+        currentSpeedMs = newMs;
+        clearInterval(frameTimerId);
+        frameTimerId = setInterval(tick, currentSpeedMs);
+      }
+
+      // Allow Player 2 to join by pressing '2' before first apple is eaten (score1 === 0)
+      // Two-player join removed for single player
+
+      function tick() {
+        if (isPaused || isGameOver) return;
+        update();
+      }
+
+      function update() {
+        // Determine new heads only for alive snakes
+        /** @type {Point|null} */
+        const newHead1 = snake1Alive ? { x: snake1Body[0].x + snake1Direction.x, y: snake1Body[0].y + snake1Direction.y } : null;
+        /** @type {Point|null} */
+        const newHead2 = null;
+
+        // Possibly spawn a speed dot on a timer when none exists
+        if (!speedDotPosition && performance.now() >= nextSpeedDotAtMs) {
+          const exclude = new Set([
+            `${applePosition.x},${applePosition.y}`,
+            ...snake1Body.map(p => `${p.x},${p.y}`),
+            
+          ]);
+          speedDotPosition = getRandomFreeCellExcluding(exclude);
+          speedDotSpawnMs = performance.now();
+          scheduleNextSpeedDot();
+        }
+
+        // Timed boom spawns
+        if (performance.now() >= nextBoomAtMs && booms.length < boomMaxCount) {
+          spawnBooms(1);
+          scheduleNextBoom();
+        }
+
+        // Head-to-head collision (same cell) only if both alive
+        const headToHead = false;
+
+        // Wall collisions
+        const p1HitWall = !!(snake1Alive && newHead1 && (newHead1.x < 0 || newHead1.y < 0 || newHead1.x >= gridCellsPerSide || newHead1.y >= gridCellsPerSide));
+        const p2HitWall = false;
+
+        // Self collisions
+        const p1HitSelf = !!(snake1Alive && newHead1 && snake1Body.some(seg => seg.x === newHead1.x && seg.y === newHead1.y));
+        const p2HitSelf = false;
+
+        // Opponent collisions (only if opponent alive)
+        const p1HitP2 = false;
+        const p2HitP1 = false;
+
+        const p1DeadThisTick = headToHead || p1HitWall || p1HitSelf;
+        const p2DeadThisTick = false;
+
+        // Update boom proximity timers and handle explosions
+        let boomKillP1 = false, boomKillP2 = false;
+        if (booms.length) {
+          const now = performance.now();
+          const remainingBooms = [];
+          for (const boom of booms) {
+            // Track proximity with next heads (newHead1/newHead2)
+            if (snake1Alive && newHead1) {
+              const near1 = chebDist(newHead1.x, newHead1.y, boom.x, boom.y) <= 1;
+              if (near1) boom.p1NearStartMs = boom.p1NearStartMs ?? now;
+              else boom.p1NearStartMs = null;
+            } else {
+              boom.p1NearStartMs = null;
+            }
+            boom.p2NearStartMs = null;
+
+            const p1Progress = boom.p1NearStartMs ? (now - boom.p1NearStartMs) : 0;
+            const p2Progress = 0;
+            const timeFuse = boom.explodeAtMs && now >= boom.explodeAtMs;
+            const shouldExplode = timeFuse || (p1Progress >= boomProximityMs) || (p2Progress >= boomProximityMs);
+            if (shouldExplode) {
+              explosionEffects.push({ x: boom.x, y: boom.y, startMs: now });
+              // Kill any head in explosion radius
+              if (snake1Alive && newHead1 && chebDist(newHead1.x, newHead1.y, boom.x, boom.y) <= boomExplodeRadius) boomKillP1 = true;
+              
+              playExplosionSound();
+            } else {
+              remainingBooms.push(boom);
+            }
+          }
+          booms = remainingBooms;
+        }
+
+        const p1DeadThisTickFinal = p1DeadThisTick || boomKillP1;
+        const p2DeadThisTickFinal = false;
+
+        // Trigger touch animations before potentially ending the game
+        const nowMs = performance.now();
+        // Single player: no opponent touch effects
+        const bothDiedThisTick = false;
+
+        if (p1DeadThisTickFinal) snake1Alive = false;
+        
+
+        // If a player died this tick from an explosion or collision, do not proceed to move/eat/trim for them
+
+        if (snake1Alive === false) {
+          return endGame("Game Over — Press Space/Enter or Click");
+        }
+
+        // Preserve previous bodies for interpolation
+        previousSnake1Body = snake1Body.map(p => ({ x: p.x, y: p.y }));
+        
+
+        // Remove bodies for players eliminated this tick so they disappear
+        if (!snake1Alive) { snake1Body = []; previousSnake1Body = []; }
+        
+
+        // Move alive snakes
+        if (snake1Alive && newHead1) {
+          snake1Body.unshift(newHead1);
+          // Subtle move sound while moving
+          const tNow = performance.now();
+          if (tNow - lastMoveSound1Ms > 30) {
+            playMoveSound(1, snake1Direction, currentSpeedMs);
+            lastMoveSound1Ms = tNow;
+          }
+        }
+        
+
+        // Resolve any pending laser kills after movement
+        // Single player: only reset P1 laser flag
+        p1LaserPendingKill = false;
+
+        // Eat apple?
+        p1GrewOnLastMove = false;
+        const p1Eats = !!(snake1Alive && newHead1 && newHead1.x === applePosition.x && newHead1.y === applePosition.y);
+        const p2Eats = false;
+
+        if (p1Eats || p2Eats) {
+          if (p1Eats) {
+            score1 += 1;
+            score1El.textContent = String(score1);
+            const pill1 = score1El.parentElement;
+            pill1.classList.remove('bump'); pill1.offsetWidth; pill1.classList.add('bump');
+            p1GrewOnLastMove = true;
+            // Recharge ammo for P1
+            ammo1 = Math.min(maxAmmo, ammo1 + 1);
+            if (ammo1El) ammo1El.textContent = String(ammo1);
+          }
+          
+          // Speed up globally
+          const speedUp = Math.max(minSpeedMs, currentSpeedMs - 2);
+          if (speedUp !== currentSpeedMs) setSpeed(speedUp);
+          playEatSound();
+          lastEatenEffect = { x: applePosition.x, y: applePosition.y, startMs: performance.now() };
+          applePosition = getRandomFreeCell();
+          appleSpawnMs = performance.now();
+        }
+
+        // Eat speed dot?
+        const p1HitsSpeed = !!(snake1Alive && newHead1 && speedDotPosition && newHead1.x === speedDotPosition.x && newHead1.y === speedDotPosition.y);
+        const p2HitsSpeed = false;
+        if (p1HitsSpeed) {
+          lastSpeedEffect = { x: speedDotPosition.x, y: speedDotPosition.y, startMs: performance.now() };
+          speedDotPosition = null;
+          // Increase speed more aggressively than apple
+          const faster = Math.max(minSpeedMs, currentSpeedMs - 10);
+          if (faster !== currentSpeedMs) setSpeed(faster);
+          playSpeedSound();
+          // schedule next
+          scheduleNextSpeedDot();
+        }
+
+        // Trim tails if not grown
+        if (snake1Alive && !p1GrewOnLastMove) snake1Body.pop();
+        
+
+        animationStartMs = performance.now();
+        animationProgress = 0;
+      }
+
+      function endGame(message) {
+        isGameOver = true;
+        showOverlay(message || "Game Over — Press Restart");
+        shakeStartMs = performance.now();
+        // Play losing sound
+        playLoseSound();
+        if (score1 > best) {
+          best = score1;
+          localStorage.setItem("snakeBest", String(best));
+          bestEl.textContent = String(best);
+        }
+
+        // Persist score history
+        try {
+          const entry = buildHistoryEntry();
+          const list = loadScoreHistory();
+          list.push(entry);
+          // keep last 20 entries
+          while (list.length > 20) list.shift();
+          saveScoreHistory(list);
+          renderScoreHistory(list);
+        } catch (_) { /* ignore storage issues */ }
+      }
+
+      function pauseResume() {
+        if (isGameOver) return;
+        isPaused = !isPaused;
+        if (isPaused) {
+          showOverlay("Paused — Press Space");
+        } else {
+          hideOverlay();
+        }
+        try {
+          const label = pauseBtn.querySelector('.btn-label');
+          if (label) label.textContent = isPaused ? 'Resume' : 'Pause';
+        } catch (_) {}
+      }
+
+      function showOverlay(message) {
+        overlayText.textContent = message;
+        overlay.hidden = false;
+        overlay.classList.add('show');
+      }
+
+      function hideOverlay() {
+        overlay.classList.remove('show');
+        // Wait for CSS opacity transition to finish before hiding
+        const HIDE_DELAY_MS = 240;
+        setTimeout(() => { overlay.hidden = true; }, HIDE_DELAY_MS);
+      }
+
+      function getRandomFreeCell() {
+        const occupied = new Set([
+          ...snake1Body.map(p => `${p.x},${p.y}`),
+          
+        ]);
+        let x, y;
+        do {
+          x = Math.floor(Math.random() * gridCellsPerSide);
+          y = Math.floor(Math.random() * gridCellsPerSide);
+        } while (occupied.has(`${x},${y}`));
+        return { x, y };
+      }
+
+      function drawGrid() {
+        ctx.strokeStyle = "rgba(255,255,255,0.04)";
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        for (let i = 1; i < gridCellsPerSide; i++) {
+          const p = i * cellSizePx + 0.5; // crisp lines
+          // vertical
+          ctx.moveTo(p, 0);
+          ctx.lineTo(p, boardSizePx);
+          // horizontal
+          ctx.moveTo(0, p);
+          ctx.lineTo(boardSizePx, p);
+        }
+        ctx.stroke();
+      }
+
+      function draw(progress) {
+        // Optional shake effect on game over
+        const now = performance.now();
+        let shakeX = 0, shakeY = 0;
+        if (isGameOver) {
+          const dt = Math.min(1, (now - shakeStartMs) / shakeDurationMs);
+          const intensity = (1 - dt) * 6; // px
+          shakeX = (Math.random() * 2 - 1) * intensity;
+          shakeY = (Math.random() * 2 - 1) * intensity;
+        }
+
+        ctx.save();
+        ctx.translate(shakeX, shakeY);
+
+        // Background
+        const gradient = ctx.createLinearGradient(0, 0, boardSizePx, boardSizePx);
+        gradient.addColorStop(0, "#111827");
+        gradient.addColorStop(1, "#0b1024");
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, boardSizePx, boardSizePx);
+
+        drawGrid();
+
+        // Apple with spawn pop animation
+        const applePopT = Math.min(1, (now - appleSpawnMs) / 250);
+        const appleScale = 0.8 + 0.2 * easeOutBack(applePopT);
+        drawCellScaled(applePosition.x, applePosition.y, "#f43f5e", appleScale);
+
+        // Speed dot (yellow) with spawn pop animation if present
+        if (speedDotPosition) {
+          const speedPopT = Math.min(1, (now - speedDotSpawnMs) / 250);
+          const speedScale = 0.8 + 0.2 * easeOutBack(speedPopT);
+          drawCellScaled(speedDotPosition.x, speedDotPosition.y, "#facc15", speedScale);
+        }
+
+        // Booms rendering
+        if (booms.length) {
+          for (const boom of booms) {
+            const cx = boom.x * cellSizePx + cellSizePx / 2;
+            const cy = boom.y * cellSizePx + cellSizePx / 2;
+            const baseR = Math.max(3, cellSizePx * 0.22);
+
+            // Progress toward explosion: fuse (last 3s) or proximity (0..1 over 3s)
+            const nowMs2 = performance.now();
+            const p1Prog = boom.p1NearStartMs ? Math.min(1, (nowMs2 - boom.p1NearStartMs) / boomProximityMs) : 0;
+            const p2Prog = boom.p2NearStartMs ? Math.min(1, (nowMs2 - boom.p2NearStartMs) / boomProximityMs) : 0;
+            const prog = Math.max(p1Prog, p2Prog);
+            const fuseRem = (typeof boom.explodeAtMs === 'number') ? (boom.explodeAtMs - nowMs2) : Infinity;
+            const uFuse = isFinite(fuseRem) ? Math.max(0, Math.min(1, 1 - (fuseRem / 3000))) : 0;
+            const u = Math.max(uFuse, prog);
+
+            // Core bomb color transitions from black -> red in last 3s before exploding
+            const breath = 0.92 + (0.08 + 0.08 * u) * (0.5 + 0.5 * Math.sin(now * (0.008 + 0.012 * u)));
+            const r = Math.round(239 * u);
+            const g = Math.round(68 * u);
+            const b = Math.round(68 * u);
+            ctx.beginPath();
+            ctx.fillStyle = `rgb(${r},${g},${b})`;
+            ctx.arc(cx, cy, baseR * breath, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Ambient/proximity pulse ring (dark), intensifies with u
+            const ambient = 0.15 + 0.10 * (0.5 + 0.5 * Math.sin(now * 0.006));
+            const alpha = Math.max(ambient, 0.25 + 0.55 * Math.max(prog, u));
+            ctx.beginPath();
+            ctx.strokeStyle = `rgba(0,0,0,${alpha})`;
+            ctx.lineWidth = 2;
+            const ringR = baseR * (1.2 + 0.4 * (prog > 0 ? prog : (0.5 + 0.5 * Math.sin(now * 0.006))) + 0.2 * u);
+            ctx.arc(cx, cy, ringR, 0, Math.PI * 2);
+            ctx.stroke();
+          }
+        }
+        
+
+        // Eat ring effect
+        if (lastEatenEffect) {
+          const t = (now - lastEatenEffect.startMs) / 300;
+          if (t < 1) {
+            const cx = lastEatenEffect.x * cellSizePx + cellSizePx / 2;
+            const cy = lastEatenEffect.y * cellSizePx + cellSizePx / 2;
+            ctx.beginPath();
+            ctx.arc(cx, cy, cellSizePx * (0.4 + 0.6 * t), 0, Math.PI * 2);
+            ctx.strokeStyle = `rgba(244,63,94,${1 - t})`;
+            ctx.lineWidth = 2;
+            ctx.stroke();
+          } else {
+            lastEatenEffect = null;
+          }
+        }
+
+        // Player touch pulse effects (when a player hits the other)
+        // Render under snakes for a subtle look
+        const p1HeadColor = getComputedStyle(document.documentElement).getPropertyValue('--snake-head') || "#3b82f6";
+        
+        if (p1TouchEffect) {
+          const t = (now - p1TouchEffect.startMs) / 320;
+          if (t < 1) {
+            const cx = p1TouchEffect.x * cellSizePx + cellSizePx / 2;
+            const cy = p1TouchEffect.y * cellSizePx + cellSizePx / 2;
+            ctx.beginPath();
+            ctx.arc(cx, cy, cellSizePx * (0.35 + 0.9 * t), 0, Math.PI * 2);
+            // fade out stroke and add slight glow
+            ctx.strokeStyle = hexToRgba(p1HeadColor.trim() || "#3b82f6", 0.9 * (1 - t));
+            ctx.lineWidth = 2 + 2 * (1 - t);
+            ctx.shadowColor = hexToRgba(p1HeadColor.trim() || "#3b82f6", 0.45 * (1 - t));
+            ctx.shadowBlur = 10 * (1 - t);
+            ctx.stroke();
+            ctx.shadowBlur = 8; // restore default
+          } else {
+            p1TouchEffect = null;
+          }
+        }
+        // Speed dot ring effect
+        if (lastSpeedEffect) {
+          const t = (now - lastSpeedEffect.startMs) / 300;
+          if (t < 1) {
+            const cx = lastSpeedEffect.x * cellSizePx + cellSizePx / 2;
+            const cy = lastSpeedEffect.y * cellSizePx + cellSizePx / 2;
+            ctx.beginPath();
+            ctx.arc(cx, cy, cellSizePx * (0.4 + 0.6 * t), 0, Math.PI * 2);
+            ctx.strokeStyle = `rgba(250,204,21,${1 - t})`; // yellow-400
+            ctx.lineWidth = 2;
+            ctx.stroke();
+          } else {
+            lastSpeedEffect = null;
+          }
+        }
+
+        // Lasers rendering (short lifespan beams) — animated traveling dots with glow and muzzle flash
+        if (activeLasers.length) {
+          const nowMs = performance.now();
+          const keep = [];
+          for (const laser of activeLasers) {
+            const age = nowMs - laser.startMs;
+            const life = age / laser.durationMs;
+            if (life < 1) {
+              // Smooth progression from head to tail along the beam
+              const smoothstep = (t) => t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t);
+              const prog = smoothstep(Math.max(0, Math.min(1, life)));
+              const maxVisible = Math.max(1, Math.floor(prog * laser.cells.length));
+              const trailLen = Math.min(7, maxVisible); // limit trail for clarity
+
+              ctx.save();
+              ctx.shadowColor = laser.color;
+              const coreRadius = Math.max(1.5, Math.floor(cellSizePx * 0.09));
+              const haloRadius = Math.max(coreRadius + 1, Math.floor(cellSizePx * 0.16));
+
+              // Draw trail from (maxVisible - trailLen) .. (maxVisible - 1)
+              for (let i = Math.max(0, maxVisible - trailLen); i < maxVisible; i++) {
+                const c = laser.cells[i];
+                const cx = c.x * cellSizePx + cellSizePx / 2;
+                const cy = c.y * cellSizePx + cellSizePx / 2;
+                const u = (i - Math.max(0, maxVisible - trailLen)) / Math.max(1, trailLen - 1);
+                const headBias = 0.35 + 0.65 * u; // brighter near the front
+                const globalFade = Math.max(0, 1 - life);
+
+                // Halo
+                ctx.globalAlpha = 0.35 * headBias * globalFade;
+                ctx.shadowBlur = 8;
+                ctx.fillStyle = laser.color;
+                ctx.beginPath();
+                ctx.arc(cx, cy, haloRadius, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Core
+                ctx.globalAlpha = 0.8 * headBias * globalFade;
+                ctx.shadowBlur = 4;
+                ctx.beginPath();
+                ctx.arc(cx, cy, coreRadius, 0, Math.PI * 2);
+                ctx.fill();
+              }
+
+              // Brief muzzle flash at origin for the first 110ms
+              if (laser.origin && age < 110) {
+                const ox = laser.origin.x * cellSizePx + cellSizePx / 2;
+                const oy = laser.origin.y * cellSizePx + cellSizePx / 2;
+                const t = age / 110;
+                const flashR = haloRadius * (1.2 + 0.6 * (1 - t));
+                ctx.globalAlpha = 0.6 * (1 - t);
+                ctx.shadowBlur = 10;
+                ctx.beginPath();
+                ctx.arc(ox, oy, flashR, 0, Math.PI * 2);
+                ctx.fillStyle = laser.color;
+                ctx.fill();
+              }
+
+              ctx.restore();
+              keep.push(laser);
+            }
+          }
+          activeLasers = keep;
+        }
+
+        // Explosion effects with dramatic square flashes around
+        if (explosionEffects.length) {
+          const remaining = [];
+          for (const ex of explosionEffects) {
+            const t = (now - ex.startMs) / explosionDurationMs;
+            if (t < 1) {
+              const cx = ex.x * cellSizePx + cellSizePx / 2;
+              const cy = ex.y * cellSizePx + cellSizePx / 2;
+              // Expanding dark ring
+              ctx.beginPath();
+              ctx.arc(cx, cy, cellSizePx * (0.3 + 1.6 * t), 0, Math.PI * 2);
+              ctx.strokeStyle = `rgba(0,0,0,${Math.max(0, 1 - t)})`;
+              ctx.lineWidth = 4;
+              ctx.stroke();
+
+              // Dramatic flashing squares in a radius around the blast
+              const radiusCells = 2;
+              for (let dy = -radiusCells; dy <= radiusCells; dy++) {
+                for (let dx = -radiusCells; dx <= radiusCells; dx++) {
+                  const gx = ex.x + dx;
+                  const gy = ex.y + dy;
+                  if (gx < 0 || gy < 0 || gx >= gridCellsPerSide || gy >= gridCellsPerSide) continue;
+                  const dist = Math.max(Math.abs(dx), Math.abs(dy));
+                  if (dist === 0 || dist > radiusCells) continue;
+                  const phase = (dist / radiusCells) * Math.PI;
+                  const intensity = Math.max(0, Math.sin(t * Math.PI * 2 - phase)) * (1 - t);
+                  if (intensity > 0.1) {
+                    const x = gx * cellSizePx;
+                    const y = gy * cellSizePx;
+                    ctx.fillStyle = `rgba(0,0,0,${0.25 + 0.55 * intensity})`;
+                    ctx.fillRect(x + 1, y + 1, cellSizePx - 2, cellSizePx - 2);
+                  }
+                }
+              }
+
+              remaining.push(ex);
+            }
+          }
+          explosionEffects = remaining;
+        }
+        
+
+        // Snakes with interpolated movement and glow
+        ctx.shadowBlur = 8;
+
+        // Single player: no Player 2 rendering
+
+        ctx.shadowColor = "rgba(59,130,246,0.5)"; // blue-500
+        for (let i = snake1Body.length - 1; i >= 0; i--) {
+          const isHead = i === 0;
+          const curr = snake1Body[i];
+          const prev = previousSnake1Body[i] || snake1Body[i];
+          const x = lerp(prev.x, curr.x, progress);
+          const y = lerp(prev.y, curr.y, progress);
+          drawCell(x, y, isHead ? getComputedStyle(document.documentElement).getPropertyValue('--snake-head') || "#3b82f6" : getComputedStyle(document.documentElement).getPropertyValue('--snake') || "#60a5fa");
+          if (isHead) drawHeadShine(x, y);
+        }
+
+        ctx.restore();
+      }
+
+      function drawCell(cellX, cellY, color) {
+        const x = cellX * cellSizePx;
+        const y = cellY * cellSizePx;
+        const radius = Math.max(2, Math.floor(cellSizePx * 0.2));
+        ctx.fillStyle = color;
+        roundRect(ctx, x + 1, y + 1, cellSizePx - 2, cellSizePx - 2, radius);
+        ctx.fill();
+      }
+
+      function drawCellScaled(cellX, cellY, color, scale) {
+        const x = cellX * cellSizePx;
+        const y = cellY * cellSizePx;
+        const size = cellSizePx * scale;
+        const pad = (cellSizePx - size) / 2;
+        const radius = Math.max(2, Math.floor(size * 0.2));
+        ctx.fillStyle = color;
+        roundRect(ctx, x + pad + 1, y + pad + 1, size - 2, size - 2, radius);
+        ctx.fill();
+      }
+
+      // Utility to draw rounded rects
+      function roundRect(ctx, x, y, width, height, radius) {
+        ctx.beginPath();
+        ctx.moveTo(x + radius, y);
+        ctx.arcTo(x + width, y, x + width, y + height, radius);
+        ctx.arcTo(x + width, y + height, x, y + height, radius);
+        ctx.arcTo(x, y + height, x, y, radius);
+        ctx.arcTo(x, y, x + width, y, radius);
+        ctx.closePath();
+      }
+
+      function drawHeadShine(cellX, cellY) {
+        const x = cellX * cellSizePx;
+        const y = cellY * cellSizePx;
+        const gx = x + cellSizePx * 0.65;
+        const gy = y + cellSizePx * 0.35;
+        const rad = Math.max(2, cellSizePx * 0.12);
+        const gradient = ctx.createRadialGradient(gx, gy, 1, gx, gy, rad);
+        gradient.addColorStop(0, "rgba(255,255,255,0.6)");
+        gradient.addColorStop(1, "rgba(255,255,255,0)");
+        ctx.fillStyle = gradient;
+        ctx.beginPath();
+        ctx.arc(gx, gy, rad, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      function lerp(a, b, t) { return a + (b - a) * t; }
+      function easeOutBack(t) {
+        const c1 = 1.70158; const c3 = c1 + 1; return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
+      }
+
+      function scheduleNextSpeedDot() {
+        const span = speedDotMinIntervalMs + Math.random() * (speedDotMaxIntervalMs - speedDotMinIntervalMs);
+        nextSpeedDotAtMs = performance.now() + span;
+      }
+
+  function scheduleNextBoom() {
+    const span = boomMinIntervalMs + Math.random() * (boomMaxIntervalMs - boomMinIntervalMs);
+    nextBoomAtMs = performance.now() + span;
+  }
+
+  function getRandomFreeCellExcluding(excludeSet) {
+        let x, y;
+        do {
+          x = Math.floor(Math.random() * gridCellsPerSide);
+          y = Math.floor(Math.random() * gridCellsPerSide);
+        } while (excludeSet.has(`${x},${y}`));
+        return { x, y };
+      }
+
+  function chebDist(ax, ay, bx, by) {
+    return Math.max(Math.abs(ax - bx), Math.abs(ay - by));
+  }
+
+      // Convert a hex color like #rrggbb or #rgb to rgba string with alpha
+      function hexToRgba(hex, alpha) {
+        const h = hex.replace('#','');
+        if (h.length === 3) {
+          const r = parseInt(h[0]+h[0], 16);
+          const g = parseInt(h[1]+h[1], 16);
+          const b = parseInt(h[2]+h[2], 16);
+          return `rgba(${r},${g},${b},${alpha})`;
+        }
+        if (h.length >= 6) {
+          const r = parseInt(h.slice(0,2), 16);
+          const g = parseInt(h.slice(2,4), 16);
+          const b = parseInt(h.slice(4,6), 16);
+          return `rgba(${r},${g},${b},${alpha})`;
+        }
+        // fallback to white
+        return `rgba(255,255,255,${alpha})`;
+      }
+
+      function render(now) {
+        if (!animationStartMs) animationStartMs = now;
+        const dt = now - animationStartMs;
+        animationProgress = Math.max(0, Math.min(1, dt / currentSpeedMs));
+        draw(animationProgress);
+        rafId = requestAnimationFrame(render);
+      }
+
+      function shootLaser(playerId) {
+        // Determine shooter info
+        const shooterBody = snake1Body;
+        const shooterDir = snake1Direction;
+        if (!shooterBody.length) return;
+        // Consume ammo; if none, do nothing
+        if (ammo1 <= 0) return;
+        ammo1 -= 1;
+        if (ammo1El) ammo1El.textContent = String(ammo1);
+        const head = shooterBody[0];
+
+        // Compute ray cells until wall
+        const cells = [];
+        let x = head.x + shooterDir.x;
+        let y = head.y + shooterDir.y;
+        while (x >= 0 && y >= 0 && x < gridCellsPerSide && y < gridCellsPerSide) {
+          cells.push({ x, y });
+          x += shooterDir.x;
+          y += shooterDir.y;
+        }
+
+        // Destroy any booms along the laser path (non-lethal visual pop)
+        if (booms.length && cells.length) {
+          const pathSet = new Set(cells.map(c => `${c.x},${c.y}`));
+          const remaining = [];
+          let destroyedAny = false;
+          const now = performance.now();
+          for (const b of booms) {
+            if (pathSet.has(`${b.x},${b.y}`)) {
+              destroyedAny = true;
+              // Show explosion effect but do not apply radius damage
+              explosionEffects.push({ x: b.x, y: b.y, startMs: now });
+            } else {
+              remaining.push(b);
+            }
+          }
+          if (destroyedAny) {
+            booms = remaining;
+            playExplosionSound();
+          }
+        }
+
+        // Check hit only against opponent head at fire time
+        // Single player: no opponent to hit
+
+        // Add active laser for rendering
+        const color = 'rgba(59,130,246,0.9)';
+        // Store origin (head cell at fire) and slightly longer duration for better travel animation
+        activeLasers.push({ shooter: 1, origin: { x: head.x, y: head.y }, cells, dir: { ...shooterDir }, startMs: performance.now(), durationMs: 300, color });
+        playLaserSound(1);
+      }
+
+      function playLaserSound(playerId) {
+        try {
+          const ctx = getAudioContext();
+          if (!ctx) return;
+          const now = ctx.currentTime;
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = 'square';
+          const base = 680;
+          osc.frequency.setValueAtTime(base, now);
+          osc.frequency.exponentialRampToValueAtTime(base * 0.7, now + 0.1);
+          gain.gain.setValueAtTime(0.0001, now);
+          gain.gain.exponentialRampToValueAtTime(0.18, now + 0.01);
+          gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.2);
+          osc.connect(gain).connect(ctx.destination);
+          osc.start(now);
+          osc.stop(now + 0.22);
+        } catch (_) {}
+      }
+
+      // Utilities for spawning booms
+      function spawnBooms(count) {
+        for (let i = 0; i < count && booms.length < boomMaxCount; i++) {
+          const exclude = new Set([
+            `${applePosition.x},${applePosition.y}`,
+            speedDotPosition ? `${speedDotPosition.x},${speedDotPosition.y}` : '',
+            ...snake1Body.map(p => `${p.x},${p.y}`),
+            ...booms.map(b => `${b.x},${b.y}`)
+          ].filter(Boolean));
+          const pos = getRandomFreeCellExcluding(exclude);
+          const fuse = boomMinLifetimeMs + Math.random() * (boomMaxLifetimeMs - boomMinLifetimeMs);
+          booms.push({ x: pos.x, y: pos.y, spawnMs: performance.now(), explodeAtMs: performance.now() + fuse, p1NearStartMs: null, p2NearStartMs: null });
+        }
+      }
+
+      function playSpeedSound() {
+        try {
+          const ctx = getAudioContext();
+          if (!ctx) return;
+          const now = ctx.currentTime;
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = "square";
+          osc.frequency.setValueAtTime(660, now);
+          osc.frequency.exponentialRampToValueAtTime(990, now + 0.05);
+          gain.gain.setValueAtTime(0.0001, now);
+          gain.gain.exponentialRampToValueAtTime(0.18, now + 0.01);
+          gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.12);
+          osc.connect(gain).connect(ctx.destination);
+          osc.start(now);
+          osc.stop(now + 0.14);
+        } catch (_) {}
+      }
+
+      // --- Score history ---
+      const HISTORY_KEY = "snakeHistory";
+
+      function loadScoreHistory() {
+        try {
+          const raw = localStorage.getItem(HISTORY_KEY);
+          if (!raw) return [];
+          const parsed = JSON.parse(raw);
+          return Array.isArray(parsed) ? parsed : [];
+        } catch (_) {
+          return [];
+        }
+      }
+
+      function saveScoreHistory(list) {
+        try { localStorage.setItem(HISTORY_KEY, JSON.stringify(list)); } catch (_) {}
+      }
+
+      function buildHistoryEntry() { return { ts: Date.now(), mode: "1P", s1: score1 }; }
+
+      function renderScoreHistory(list) {
+        if (!historyListEl) return;
+        const recent = list.slice(-10).reverse();
+        historyListEl.innerHTML = recent.map((e) => {
+          const time = new Date(e.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+          return `<li class="history-item"><div class="history-left"><span class="badge">1P</span><span>Score ${e.s1}</span></div><span class="time">${time}</span></li>`;
+        }).join("");
+      }
+
+      function handleKeydown(event) {
+        const key = event.key.toLowerCase();
+
+        // Close modals with Escape
+        if (key === 'escape') {
+          if (scoreModal && !scoreModal.hidden) { event.preventDefault(); return closeScores(); }
+          if (rulesModal && !rulesModal.hidden) { event.preventDefault(); return closeRules(); }
+        }
+
+        // Fullscreen shortcut: 'f'
+        if (key === 'f') {
+          event.preventDefault();
+          toggleFullscreen();
+          return;
+        }
+
+        // Allow Player 2 to join by pressing '2' (before first apple eaten)
+        
+
+        // If game over, allow quick restart with Space/Enter/R
+        if (isGameOver && (key === " " || key === "enter" || key === "r")) {
+          event.preventDefault();
+          startGame();
+          return;
+        }
+        const leftArrow = key === "arrowleft";
+        const upArrow = key === "arrowup";
+        const rightArrow = key === "arrowright";
+        const downArrow = key === "arrowdown";
+
+        
+
+        if (key === " ") { // space
+          event.preventDefault();
+          return pauseResume();
+        }
+
+        // Laser: P1 shoots with 'm'
+        if (!isPaused && !isGameOver) {
+          if (key === 'm' && snake1Alive) {
+            const tNow = performance.now();
+            if (tNow - lastLaser1Ms > laserCooldownMs && ammo1 > 0) {
+              shootLaser(1);
+              lastLaser1Ms = tNow;
+              return;
+            }
+          }
+        }
+
+        // Player 1 (Arrows) - prevent reversing (only if alive)
+        if (snake1Alive && leftArrow && snake1Direction.x !== 1) {
+          snake1Direction = { x: -1, y: 0 };
+        } else if (snake1Alive && upArrow && snake1Direction.y !== 1) {
+          snake1Direction = { x: 0, y: -1 };
+        } else if (snake1Alive && rightArrow && snake1Direction.x !== -1) {
+          snake1Direction = { x: 1, y: 0 };
+        } else if (snake1Alive && downArrow && snake1Direction.y !== -1) {
+          snake1Direction = { x: 0, y: 1 };
+        }
+
+        
+      }
+
+      // Touch controls (simple swipe)
+      let touchStartX = 0;
+      let touchStartY = 0;
+      canvas.addEventListener("touchstart", (e) => {
+        if (e.touches.length > 0) {
+          touchStartX = e.touches[0].clientX;
+          touchStartY = e.touches[0].clientY;
+        }
+      });
+      canvas.addEventListener("touchmove", (e) => {
+        if (e.touches.length > 0) {
+          const dx = e.touches[0].clientX - touchStartX;
+          const dy = e.touches[0].clientY - touchStartY;
+          if (Math.abs(dx) > Math.abs(dy)) {
+            if (snake1Alive && dx > 12 && snake1Direction.x !== -1) snake1Direction = { x: 1, y: 0 };
+            if (snake1Alive && dx < -12 && snake1Direction.x !== 1) snake1Direction = { x: -1, y: 0 };
+          } else {
+            if (snake1Alive && dy > 12 && snake1Direction.y !== -1) snake1Direction = { x: 0, y: 1 };
+            if (snake1Alive && dy < -12 && snake1Direction.y !== 1) snake1Direction = { x: 0, y: -1 };
+          }
+        }
+      }, { passive: true });
+
+      // Wire up controls
+      window.addEventListener("keydown", handleKeydown);
+      pauseBtn.addEventListener("click", pauseResume);
+      restartBtn.addEventListener("click", startGame);
+      // Click overlay to restart when game over
+      overlay.addEventListener("click", () => { if (isGameOver) startGame(); });
+      // Scores modal controls
+      function openScores() { if (scoreModal) { scoreModal.hidden = false; scoreModal.classList.add('show'); scoreModal.setAttribute('aria-hidden','false'); if (closeScoresBtn) closeScoresBtn.focus(); } }
+      function closeScores() { if (scoreModal) { scoreModal.classList.remove('show'); scoreModal.setAttribute('aria-hidden','true'); setTimeout(()=>{ scoreModal.hidden = true; }, 200); } }
+      if (scoresBtn) scoresBtn.addEventListener('click', openScores);
+      if (closeScoresBtn) closeScoresBtn.addEventListener('click', closeScores);
+      if (scoreModal) scoreModal.addEventListener('click', (e) => { if (e.target === scoreModal) closeScores(); });
+      // Rules modal controls
+      function openRules() { if (rulesModal) { rulesModal.hidden = false; rulesModal.classList.add('show'); rulesModal.setAttribute('aria-hidden','false'); if (closeRulesBtn) closeRulesBtn.focus(); } }
+      function closeRules() { if (rulesModal) { rulesModal.classList.remove('show'); rulesModal.setAttribute('aria-hidden','true'); setTimeout(()=>{ rulesModal.hidden = true; }, 200); } }
+      if (rulesBtn) rulesBtn.addEventListener('click', openRules);
+      if (closeRulesBtn) closeRulesBtn.addEventListener('click', closeRules);
+      if (rulesModal) rulesModal.addEventListener('click', (e) => { if (e.target === rulesModal) closeRules(); });
+      // Fullscreen controls
+      function isFullscreenActive() {
+        return !!(document.fullscreenElement || document.webkitFullscreenElement);
+      }
+      function updateFsButton() {
+        if (!fsBtn) return;
+        const label = fsBtn.querySelector('.btn-label');
+        if (label) label.textContent = isFullscreenActive() ? 'Exit Fullscreen' : 'Fullscreen';
+        else fsBtn.textContent = isFullscreenActive() ? 'Exit Fullscreen' : 'Fullscreen';
+      }
+      async function enterFullscreen() {
+        try {
+          if (canvasWrap.requestFullscreen) await canvasWrap.requestFullscreen();
+          else if (canvasWrap.webkitRequestFullscreen) await canvasWrap.webkitRequestFullscreen();
+        } catch (_) {}
+        updateFsButton();
+      }
+      async function exitFullscreen() {
+        try {
+          if (document.exitFullscreen) await document.exitFullscreen();
+          else if (document.webkitExitFullscreen) await document.webkitExitFullscreen();
+        } catch (_) {}
+        updateFsButton();
+      }
+      function toggleFullscreen() {
+        if (!canvasWrap) return;
+        if (isFullscreenActive()) exitFullscreen(); else enterFullscreen();
+      }
+      if (fsBtn) fsBtn.addEventListener('click', toggleFullscreen);
+      if (canvasWrap) canvasWrap.addEventListener('dblclick', toggleFullscreen);
+      document.addEventListener('fullscreenchange', updateFsButton);
+      document.addEventListener('webkitfullscreenchange', updateFsButton);
+      
+
+      // Kick off
+      setupAudioUnlock();
+      applyModeUI();
+      
+      // Render any prior history
+      try { renderScoreHistory(loadScoreHistory()); } catch(_) {}
+      startGame();
+    })();
+  </script>
+</body>
+</html>

@@ -7,7 +7,11 @@ export default function InputBar({
   disabled,
   model,
   setModel,
-  suggestedModels
+  suggestedModels,
+  isMiniGameOpen,
+  onCloseMiniGame,
+  isSessionBusy,
+  gameTimeLeft
 }) {
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -25,6 +29,119 @@ export default function InputBar({
       return;
     }
   };
+
+  // Show close game button when mini-game is open
+  if (isMiniGameOpen) {
+    // Green button when busy (to return to work), Red button when not busy (to close game)
+    const isUrgent = gameTimeLeft <= 10;
+    const showGreenButton = isSessionBusy; // When busy, show green "Let's go back to work"
+    const showRedButton = !isSessionBusy;  // When not busy, show red "Close Game"
+
+    return (
+      <div style={{ 
+        padding: '20px', 
+        textAlign: 'center',
+        background: 'linear-gradient(135deg, #0b1018 0%, #1a2331 100%)',
+        borderRadius: '12px',
+        border: '1px solid #1d2633',
+        margin: '16px 0'
+      }}>
+        <div style={{ 
+          fontSize: '16px', 
+          color: '#e6e6e6', 
+          marginBottom: '16px',
+          fontWeight: '500'
+        }}>
+          🎮 Mini-game is open in the preview area
+        </div>
+        
+        {showGreenButton && (
+          <button
+            onClick={onCloseMiniGame}
+            className="mini-game-button"
+            style={{
+              padding: '14px 24px',
+              background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+              color: 'white',
+              border: 'none',
+              borderRadius: '12px',
+              cursor: 'pointer',
+              fontSize: '16px',
+              fontWeight: '600',
+              transition: 'all 0.3s ease',
+              boxShadow: '0 4px 12px rgba(16,185,129,0.3)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '10px',
+              margin: '0 auto'
+            }}
+            onMouseEnter={(e) => {
+              e.target.style.transform = 'translateY(-2px)';
+              e.target.style.boxShadow = '0 6px 16px rgba(16,185,129,0.4)';
+            }}
+            onMouseLeave={(e) => {
+              e.target.style.transform = 'translateY(0)';
+              e.target.style.boxShadow = '0 4px 12px rgba(16,185,129,0.3)';
+            }}
+          >
+            <span style={{ fontSize: '18px' }}>🚀</span>
+            Let's go back to work!
+          </button>
+        )}
+
+        {showRedButton && (
+          <button
+            onClick={onCloseMiniGame}
+            className="mini-game-button blink-button"
+            style={{
+              padding: '14px 24px',
+              background: isUrgent 
+                ? 'linear-gradient(135deg, #dc2626 0%, #991b1b 100%)'
+                : 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+              color: 'white',
+              border: 'none',
+              borderRadius: '12px',
+              cursor: 'pointer',
+              fontSize: '16px',
+              fontWeight: '600',
+              transition: 'all 0.3s ease',
+              boxShadow: isUrgent 
+                ? '0 4px 12px rgba(220,38,38,0.5)'
+                : '0 4px 12px rgba(239,68,68,0.3)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '10px',
+              margin: '0 auto',
+              animation: isUrgent ? 'blink-button 1s ease-in-out infinite' : 'blink-button 2s ease-in-out infinite'
+            }}
+            onMouseEnter={(e) => {
+              e.target.style.transform = 'translateY(-2px)';
+              e.target.style.boxShadow = isUrgent 
+                ? '0 6px 16px rgba(220,38,38,0.6)'
+                : '0 6px 16px rgba(239,68,68,0.4)';
+            }}
+            onMouseLeave={(e) => {
+              e.target.style.transform = 'translateY(0)';
+              e.target.style.boxShadow = isUrgent 
+                ? '0 4px 12px rgba(220,38,38,0.5)'
+                : '0 4px 12px rgba(239,68,68,0.3)';
+            }}
+          >
+            <span style={{ fontSize: '16px' }}>⏰</span>
+            <span style={{ 
+              fontSize: '18px', 
+              fontWeight: '700',
+              color: isUrgent ? '#fef2f2' : 'white'
+            }}>
+              {gameTimeLeft}s
+            </span>
+            <span style={{ fontSize: '16px' }}>⏹️</span>
+            Close Game
+          </button>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div>
