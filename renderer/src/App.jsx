@@ -324,14 +324,14 @@ function AppInner() {
   if (route.name === 'project') {
     return (
       <>
-        <ProjectView projectId={route.params.id} initialMessage={route.params.initialMessage} onBack={() => setRoute({ name: 'dashboard', params: {} })} />
+        <ProjectView projectId={route.params.id} onBack={() => setRoute({ name: 'dashboard', params: {} })} />
         {showLogin ? null : null}
       </>
     )
   }
   return (
     <>
-      <Dashboard onOpenProject={(id, initialMessage) => setRoute({ name: 'project', params: { id, initialMessage } })} />
+      <Dashboard onOpenProject={(id) => setRoute({ name: 'project', params: { id } })} />
       {showLogin ? null : null}
     </>
   )

@@ -16,6 +16,7 @@ export const useSessionManager = (projectId) => {
   const [terminalLogs, setTerminalLogs] = useState(new Map());
   const [showRawTerminal, setShowRawTerminal] = useState(new Map());
   const [visibleTerminals, setVisibleTerminals] = useState(new Set()); // Track which terminals are visible
+  const [deferredMessages, setDeferredMessages] = useState(new Map()); // Store messages to be sent later
   
   // Track if we've already initialized to prevent overriding manual session selection
   const hasInitializedRef = useRef(false);
@@ -170,7 +171,7 @@ export const useSessionManager = (projectId) => {
 
   // ===== SESSION MANAGEMENT =====
   
-  const createNewSession = useCallback((existingSessions = null) => {
+  const createNewSession = useCallback(async (existingSessions = null, initialMessage = null) => {
     const currentSessions = existingSessions || sessions;
     const newSessionId = `session-${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
     const isFirstSession = currentSessions.length === 0;
@@ -218,8 +219,39 @@ export const useSessionManager = (projectId) => {
     });
     
     console.log(`Created new session: ${newSessionId} (${newSession.name})`);
+    
+    // If an initial message is provided, store it for later sending
+    if (initialMessage) {
+      console.log(`🚀 Storing initial message for new session: "${initialMessage}"`);
+      // Store the message in the session for later processing
+      const userMessage = {
+        id: `msg-${Date.now()}-${Math.random().toString(36).slice(2,8)}`,
+        who: 'user',
+        text: initialMessage,
+        timestamp: Date.now()
+      };
+      
+      // Add the message to the session
+      setSessions(prevSessions => {
+        const updatedSessions = prevSessions.map(session => 
+          session.id === newSessionId 
+            ? { 
+                ...session, 
+                messages: [...(session.messages || []), userMessage],
+                updatedAt: Date.now() 
+              }
+            : session
+        );
+        saveSessions(updatedSessions);
+        return updatedSessions;
+      });
+      
+      // Mark session as busy to indicate it needs processing
+      setSessionBusy(newSessionId, true);
+    }
+    
     return newSessionId;
-  }, [sessions, saveSessions]);
+  }, [sessions, saveSessions, setSessionBusy]);
 
   const loadSession = useCallback((sessionId) => {
     const session = sessions.find(s => s.id === sessionId);
@@ -666,9 +698,122 @@ export const useSessionManager = (projectId) => {
     });
   }, [saveSessions]);
 
-
+  // Process deferred messages after send function is available
+  const processDeferredMessages = useCallback(() => {
+    if (deferredMessages.size === 0) return;
+    
+    console.log(`🚀 Processing ${deferredMessages.size} deferred messages`);
+    console.log(`🚀 Send function available:`, typeof send === 'function');
+    console.log(`🚀 Deferred messages:`, Array.from(deferredMessages.entries()));
+    
+    deferredMessages.forEach((message, sessionId) => {
+      console.log(`🚀 Processing deferred message for session ${sessionId}: "${message}"`);
+      
+      // Find the session
+      const session = sessions.find(s => s.id === sessionId);
+      if (session) {
+        console.log(`🚀 Found session, sending message:`, session);
+        // Send the message using the send function
+        send(message, session);
+        
+        // Remove from deferred messages
+        setDeferredMessages(prev => {
+          const next = new Map(prev);
+          next.delete(sessionId);
+          return next;
+        });
+      } else {
+        console.warn(`Session ${sessionId} not found for deferred message`);
+        // Remove from deferred messages
+        setDeferredMessages(prev => {
+          const next = new Map(prev);
+          next.delete(sessionId);
+          return next;
+        });
+      }
+    });
+  }, [deferredMessages, sessions, send]);
 
   // ===== INITIALIZATION =====
+  
+  // Check if this is a new project that needs auto-start
+  const shouldAutoStartNewProject = useCallback(() => {
+    // Check if we have a project ID and if it's a new project
+    if (!projectId) return false;
+    
+    // Check if there are any existing sessions for this project
+    const existingSessions = loadSessions();
+    if (existingSessions.length > 0) return false;
+    
+    // Check if we have a project prompt in localStorage (set by Dashboard)
+    try {
+      const projectPrompt = localStorage.getItem(`cursovable-new-project-${projectId}`);
+      const projectTemplate = localStorage.getItem(`cursovable-new-project-template-${projectId}`);
+      
+      console.log(`🔍 Checking for new project auto-start:`, {
+        projectId,
+        hasExistingSessions: existingSessions.length > 0,
+        projectPrompt,
+        projectTemplate,
+        localStorageKeys: Object.keys(localStorage).filter(key => key.includes('cursovable-new-project'))
+      });
+      
+      if (projectPrompt) {
+        console.log(`🚀 New project detected with prompt: "${projectPrompt}", template: ${projectTemplate}`);
+        return { prompt: projectPrompt, template: projectTemplate };
+      }
+    } catch (e) {
+      console.warn('Failed to check for new project prompt:', e);
+    }
+    
+    return false;
+  }, [projectId, loadSessions]);
+
+  // Create a new session specifically for a new project with automatic initial message
+  const createNewProjectSession = useCallback(async (projectPrompt, projectTemplate = null) => {
+    console.log(`🚀 createNewProjectSession called with prompt: "${projectPrompt}", template: ${projectTemplate}`);
+    
+    // Build the initial message based on the project template and prompt
+    let initialMessage = projectPrompt;
+    
+    if (projectTemplate) {
+      // Enhance the prompt with template-specific instructions
+      switch (projectTemplate) {
+        case 'react-vite':
+          initialMessage = `Creating a new React + Vite project. ${projectPrompt}\n\nPlease scaffold a complete React + Vite project with:\n- Proper project structure\n- Essential dependencies\n- Basic components and routing\n- Development scripts\n- README with setup instructions`;
+          break;
+        case 'vue-vite':
+          initialMessage = `Creating a new Vue 3 + Vite project. ${projectPrompt}\n\nPlease scaffold a complete Vue 3 + Vite project with:\n- Proper project structure\n- Essential dependencies\n- Basic views and components\n- Development scripts\n- README with setup instructions`;
+          break;
+        case 'next':
+          initialMessage = `Creating a new Next.js project. ${projectPrompt}\n\nPlease scaffold a complete Next.js project with:\n- App router structure\n- Essential dependencies\n- Basic pages and API routes\n- Development scripts\n- README with setup instructions`;
+          break;
+        case 'html':
+          initialMessage = `Creating a new static HTML project. ${projectPrompt}\n\nPlease scaffold a complete static HTML project with:\n- Proper folder structure\n- HTML, CSS, and JavaScript files\n- Basic styling and functionality\n- Instructions for running locally`;
+          break;
+        default:
+          initialMessage = `Creating a new project: ${projectPrompt}\n\nPlease scaffold a complete project with proper structure, dependencies, and setup instructions.`;
+      }
+    }
+    
+    console.log(`📝 Generated initial message: "${initialMessage}"`);
+    
+    // Create the new session with the initial message
+    const sessionId = await createNewSession(null, initialMessage);
+    
+    // Mark this session as running terminal since it's a new project
+    markSessionRunningTerminal(sessionId);
+    
+    // Store the initial message for later processing when send function is available
+    setDeferredMessages(prev => {
+      const next = new Map(prev);
+      next.set(sessionId, initialMessage);
+      return next;
+    });
+    
+    console.log(`✅ New project session created and started: ${sessionId}`);
+    return sessionId;
+  }, [createNewSession, markSessionRunningTerminal]);
   
   useEffect(() => {
     // Only initialize once to prevent overriding manual session selection
@@ -717,15 +862,45 @@ export const useSessionManager = (projectId) => {
         });
       });
     } else {
-      // Create a temporary session immediately for better UX
-      console.log('No existing sessions found, creating temporary session');
-      createNewSession();
+      // Check if this is a new project that should auto-start
+      const newProjectInfo = shouldAutoStartNewProject();
+      
+      if (newProjectInfo) {
+        console.log('🚀 Auto-starting new project session');
+        createNewProjectSession(newProjectInfo.prompt, newProjectInfo.template).then(() => {
+          // Clean up the localStorage after starting
+          try {
+            localStorage.removeItem(`cursovable-new-project-${projectId}`);
+            localStorage.removeItem(`cursovable-new-project-template-${projectId}`);
+          } catch (e) {
+            console.warn('Failed to cleanup new project localStorage:', e);
+          }
+        });
+      } else {
+        // Create a temporary session immediately for better UX
+        console.log('No existing sessions found, creating temporary session');
+        createNewSession();
+      }
     }
     
     // Mark as initialized to prevent future overrides
     hasInitializedRef.current = true;
     console.log('Session initialization complete');
-  }, [projectId, loadSessions, createNewSession, currentSessionId]);
+  }, [projectId, loadSessions, createNewSession, createNewProjectSession, shouldAutoStartNewProject, currentSessionId]);
+
+  // Process deferred messages after send function is available
+  useEffect(() => {
+    console.log('🔍 Deferred messages useEffect triggered:', {
+      deferredMessagesSize: deferredMessages.size,
+      sendFunctionAvailable: typeof send === 'function',
+      hasProcessFunction: typeof processDeferredMessages === 'function'
+    });
+    
+    if (deferredMessages.size > 0 && typeof send === 'function') {
+      console.log('🚀 Send function available, processing deferred messages');
+      processDeferredMessages();
+    }
+  }, [deferredMessages, send, processDeferredMessages]);
 
   // ===== HOOK INITIALIZATIONS =====
   
@@ -930,6 +1105,7 @@ export const useSessionManager = (projectId) => {
     terminalLogs,
     showRawTerminal,
     visibleTerminals,
+    deferredMessages,
     
     // Actions
     setCurrentSessionId,
@@ -954,6 +1130,7 @@ export const useSessionManager = (projectId) => {
     
     // Session management
     createNewSession,
+    createNewProjectSession,
     loadSession,
     deleteSession,
     updateSessionWithCursorId,
@@ -974,6 +1151,24 @@ export const useSessionManager = (projectId) => {
       };
       messageHandler.handleParsedMessage(testMessage, sessionId);
     },
+    
+    // Test function to manually trigger new project creation
+    testNewProjectCreation: (testPrompt = 'Create a simple test app', testTemplate = 'react-vite') => {
+      console.log('🧪 Testing new project creation:', { testPrompt, testTemplate });
+      
+      // Store test project info in localStorage
+      const testProjectId = 'test-project-' + Date.now();
+      localStorage.setItem(`cursovable-new-project-${testProjectId}`, testPrompt);
+      localStorage.setItem(`cursovable-new-project-template-${testProjectId}`, testTemplate);
+      
+      console.log(`🧪 Stored test project info for: ${testProjectId}`);
+      
+      // Simulate what would happen when navigating to a new project
+      return testProjectId;
+    },
+    
+    // Process deferred messages manually
+    processDeferredMessages,
     
     // Utility functions
     deriveSessionNameFromMessage,

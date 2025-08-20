@@ -13,7 +13,7 @@ import { useSession } from '../providers/SessionProvider.jsx';
 
 import { styles } from './Chat/styles';
 
-export default function Chat({ cwd, initialMessage, projectId, onPlayMiniGame, onCloseMiniGame, isMiniGameOpen, gameTimeLeft }) {
+export default function Chat({ cwd, projectId, onPlayMiniGame, onCloseMiniGame, isMiniGameOpen, gameTimeLeft }) {
   // Add error boundary for initialization issues
   try {
     const sessionData = useSession();
@@ -117,14 +117,7 @@ export default function Chat({ cwd, initialMessage, projectId, onPlayMiniGame, o
       clearInput: () => setInput('') // Function to clear input after sending
     });
 
-    // Auto-send initial message once when cwd and initialMessage are present
-    const hasAutoSentRef = useRef(false);
-    useEffect(() => {
-      if (!hasAutoSentRef.current && initialMessage && cwd) {
-        hasAutoSentRef.current = true;
-        sendMessage(initialMessage);
-      }
-    }, [initialMessage, cwd, sendMessage]);
+
 
     // Debug terminal logs state
     useEffect(() => {

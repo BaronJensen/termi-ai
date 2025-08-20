@@ -39,9 +39,26 @@ export default function Dashboard({ onOpenProject }) {
     addProject(project);
     setProjects(loadProjects());
     setShowNew(false);
-    // Navigate to ProjectView and auto-send initial message based on template + idea
-    const initialMessage = buildPromptForTemplate(project.runningConfig?.projectType === 'vite' ? (template === 'react-vite' ? 'react-vite' : template) : template, idea);
-    setNavigateTo({ id: project.id, initialMessage });
+    
+    // Store project information in localStorage for auto-start
+    try {
+      const projectPrompt = idea || 'Create a starter app';
+      const projectTemplate = template;
+      
+      localStorage.setItem(`cursovable-new-project-${project.id}`, projectPrompt);
+      localStorage.setItem(`cursovable-new-project-template-${project.id}`, projectTemplate);
+      
+      console.log(`🚀 Stored new project info for auto-start:`, {
+        projectId: project.id,
+        prompt: projectPrompt,
+        template: projectTemplate
+      });
+    } catch (e) {
+      console.warn('Failed to store new project info in localStorage:', e);
+    }
+    
+    // Navigate to ProjectView - the session manager will auto-start the project
+    setNavigateTo({ id: project.id });
   }
 
   function handleLoad(project) {
@@ -165,7 +182,7 @@ export default function Dashboard({ onOpenProject }) {
       )}
       {navigateTo && (
         // Imperative navigation hook for App-level router: we expose an event by opening project
-        (() => { onOpenProject(navigateTo.id, navigateTo.initialMessage); setNavigateTo(null); return null; })()
+        (() => { onOpenProject(navigateTo.id); setNavigateTo(null); return null; })()
       )}
     </div>
   );

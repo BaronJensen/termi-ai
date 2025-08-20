@@ -11,7 +11,7 @@ import { loadSettings } from '../store/settings';
 
 import useDesignSystemStyles from '../ui/useDesignSystemStyles';
 
-function ProjectViewInner({ projectId, onBack, initialMessage }) {
+function ProjectViewInner({ projectId, onBack }) {
   useDesignSystemStyles();
   const sessionData = useSession();
   const project = getProject(projectId);
@@ -622,7 +622,6 @@ function ProjectViewInner({ projectId, onBack, initialMessage }) {
             <Chat 
               cwd={folder} 
               projectId={projectId}
-              {...(initialMessage && { initialMessage })}
               onPlayMiniGame={handlePlayMiniGame}
               onCloseMiniGame={handleCloseMiniGame}
               isMiniGameOpen={isMiniGameOpen}
@@ -635,13 +634,12 @@ function ProjectViewInner({ projectId, onBack, initialMessage }) {
   );
 }
 
-export default function ProjectView({ projectId, onBack, initialMessage }) {
+export default function ProjectView({ projectId, onBack }) {
   return (
     <SessionProvider projectId={projectId}>
       <ProjectViewInner 
         projectId={projectId} 
         onBack={onBack} 
-        initialMessage={initialMessage} 
       />
     </SessionProvider>
   );
