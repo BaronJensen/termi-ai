@@ -245,12 +245,6 @@ export default function Chat({ cwd, initialMessage, projectId }) {
       }
     }, [input]);
     
-    // Filter messages based on search query
-    // const filteredMessages = messages.filter(m => {
-    //   if (!searchQuery.trim()) return true;
-    //   return m.text.toLowerCase().includes(searchQuery.toLowerCase());
-    // });
-
     // Navigate to next/previous search result
     const navigateSearch = (direction) => {
       if (!searchQuery || filteredMessages.length === 0) return;
@@ -315,10 +309,7 @@ export default function Chat({ cwd, initialMessage, projectId }) {
       send // Get the send function from SessionProvider
     });
 
-    // Debug logging to check if send function is available
-    console.log('🔍 Chat component - send function available:', !!send, typeof send);
-    console.log('🔍 Chat component - sendMessage function available:', !!sendMessage, typeof sendMessage);
-
+ 
     // Auto-send initial message once when cwd and initialMessage are present
     const hasAutoSentRef = useRef(false);
     useEffect(() => {

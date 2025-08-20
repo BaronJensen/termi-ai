@@ -12,6 +12,7 @@ export const useSessionManager = (projectId) => {
   const [hideToolCallIndicatorsBySession, setHideToolCallIndicatorsBySession] = useState(new Map());
   const [terminalLogs, setTerminalLogs] = useState(new Map());
   const [showRawTerminal, setShowRawTerminal] = useState(new Map());
+  const [visibleTerminals, setVisibleTerminals] = useState(new Set()); // Track which terminals are visible
   
   // Track if we've already initialized to prevent overriding manual session selection
   const hasInitializedRef = useRef(false);
@@ -47,17 +48,38 @@ export const useSessionManager = (projectId) => {
     return busyBySession.get(sessionId) || false;
   }, [busyBySession]);
 
-  const setSessionBusy = useCallback((sessionId, busy) => {
+  const setSessionBusy = useCallback((sessionId, isBusy = true) => {
     setBusyBySession(prev => {
       const next = new Map(prev);
-      if (busy) {
+      if (isBusy) {
         next.set(sessionId, true);
+        // Show terminal when session becomes busy
+        setVisibleTerminals(prev => new Set([...prev, sessionId]));
       } else {
         next.delete(sessionId);
       }
       return next;
     });
   }, []);
+
+  // Show terminal for a session
+  const showTerminal = useCallback((sessionId) => {
+    setVisibleTerminals(prev => new Set([...prev, sessionId]));
+  }, []);
+
+  // Hide terminal for a session (but don't delete the session)
+  const hideTerminal = useCallback((sessionId) => {
+    setVisibleTerminals(prev => {
+      const next = new Set(prev);
+      next.delete(sessionId);
+      return next;
+    });
+  }, []);
+
+  // Check if terminal is visible for a session
+  const isTerminalVisible = useCallback((sessionId) => {
+    return visibleTerminals.has(sessionId);
+  }, [visibleTerminals]);
 
   const getCurrentSessionBusy = useCallback(() => {
     if (!currentSessionId) {
@@ -162,11 +184,18 @@ export const useSessionManager = (projectId) => {
     if (session) {
       console.log(`Loading session ${sessionId} with ${session.messages?.length || 0} messages`);
       setCurrentSessionId(sessionId);
+      
+      // Show terminal if session has logs
+      const sessionLogs = terminalLogs.get(sessionId);
+      if (sessionLogs?.cursor?.length > 0) {
+        setVisibleTerminals(prev => new Set([...prev, sessionId]));
+      }
+      
       console.log(`Switched to session ${sessionId} (other sessions remain active)`);
     } else {
       console.warn(`Session ${sessionId} not found in current sessions`);
     }
-  }, [sessions]);
+  }, [sessions, terminalLogs]);
 
   const deleteSession = useCallback((sessionId) => {
     const updatedSessions = sessions.filter(s => s.id !== sessionId);
@@ -759,6 +788,7 @@ export const useSessionManager = (projectId) => {
     hideToolCallIndicatorsBySession,
     terminalLogs,
     showRawTerminal,
+    visibleTerminals,
     
     // Actions
     setCurrentSessionId,
@@ -766,6 +796,7 @@ export const useSessionManager = (projectId) => {
     setSessionToolCalls,
     setSessionHideToolCallIndicators,
     setShowRawTerminal,
+    setVisibleTerminals,
     
     // Helper functions
     isSessionBusy,
@@ -802,6 +833,9 @@ export const useSessionManager = (projectId) => {
     getCurrentTerminalSession,
     isSessionRunningTerminal,
     getCursorSessionId,
-    getInternalSessionId
+    getInternalSessionId,
+    showTerminal,
+    hideTerminal,
+    isTerminalVisible
   };
 };

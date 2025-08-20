@@ -8,20 +8,15 @@ export default function SessionTerminals() {
     busyBySession,
     terminalLogs,
     showRawTerminal,
+    visibleTerminals,
     setCurrentSessionId,
-    setShowRawTerminal
+    setShowRawTerminal,
+    hideTerminal,
+    showTerminal
   } = useSession();
   
-  // Debug logging
-  console.log('🔍 SessionTerminals render:', {
-    sessions: sessions.length,
-    currentSessionId,
-    terminalLogsSize: terminalLogs.size,
-    terminalLogs: Array.from(terminalLogs.entries())
-  });
   const terminalScrollers = useRef(new Map()); // sessionId -> { cursor: ref }
-
-
+  const tabsContainerRef = useRef(null);
 
   // Auto-scroll to bottom for active terminal
   useEffect(() => {
@@ -32,10 +27,72 @@ export default function SessionTerminals() {
     }
   }, [terminalLogs, currentSessionId]);
 
-  // Show all sessions, not just active ones
-  const allSessions = sessions;
+  // Filter sessions to only show those with visible terminals
+  const visibleSessions = sessions.filter(session => visibleTerminals.has(session.id));
 
-  if (allSessions.length === 0) {
+  // Sort sessions: active (busy) sessions first, then by name
+  const sortedSessions = [...visibleSessions].sort((a, b) => {
+    const aIsBusy = busyBySession.has(a.id);
+    const bIsBusy = busyBySession.has(b.id);
+    
+    if (aIsBusy && !bIsBusy) return -1;
+    if (!aIsBusy && bIsBusy) return 1;
+    
+    return a.name.localeCompare(b.name);
+  });
+
+  // Scroll tabs horizontally
+  const scrollTabs = (direction) => {
+    if (tabsContainerRef.current) {
+      const scrollAmount = 200; // Adjust scroll amount as needed
+      tabsContainerRef.current.scrollLeft += direction === 'left' ? -scrollAmount : scrollAmount;
+    }
+  };
+
+  // Handle terminal close (hide terminal, don't delete session)
+  const handleCloseTerminal = (sessionId, event) => {
+    event.stopPropagation(); // Prevent tab selection when clicking close
+    
+    // Don't allow closing the current terminal if it's the only one visible
+    if (visibleSessions.length === 1) {
+      return;
+    }
+    
+    // Confirm before closing if session is busy
+    if (busyBySession.has(sessionId)) {
+      if (!confirm('This session is currently running. Are you sure you want to close the terminal?')) {
+        return;
+      }
+    }
+    
+    // Hide the terminal but keep the session
+    hideTerminal(sessionId);
+    
+    // If we're closing the current session's terminal, switch to another visible one
+    if (currentSessionId === sessionId) {
+      const remainingSessions = visibleSessions.filter(s => s.id !== sessionId);
+      if (remainingSessions.length > 0) {
+        setCurrentSessionId(remainingSessions[0].id);
+      }
+    }
+  };
+
+  // Show terminals for sessions that have logs but might be hidden
+  const showHiddenTerminals = () => {
+    sessions.forEach(session => {
+      const sessionLogs = terminalLogs.get(session.id);
+      if (sessionLogs?.cursor?.length > 0 && !visibleTerminals.has(session.id)) {
+        showTerminal(session.id);
+      }
+    });
+  };
+
+  if (sortedSessions.length === 0) {
+    const hasHiddenTerminals = sessions.some(session => {
+      const sessionLogs = terminalLogs.get(session.id);
+      return sessionLogs?.cursor?.length > 0 && !visibleTerminals.has(session.id);
+    });
+
     return (
       <div style={{
         padding: '20px',
@@ -43,58 +100,197 @@ export default function SessionTerminals() {
         color: '#6b7280',
         fontSize: '14px'
       }}>
-        No active sessions with terminal output
+        {visibleSessions.length === 0 ? (
+          <div>
+            <div style={{ marginBottom: '12px' }}>
+              No terminal tabs are currently visible. Run a command in any session to show its terminal.
+            </div>
+            {hasHiddenTerminals && (
+              <button
+                onClick={showHiddenTerminals}
+                style={{
+                  padding: '8px 16px',
+                  backgroundColor: '#3c6df0',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  fontSize: '12px'
+                }}
+              >
+                Show Hidden Terminals
+              </button>
+            )}
+          </div>
+        ) : (
+          'No active sessions with terminal output'
+        )}
       </div>
     );
   }
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-      {/* Session Terminal Tabs */}
+      {/* Session Terminal Tabs with Horizontal Scrolling */}
       <div style={{
         display: 'flex',
+        alignItems: 'center',
         borderBottom: '1px solid #1d2633',
-        marginBottom: '12px'
+        marginBottom: '12px',
+        position: 'relative'
       }}>
-        {allSessions.map(session => (
+        {/* Left Scroll Arrow */}
+        {sortedSessions.length > 6 && (
           <button
-            key={session.id}
-            onClick={() => setCurrentSessionId(session.id)}
+            onClick={() => scrollTabs('left')}
             style={{
-              padding: '8px 16px',
-              backgroundColor: currentSessionId === session.id ? '#1a2331' : 'transparent',
-              color: currentSessionId === session.id ? '#3c6df0' : '#6b7280',
+              padding: '8px 4px',
+              backgroundColor: '#1a2331',
+              color: '#6b7280',
               border: 'none',
-              borderBottom: currentSessionId === session.id ? '2px solid #3c6df0' : 'none',
               cursor: 'pointer',
+              borderRadius: '4px 0 0 4px',
               fontSize: '12px',
-              fontWeight: currentSessionId === session.id ? '600' : '400',
+              minWidth: '24px',
               display: 'flex',
               alignItems: 'center',
-              gap: '8px'
+              justifyContent: 'center'
             }}
+            title="Scroll left"
           >
-            {session.name}
-            {busyBySession.has(session.id) && (
-              <span style={{ color: '#f59e0b' }}>🔄</span>
-            )}
-                              {(() => {
-                    const sessionLogs = terminalLogs.get(session.id);
-                    const totalLogs = sessionLogs?.cursor?.length || 0;
-                    return totalLogs > 0 ? (
-                      <span style={{
-                        backgroundColor: '#374151',
-                        color: '#9ca3af',
-                        padding: '2px 6px',
-                        borderRadius: '10px',
-                        fontSize: '10px'
-                      }}>
-                        {totalLogs}
-                      </span>
-                    ) : null;
-                  })()}
+            ‹
           </button>
-        ))}
+        )}
+        
+        {/* Tabs Container */}
+        <div
+          ref={tabsContainerRef}
+          style={{
+            display: 'flex',
+            overflowX: 'auto',
+            overflowY: 'hidden',
+            scrollbarWidth: 'none', // Firefox
+            msOverflowStyle: 'none', // IE/Edge
+            flex: 1,
+            minWidth: 0
+          }}
+        >
+          {sortedSessions.map(session => (
+            <button
+              key={session.id}
+              onClick={() => setCurrentSessionId(session.id)}
+              style={{
+                padding: '8px 12px',
+                backgroundColor: currentSessionId === session.id ? '#1a2331' : 'transparent',
+                color: currentSessionId === session.id ? '#3c6df0' : '#6b7280',
+                border: 'none',
+                borderBottom: currentSessionId === session.id ? '2px solid #3c6df0' : 'none',
+                cursor: 'pointer',
+                fontSize: '12px',
+                fontWeight: currentSessionId === session.id ? '600' : '400',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                minWidth: '120px', // Ensure minimum tab width
+                maxWidth: '180px', // Limit maximum tab width
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                flexShrink: 0, // Prevent tabs from shrinking
+                position: 'relative'
+              }}
+              title={session.name} // Show full name on hover
+            >
+              <span style={{
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+                flex: 1,
+                minWidth: 0
+              }}>
+                {session.name}
+              </span>
+              {busyBySession.has(session.id) && (
+                <span style={{ color: '#f59e0b', flexShrink: 0 }}>🔄</span>
+              )}
+              {(() => {
+                const sessionLogs = terminalLogs.get(session.id);
+                const totalLogs = sessionLogs?.cursor?.length || 0;
+                return totalLogs > 0 ? (
+                  <span style={{
+                    backgroundColor: '#374151',
+                    color: '#9ca3af',
+                    padding: '2px 6px',
+                    borderRadius: '10px',
+                    fontSize: '10px',
+                    flexShrink: 0
+                  }}>
+                    {totalLogs}
+                  </span>
+                ) : null;
+              })()}
+              
+              {/* Close Button */}
+              <button
+                onClick={(e) => handleCloseTerminal(session.id, e)}
+                style={{
+                  padding: '2px',
+                  backgroundColor: 'transparent',
+                  color: currentSessionId === session.id ? '#6b7280' : '#4b5563',
+                  border: 'none',
+                  cursor: 'pointer',
+                  borderRadius: '3px',
+                  fontSize: '14px',
+                  lineHeight: '1',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  minWidth: '16px',
+                  height: '16px',
+                  flexShrink: 0,
+                  marginLeft: '4px',
+                  opacity: 0.7,
+                  transition: 'opacity 0.2s ease'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.opacity = '1';
+                  e.currentTarget.style.backgroundColor = currentSessionId === session.id ? '#374151' : '#1f2937';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.opacity = '0.7';
+                  e.currentTarget.style.backgroundColor = 'transparent';
+                }}
+                title="Close terminal"
+                disabled={visibleSessions.length === 1}
+              >
+                ×
+              </button>
+            </button>
+          ))}
+        </div>
+
+        {/* Right Scroll Arrow */}
+        {sortedSessions.length > 6 && (
+          <button
+            onClick={() => scrollTabs('right')}
+            style={{
+              padding: '8px 4px',
+              backgroundColor: '#1a2331',
+              color: '#6b7280',
+              border: 'none',
+              cursor: 'pointer',
+              borderRadius: '0 4px 4px 0',
+              fontSize: '12px',
+              minWidth: '24px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}
+            title="Scroll right"
+          >
+            ›
+          </button>
+        )}
       </div>
 
       {/* Terminal Output for Current Session */}
@@ -217,8 +413,6 @@ export default function SessionTerminals() {
                 </label>
               </div>
             </div>
-
-
 
             {/* Terminal Logs */}
             <div
