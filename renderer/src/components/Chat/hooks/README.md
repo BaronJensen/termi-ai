@@ -1,133 +1,212 @@
-# Chat Hooks - Modular Architecture
+# Chat Hooks Documentation
 
-This directory contains the refactored chat functionality split into reusable, modular functions. The original monolithic `useChatSend` hook has been broken down into smaller, focused modules.
+This directory contains React hooks that manage the chat functionality, session management, and terminal communication for the Cursovable application.
 
-## File Structure
+## Hook Architecture
 
-### Core Hook
+The hooks are designed with a clear separation of concerns and follow a layered architecture:
 
-- **`useChatSend.js`** - Main hook that orchestrates the chat functionality
+```
+SessionProvider (Context Provider)
+├── useSessionManager (Core session logic)
+    ├── useMessageHandler (Message processing)
+    └── useTerminalStatus (Terminal communication)
+└── useChatSend (Chat input handling)
+```
 
-### Utility Modules
+## Core Hooks
 
-- **`chatUtils.js`** - General utility functions for chat operations
-- **`messageHandlers.js`** - Functions for processing different types of log messages
-- **`sessionManagement.js`** - Functions for managing chat sessions and state
-- **`errorHandling.js`** - Error handling and fallback logic
-- **`index.js`** - Barrel export file for easy importing
+### `useSessionManager`
 
-## Key Functions
+The main hook that orchestrates all session-related functionality.
 
-### Chat Utilities (`chatUtils.js`)
+**Responsibilities:**
+- Session state management (create, load, delete, switch)
+- Message storage and retrieval
+- Tool call state management
+- Terminal log management
+- Cursor command execution
 
-- `normalizePath(path)` - Normalize file paths for comparison
-- `stripAnsiAndControls(input)` - Remove ANSI escape codes from terminal output
-- `extractJsonCandidate(line)` - Extract JSON from mixed text
-- `appendWithOverlap(base, chunk, lastChunk)` - Append text with deduplication
-- `generateRunId()` - Generate unique run identifiers
-- `verifyAndSwitchWorkingDirectory(desiredCwd)` - Security check for working directory
-- `resetTextareaHeight()` - Reset input textarea to default height
-- `createCursorAgentTimeout(timeoutMs, runId, onTimeout)` - Create timeout handlers
-- `normalizeToolCallData(parsed)` - Normalize tool call data from various formats
-- `formatErrorMessage(errorMessage)` - Format error messages for better UX
+**Key Functions:**
+- `createNewSession()` - Create a new chat session
+- `loadSession(sessionId)` - Switch to an existing session
+- `deleteSession(sessionId)` - Remove a session
+- `send(text, sessionObj)` - Send a message to cursor-agent
+- `updateSessionWithCursorId(sessionId, cursorSessionId)` - Link internal session to cursor session
 
-### Message Handlers (`messageHandlers.js`)
+**State:**
+- `sessions` - Array of all sessions
+- `currentSessionId` - Currently active session
+- `busyBySession` - Map of session busy states
+- `toolCallsBySession` - Map of tool calls per session
+- `terminalLogs` - Map of terminal logs per session
 
-- `handleJsonLogLine(parsed, context)` - Process JSON log lines from cursor-agent
-- `handleStreamLogLine(line, context)` - Process stream log lines (fallback)
-- `handleEndMarker(context)` - Handle end markers for legacy runners
-- `createLogStreamHandler(context)` - Create the main log stream subscription handler
+### `useMessageHandler`
 
-### Session Management (`sessionManagement.js`)
+Specialized hook for processing different types of messages from cursor sessions.
 
-- `addUserMessage(context)` - Add user message and update session name
-- `createStreamingMessage(context)` - Create streaming assistant message
-- `updateSessionWithCursorId(context)` - Link sessions with cursor-agent
-- `getSessionIdForCursor(context)` - Get appropriate session ID for cursor-agent
-- `markAllToolCallsCompleted(context)` - Mark all tool calls as complete
-- `createFinalResultMessage(context)` - Create final result message
-- `cleanupStreamingState(context)` - Clean up streaming state
+**Responsibilities:**
+- Parse and handle JSON log messages
+- Create appropriate message objects for different types
+- Route messages to the correct session
 
-### Error Handling (`errorHandling.js`)
+**Supported Message Types:**
+- `session_start` - Session initialization
+- `assistant` - AI assistant responses
+- `result` - Command execution results
+- `tool_call` - Tool usage
+- `tool_result` - Tool execution results
+- `session_end` - Session completion
+- `stream` - Streaming content
+- `patch` - File changes
+- `file_operation` - File operations
+- `command` - Command execution
+- `thinking` - AI thinking process
+- `error` - Error messages
 
-- `handleError(context)` - Handle and display errors
-- `handleFallbackCompletion(context)` - Handle fallback completion scenarios
-- `handleClientTimeout(context)` - Handle client-side timeouts
-- `validateInput(context)` - Validate user input before processing
-- `logCursorDebugInfo(context)` - Log debug information for cursor-agent
+**Key Functions:**
+- `handleParsedMessage(parsed, sessionId)` - Main message processor
+- Individual handlers for each message type
+
+### `useTerminalStatus`
+
+Manages terminal communication and cursor session mapping.
+
+**Responsibilities:**
+- Set up centralized log router
+- Route logs to appropriate session handlers
+- Provide terminal status information
+- Manage cursor session ID mapping
+
+**Key Functions:**
+- `setupLogRouter()` - Initialize the log routing system
+- `handleCursorLog(payload)` - Process incoming cursor logs
+- `getSessionTerminalStatus(sessionId)` - Get terminal status for a session
+- `getCursorSessionId(sessionId)` - Map internal to cursor session ID
+- `cleanupLogRouter()` - Clean up router resources
+
+**State:**
+- `logRouter` - Reference to the active log router
+- Session status mapping functions
+
+### `useChatSend`
+
+Handles chat input and message sending.
+
+**Responsibilities:**
+- Manage chat input state
+- Handle message submission
+- Integrate with session manager for sending
 
 ## Usage Examples
 
-### Basic Import
+### Basic Session Management
 
-```javascript
-import { useChatSend, normalizePath, handleError } from "./hooks";
+```jsx
+import { useSession } from '../providers/SessionProvider';
+
+function ChatComponent() {
+  const { 
+    sessions, 
+    currentSessionId, 
+    createNewSession, 
+    send 
+  } = useSession();
+
+  const handleNewSession = () => {
+    createNewSession();
+  };
+
+  const handleSend = (text) => {
+    const currentSession = sessions.find(s => s.id === currentSessionId);
+    send(text, currentSession);
+  };
+
+  return (
+    <div>
+      <button onClick={handleNewSession}>New Session</button>
+      {/* Chat UI */}
+    </div>
+  );
+}
 ```
 
-### Using Utility Functions
+### Terminal Status Monitoring
 
-```javascript
-import { verifyAndSwitchWorkingDirectory, generateRunId } from "./hooks";
+```jsx
+import { useSession } from '../providers/SessionProvider';
 
-// Check and switch working directory
-const isVerified = await verifyAndSwitchWorkingDirectory("/path/to/project");
+function TerminalStatus() {
+  const { 
+    getCurrentTerminalSession,
+    getAllSessionsTerminalStatus 
+  } = useSession();
 
-// Generate unique run ID
-const runId = generateRunId();
+  const currentTerminal = getCurrentTerminalSession();
+  const allStatuses = getAllSessionsTerminalStatus();
+
+  return (
+    <div>
+      <h3>Current Terminal: {currentTerminal?.name}</h3>
+      <div>
+        {allStatuses.map(status => (
+          <div key={status.id}>
+            {status.name} - {status.runningTerminal ? 'Running' : 'Idle'}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 ```
 
-### Using Message Handlers
+### Message Processing
 
-```javascript
-import { createLogStreamHandler } from "./hooks";
+```jsx
+import { useMessageHandler } from './hooks/useMessageHandler';
 
-const logHandler = createLogStreamHandler({
-  runId: "abc123",
-  currentSessionId: "session1",
-  // ... other context
-});
+function MessageProcessor({ addMessageToSession, updateSessionWithCursorId }) {
+  const messageHandler = useMessageHandler(addMessageToSession, updateSessionWithCursorId);
 
-// Subscribe to logs
-const unsubscribe = window.cursovable.onCursorLog(logHandler);
+  const processMessage = (parsedMessage, sessionId) => {
+    messageHandler.handleParsedMessage(parsedMessage, sessionId);
+  };
+
+  return (
+    <div>
+      {/* Message processing UI */}
+    </div>
+  );
+}
 ```
 
-### Using Session Management
+## State Flow
 
-```javascript
-import { addUserMessage, createStreamingMessage } from "./hooks";
-
-// Add user message
-addUserMessage({
-  text: "Hello world",
-  currentSessionId: "session1",
-  // ... other context
-});
-
-// Create streaming message
-const streamIndex = createStreamingMessage({
-  setMessages,
-  streamIndexRef,
-});
-```
+1. **User Input** → `useChatSend` → `useSessionManager.send()`
+2. **Cursor Execution** → `useTerminalStatus.setupLogRouter()` → Log routing
+3. **Message Processing** → `useMessageHandler.handleParsedMessage()` → Session updates
+4. **State Updates** → React re-renders with new session/message state
 
 ## Benefits of This Architecture
 
-1. **Reusability** - Functions can be imported and used in other components
-2. **Testability** - Each function can be unit tested independently
-3. **Maintainability** - Easier to understand and modify specific functionality
-4. **Separation of Concerns** - Each module has a clear, focused responsibility
-5. **Code Organization** - Related functionality is grouped together logically
+1. **Separation of Concerns** - Each hook has a specific responsibility
+2. **Reusability** - Hooks can be used independently in different components
+3. **Testability** - Individual hooks can be tested in isolation
+4. **Maintainability** - Clear structure makes debugging and updates easier
+5. **Performance** - Optimized with useCallback and proper dependency management
+6. **Type Safety** - Clear interfaces between hooks
 
-## Migration Notes
+## Error Handling
 
-The original `useChatSend` hook functionality remains exactly the same from the consumer's perspective. All the refactoring is internal, so existing code will continue to work without changes.
+All hooks include comprehensive error handling:
+- Try-catch blocks around critical operations
+- Console logging for debugging
+- Graceful fallbacks for missing data
+- Error messages added to sessions when operations fail
 
-To use the new modular functions in other components, simply import them from the hooks directory:
+## Performance Considerations
 
-```javascript
-import {
-  normalizePath,
-  handleError,
-  createLogStreamHandler,
-} from "../Chat/hooks";
-```
+- Uses `useCallback` for function memoization
+- Minimizes unnecessary re-renders
+- Efficient state updates with Map-based structures
+- Proper cleanup of event listeners and resources
