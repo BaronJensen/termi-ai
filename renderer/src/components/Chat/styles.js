@@ -147,6 +147,24 @@ export const styles = `
         background: linear-gradient(135deg, rgba(59, 130, 246, 0.05) 0%, rgba(99, 102, 241, 0.05) 100%);
       }
       
+      .bubble.tool-call {
+        border-left: 3px solid #3b82f6;
+        background: linear-gradient(135deg, rgba(59, 130, 246, 0.05) 0%, rgba(139, 92, 246, 0.05) 100%);
+        border: 1px solid rgba(59, 130, 246, 0.2);
+        animation: toolCallPulse 2s ease-in-out infinite;
+      }
+      
+      @keyframes toolCallPulse {
+        0%, 100% { 
+          border-color: rgba(59, 130, 246, 0.2);
+          box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.1);
+        }
+        50% { 
+          border-color: rgba(59, 130, 246, 0.4);
+          box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.1);
+        }
+      }
+      
       .streaming-text {
         position: relative;
       }

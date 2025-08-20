@@ -36,7 +36,10 @@ export default function MessageList({ messages, toolCalls, searchQuery, cwd, str
                 searchQuery={searchQuery}
                 cwd={cwd || ''}
                 streamingText={streamingText}
-                messageType={m.isResult ? 'result' : m.isStreaming ? 'streaming' : m.who}
+                messageType={m.isResult ? 'result' : m.isToolCall ? 'tool' : m.isStreaming ? 'streaming' : m.who}
+                isToolCall={m.isToolCall}
+                toolCallData={m.toolCallData}
+                toolCallSubtype={m.toolCallSubtype}
               >
                 {m.text}
               </Bubble>

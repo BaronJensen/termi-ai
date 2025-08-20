@@ -38,7 +38,7 @@ export default function StatusIndicators({ busy, onPlayMiniGame, isMiniGameOpen 
           onClick={onPlayMiniGame}
           style={{
             padding: '8px 16px',
-            background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+            background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
             color: 'white',
             border: 'none',
             borderRadius: '8px',
@@ -46,32 +46,20 @@ export default function StatusIndicators({ busy, onPlayMiniGame, isMiniGameOpen 
             fontSize: '13px',
             fontWeight: '600',
             transition: 'all 0.2s ease',
-            boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+            boxShadow: '0 2px 4px rgba(59,130,246,0.2)'
           }}
           onMouseEnter={(e) => {
             e.target.style.transform = 'translateY(-1px)';
-            e.target.style.boxShadow = '0 4px 8px rgba(0,0,0,0.3)';
+            e.target.style.boxShadow = '0 4px 8px rgba(59,130,246,0.3)';
           }}
           onMouseLeave={(e) => {
             e.target.style.transform = 'translateY(0)';
-            e.target.style.boxShadow = '0 2px 4px rgba(0,0,0,0.2)';
+            e.target.style.boxShadow = '0 2px 4px rgba(59,130,246,0.2)';
           }}
         >
           🎮 Play Mini-Game
         </button>
       )}
-      
-      <button
-        onClick={() => {
-          const text = '🤔 Thinking... Processing your request with cursor-agent...';
-          navigator.clipboard.writeText(text);
-        }}
-        className="copy-button"
-        title="Copy status message"
-        aria-label="Copy status message"
-      >
-        Copy
-      </button>
     </div>
   );
 }

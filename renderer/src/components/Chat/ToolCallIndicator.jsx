@@ -65,18 +65,6 @@ export default function ToolCallIndicator({ toolCall, isCompleted = false, rawDa
       <span style={{ color: isCompleted ? '#4ade80' : '#fbbf24', fontSize: '10px', marginLeft: 'auto' }}>
         {isCompleted ? 'Completed' : 'Running...'}
       </span>
-
-  
-      <button
-        onClick={() => {
-          const toolInfo = `Tool: ${toolName}${fullText ? ` - ${fullText}` : ''} | Status: ${isCompleted ? 'Completed' : 'Running...'}`;
-          navigator.clipboard.writeText(toolInfo);
-        }}
-        className="copy-button"
-        title="Copy tool call info"
-      >
-        Copy
-      </button>
     </div>
   );
 }

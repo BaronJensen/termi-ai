@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { marked } from 'marked';
 import ActionLog from './ActionLog';
+import ToolCallIndicator from './ToolCallIndicator';
 
 export default function Bubble({
   who,
@@ -8,9 +9,13 @@ export default function Bubble({
   showActionLog = false,
   toolCalls = null,
   cwd = '',
-  messageType = 'user'
+  messageType = 'user',
+  isToolCall = false,
+  toolCallData = null,
+  toolCallSubtype = null
 }) {
   const [isActionLogExpanded, setIsActionLogExpanded] = useState(false);
+  
   // Define background colors for different message types
   const getMessageStyle = () => {
     const baseStyle = {
@@ -43,6 +48,13 @@ export default function Bubble({
           background: 'transparent',
           color: '#f0fdf4', 
           border: 'none'
+        };
+        
+      case 'tool':
+        return {
+          ...baseStyle,
+          background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.05) 0%, rgba(139, 92, 246, 0.05) 100%)',
+          color: '#e5e7eb',
 
         };
 
@@ -57,40 +69,64 @@ export default function Bubble({
     }
   };
 
-  const content = (
-    <div
-      dangerouslySetInnerHTML={{
-        __html: marked.parse(children || '', {
-          breaks: true,
-          gfm: true,
-          headerIds: false,
-          mangle: false,
-          sanitize: false,
-          smartLists: true,
-          smartypants: true,
-          xhtml: false,
-          highlight: null,
-          langPrefix: 'language-',
-          pedantic: false,
-          renderer: new marked.Renderer()
-        }),
-      }}
-      style={{ userSelect: 'text', cursor: 'text', lineHeight: 0.9, fontSize: 12 }}
-      className={`markdown-content`}
-    />
-  );
+  // Render tool call content using ToolCallIndicator
+  const renderToolCallContent = () => {
+    if (!isToolCall || !toolCallData) {
+      return null;
+    }
+    
+    const isCompleted = toolCallSubtype === 'completed' || toolCallSubtype === 'end' || toolCallSubtype === 'finished';
+    
+    return (
+      <ToolCallIndicator
+        toolCall={toolCallData}
+        isCompleted={isCompleted}
+        rawData={toolCallData}
+        cwd={cwd}
+      />
+    );
+  };
 
+  // Render regular content for non-tool-call messages
+  const renderRegularContent = () => {
+    if (isToolCall) {
+      return null;
+    }
+    
+    return (
+      <div
+        dangerouslySetInnerHTML={{
+          __html: marked.parse(children || '', {
+            breaks: true,
+            gfm: true,
+            headerIds: false,
+            mangle: false,
+            sanitize: false,
+            smartLists: true,
+            smartypants: true,
+            xhtml: false,
+            highlight: null,
+            langPrefix: 'language-',
+            pedantic: false,
+            renderer: new marked.Renderer()
+          }),
+        }}
+        style={{ userSelect: 'text', cursor: 'text', lineHeight: 0.9, fontSize: 12 }}
+        className={`markdown-content`}
+      />
+    );
+  };
 
   return (
     <div
-      className={`bubble ${who}`}
+      className={`bubble ${who}${isToolCall ? ' tool-call' : ''}`}
       style={getMessageStyle()}
       // Do not block the native context menu or key events here
       tabIndex={0}
     >
-
-      {/* Removed raw JSON hover overlay */}
-      {content}
+      {/* Render tool call content or regular content */}
+      {renderToolCallContent()}
+      {renderRegularContent()}
 
       {showActionLog && toolCalls && (
         <ActionLog

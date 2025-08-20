@@ -122,6 +122,20 @@ export default function Chat({ cwd, initialMessage, projectId, onPlayMiniGame, o
     const scroller = useRef(null);
     const unsubRef = useRef(null);
     
+    // Enhanced auto-scroll function
+    const scrollToBottom = useCallback((behavior = 'smooth', delay = 100) => {
+      if (scroller.current) {
+        setTimeout(() => {
+          if (scroller.current) {
+            scroller.current.scrollTo({
+              top: scroller.current.scrollHeight,
+              behavior: behavior
+            });
+          }
+        }, delay);
+      }
+    }, []);
+    
 
     
     // Get session status information for debugging
@@ -220,14 +234,10 @@ export default function Chat({ cwd, initialMessage, projectId, onPlayMiniGame, o
       if (scroller.current && messages.length > 0) {
         const shouldScroll = scroller.current.scrollTop + scroller.current.clientHeight >= scroller.current.scrollHeight - 100;
         if (shouldScroll) {
-          setTimeout(() => {
-            if (scroller.current) {
-              scroller.current.scrollTop = scroller.current.scrollHeight;
-            }
-          }, 100);
+          scrollToBottom('smooth', 100);
         }
       }
-    }, [messages]);
+    }, [messages, scrollToBottom]);
 
     // Reset textarea height when input changes
     useEffect(() => {
@@ -284,10 +294,47 @@ export default function Chat({ cwd, initialMessage, projectId, onPlayMiniGame, o
   
      // Auto-scroll to bottom when messages change
      useEffect(() => {
-       if (scroller.current) {
-         scroller.current.scrollTop = scroller.current.scrollHeight;
+       scrollToBottom('smooth', 50);
+     }, [messages, currentSessionId, busyBySession, scrollToBottom]);
+     
+     // Auto-scroll when streaming text updates
+     useEffect(() => {
+       const streamingText = getCurrentSessionStreamingText();
+       if (streamingText && streamingText.length > 0) {
+         scrollToBottom('smooth', 50);
        }
-     }, [messages, currentSessionId, busyBySession]);
+     }, [getCurrentSessionStreamingText, scrollToBottom]);
+     
+     // Auto-scroll when tool calls update
+     useEffect(() => {
+       const toolCalls = getCurrentSessionToolCalls();
+       if (toolCalls && toolCalls.size > 0) {
+         scrollToBottom('smooth', 100);
+       }
+     }, [getCurrentSessionToolCalls, scrollToBottom]);
+     
+     // Auto-scroll when session busy state changes (new content incoming)
+     useEffect(() => {
+       const isBusy = getCurrentSessionBusy();
+       if (isBusy) {
+         // When session becomes busy, scroll to bottom to show new content area
+         scrollToBottom('smooth', 50);
+       }
+     }, [getCurrentSessionBusy, scrollToBottom]);
+     
+     // Auto-scroll when mini-game closes to ensure chat is visible
+     useEffect(() => {
+       if (!isMiniGameOpen) {
+         scrollToBottom('smooth', 200);
+       }
+     }, [isMiniGameOpen, scrollToBottom]);
+     
+     // Auto-scroll when search is cleared to return to normal view
+     useEffect(() => {
+       if (!searchQuery) {
+         scrollToBottom('smooth', 100);
+       }
+     }, [searchQuery, scrollToBottom]);
     
     // Use the extracted send hook
     const { sendMessage } = useChatSend({
@@ -365,190 +412,7 @@ export default function Chat({ cwd, initialMessage, projectId, onPlayMiniGame, o
           hideToolCallIndicators={getCurrentSessionHideToolCallIndicators()}
           streamingText={getCurrentSessionStreamingText()}
         />
-        
-        {/* Debug tool calls */}
-        {process.env.NODE_ENV === 'development' && (
-          <div style={{
-            padding: '8px',
-            margin: '8px',
-            background: '#1f2937',
-            border: '1px solid #374151',
-            borderRadius: '4px',
-            fontSize: '10px',
-            color: '#d1d5db'
-          }}>
-            <strong>Debug Tool Calls:</strong><br/>
-            Current Session ID: {currentSessionId}<br/>
-            Tool Calls: {JSON.stringify(Array.from(getCurrentSessionToolCalls().entries()))}<br/>
-            Hide Indicators: {getCurrentSessionHideToolCallIndicators() ? 'true' : 'false'}<br/>
-            All Tool Calls: {JSON.stringify(Array.from(toolCallsBySession.entries()))}<br/>
-            <button 
-              onClick={() => {
-                const testToolCall = {
-                  type: 'tool_call',
-                  tool_calls: [{
-                    id: 'test-tool-123',
-                    name: 'test_tool',
-                    args: { test: 'data' }
-                  }]
-                };
-                console.log('🧪 Testing tool call:', testToolCall);
-                // Use the messageHandler from the session manager
-                if (messageHandler) {
-                  messageHandler.handleParsedMessage(testToolCall, currentSessionId);
-                } else {
-                  console.warn('messageHandler not found. Cannot trigger tool call.');
-                }
-              }}
-              style={{
-                marginTop: '8px',
-                padding: '4px 8px',
-                background: '#3b82f6',
-                color: 'white',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: 'pointer',
-                fontSize: '10px'
-              }}
-            >
-              Test Tool Call
-            </button>
-            
-            <hr style={{ margin: '8px 0', border: '1px solid #374151' }} />
-            
-            <strong>Terminal Logs:</strong><br/>
-            {(() => {
-              try {
-                const stats = getTerminalLogStats();
-                console.log('🔍 Terminal log stats:', stats);
-                return (
-                  <>
-                    Total Sessions: {stats.totalSessions}<br/>
-                    Total Logs: {stats.totalLogs}<br/>
-                    Current Session Logs: {stats.sessionDetails[currentSessionId]?.logCount || 0}<br/>
-                  </>
-                );
-              } catch (error) {
-                console.error('❌ Error getting terminal log stats:', error);
-                return (
-                  <>
-                    Error getting stats: {error.message}<br/>
-                    <button 
-                      onClick={() => {
-                        try {
-                          console.log('🔍 Manual terminal logs check:');
-                          console.log('terminalLogs:', terminalLogs);
-                          console.log('getTerminalLogStats function:', getTerminalLogStats);
-                          console.log('clearSessionTerminalLogs function:', clearSessionTerminalLogs);
-                          console.log('clearAllTerminalLogs function:', clearAllTerminalLogs);
-                        } catch (e) {
-                          console.error('Manual check failed:', e);
-                        }
-                      }}
-                      style={{
-                        padding: '2px 4px',
-                        background: '#f59e0b',
-                        color: 'white',
-                        border: 'none',
-                        borderRadius: '2px',
-                        cursor: 'pointer',
-                        fontSize: '8px'
-                      }}
-                    >
-                      Debug Functions
-                    </button>
-                  </>
-                );
-              }
-            })()}
-            
-            <div style={{ marginTop: '8px' }}>
-              <button 
-                onClick={() => {
-                  try {
-                    console.log('🧹 Clearing terminal logs for session:', currentSessionId);
-                    console.log('Before clear - terminalLogs:', terminalLogs);
-                    clearSessionTerminalLogs(currentSessionId);
-                    console.log('After clear - terminalLogs:', terminalLogs);
-                  } catch (error) {
-                    console.error('❌ Error clearing session terminal logs:', error);
-                  }
-                }}
-                style={{
-                  marginRight: '4px',
-                  padding: '4px 8px',
-                  background: '#ef4444',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                  fontSize: '10px'
-                }}
-              >
-                Clear Current Session Logs
-              </button>
-              <button 
-                onClick={() => {
-                  try {
-                    console.log('🧹 Clearing all terminal logs');
-                    console.log('Before clear - terminalLogs:', terminalLogs);
-                    clearAllTerminalLogs();
-                    console.log('After clear - terminalLogs:', terminalLogs);
-                  } catch (error) {
-                    console.error('❌ Error clearing all terminal logs:', error);
-                  }
-                }}
-                style={{
-                  padding: '4px 8px',
-                  background: '#dc2626',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                  fontSize: '10px'
-                }}
-              >
-                Clear All Logs
-              </button>
-              
-              <button 
-                onClick={() => {
-                  try {
-                    console.log('🧪 Testing terminal log functions:');
-                    console.log('terminalLogs type:', typeof terminalLogs);
-                    console.log('terminalLogs:', terminalLogs);
-                    console.log('clearSessionTerminalLogs type:', typeof clearSessionTerminalLogs);
-                    console.log('clearAllTerminalLogs type:', typeof clearAllTerminalLogs);
-                    console.log('getTerminalLogStats type:', typeof getTerminalLogStats);
-                    
-                    if (typeof getTerminalLogStats === 'function') {
-                      const stats = getTerminalLogStats();
-                      console.log('Stats result:', stats);
-                    } else {
-                      console.warn('getTerminalLogStats is not a function');
-                    }
-                  } catch (error) {
-                    console.error('❌ Error testing terminal log functions:', error);
-                  }
-                }}
-                style={{
-                  marginLeft: '4px',
-                  padding: '4px 8px',
-                  background: '#f59e0b',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                  fontSize: '10px'
-                }}
-              >
-                Test Functions
-              </button>
-            </div>
-          </div>
-        )}
-   
-      
+         
         {/* Status indicators at the bottom */}
         <StatusIndicators 
           busy={getCurrentSessionBusy()} 

@@ -166,7 +166,6 @@ export const useMessageHandler = (
   const handleToolCall = useCallback((parsed, sessionId) => {
     console.log(`🔧 Tool call for session ${sessionId}:`, parsed);
     console.log(`🔧 Session ID type: ${typeof sessionId}, value: ${sessionId}`);
-    console.log(`🔧 Parsed message keys:`, Object.keys(parsed));
     console.log(`🔧 Tool call detection:`, {
       type: parsed.type,
       hasToolCalls: !!parsed.tool_calls,
@@ -183,7 +182,28 @@ export const useMessageHandler = (
     if (callId) {
       console.log(`🔧 Setting tool call ${callId} for session ${sessionId}`);
       
-      // Update session tool calls state
+      // Create tool call message to display in chat
+      const toolCallMessage = {
+        id: `tool-${callId}`,
+        who: 'tool',
+        text: `Running ${toolCallData.name || 'tool'}...`,
+        timestamp: Date.now(),
+        isToolCall: true,
+        toolCallId: callId,
+        toolCallData: toolCallData,
+        toolCallSubtype: subtype,
+        rawData: parsed
+      };
+      
+      console.log(`🔧 Created tool call message:`, toolCallMessage);
+      
+      // Instead of adding a new message, replace any existing tool call message
+      // This ensures only one tool call is displayed at a time
+      addMessageToSession(sessionId, toolCallMessage, true); // true = replace existing tool calls
+      
+      console.log(`🔧 Replaced tool call message in session ${sessionId}`);
+      
+      // Update session tool calls state (for backward compatibility and state management)
       setSessionToolCalls(sessionId, prev => {
         console.log(`🔧 Previous tool calls for session ${sessionId}:`, prev);
         console.log(`🔧 Previous tool calls size:`, prev.size);
@@ -249,20 +269,6 @@ export const useMessageHandler = (
           console.warn('Error updating tool calls ref:', error);
         }
       }
-    }
-    
-    // Add tool call message to chat
-    if (parsed.tool_calls?.[0]) {
-      const toolCallMessage = {
-        id: `msg-${Date.now()}-${Math.random().toString(36).slice(2,8)}`,
-        who: 'assistant',
-        text: `Using tool: ${parsed.tool_calls[0].name || 'Unknown tool'}`,
-        timestamp: Date.now(),
-        isToolCall: true,
-        rawData: parsed
-      };
-      
-      addMessageToSession(sessionId, toolCallMessage);
     }
   }, [addMessageToSession, setSessionToolCalls, toolCallsRef]);
 

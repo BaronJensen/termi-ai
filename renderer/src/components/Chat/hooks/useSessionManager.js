@@ -627,13 +627,40 @@ export const useSessionManager = (projectId) => {
   }, [sessions, saveSessions, setSessionBusy, updateSessionWithCursorId, clearSessionTerminalLogs]);
 
   // Helper function to add messages to sessions
-  const addMessageToSession = useCallback((sessionId, message) => {
+  const addMessageToSession = useCallback((sessionId, message, replaceToolCalls = false) => {
+    console.log(`📝 addMessageToSession called:`, {
+      sessionId,
+      messageType: message.who,
+      isToolCall: message.isToolCall,
+      replaceToolCalls,
+      messageId: message.id
+    });
+    
     setSessions(prev => {
-      const updated = prev.map(s => 
-        s.id === sessionId 
-          ? { ...s, messages: [...(s.messages || []), message], updatedAt: Date.now() }
-          : s
-      );
+      const updated = prev.map(s => {
+        if (s.id !== sessionId) return s;
+        
+        let newMessages = [...(s.messages || [])];
+        const existingToolCallCount = newMessages.filter(msg => msg.isToolCall).length;
+        
+        if (replaceToolCalls && message.isToolCall) {
+          // Remove any existing tool call messages and add the new one
+          newMessages = newMessages.filter(msg => !msg.isToolCall);
+          const removedCount = existingToolCallCount;
+          console.log(`🧹 Replaced ${removedCount} existing tool call messages with new one:`, {
+            sessionId,
+            removedCount,
+            newMessageId: message.id,
+            newMessageText: message.text
+          });
+        }
+        
+        // Add the new message
+        newMessages.push(message);
+        
+        return { ...s, messages: newMessages, updatedAt: Date.now() };
+      });
+      
       saveSessions(updated);
       return updated;
     });
