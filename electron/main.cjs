@@ -884,6 +884,24 @@ ipcMain.handle('cursor-run', async (_e, { message, cwd, runId: clientRunId, sess
     if (!fs.statSync(workingDir).isDirectory()) {
       throw new Error(`Working directory is not a directory: ${workingDir}`);
     }
+    
+    // Check if we have read and write permissions to the working directory
+    try {
+      fs.accessSync(workingDir, fs.constants.R_OK | fs.constants.W_OK);
+    } catch (permErr) {
+      throw new Error(`Insufficient permissions to read/write in working directory: ${workingDir}. Please check folder permissions.`);
+    }
+    
+    // Test if we can create and delete files in the directory (required for cursor-agent)
+    const testFile = path.join(workingDir, '.cursor-agent-permission-test');
+    try {
+      fs.writeFileSync(testFile, 'test', 'utf8');
+      fs.unlinkSync(testFile);
+    } catch (testErr) {
+      throw new Error(`Working directory exists but cursor-agent cannot create/delete files. Please check write permissions for: ${workingDir}`);
+    }
+    
+    console.log(`✅ Working directory permissions verified: ${workingDir}`);
   } catch (err) {
     throw new Error(`Invalid working directory: ${err.message}`);
   }
@@ -986,6 +1004,120 @@ ipcMain.handle('get-working-directory', async () => {
 // Get information about active sessions and their processes
 ipcMain.handle('get-session-info', async () => {
   return getSessionInfo();
+});
+
+// Check and fix directory permissions
+ipcMain.handle('check-directory-permissions', async (_e, { directoryPath }) => {
+  try {
+    const fs = require('fs');
+    const path = require('path');
+    
+    if (!directoryPath || !fs.existsSync(directoryPath)) {
+      return { ok: false, error: 'Directory does not exist' };
+    }
+    
+    const stats = fs.statSync(directoryPath);
+    if (!stats.isDirectory()) {
+      return { ok: false, error: 'Path is not a directory' };
+    }
+    
+    // Check current permissions
+    const canRead = fs.accessSync(directoryPath, fs.constants.R_OK);
+    const canWrite = fs.accessSync(directoryPath, fs.constants.W_OK);
+    const canExecute = fs.accessSync(directoryPath, fs.constants.X_OK);
+    
+    // Get permission string (e.g., "755", "644")
+    const mode = stats.mode;
+    const permissionString = (mode & parseInt('777', 8)).toString(8);
+    
+    // Test file creation/deletion
+    let canCreateFiles = false;
+    let canDeleteFiles = false;
+    const testFile = path.join(directoryPath, '.permission-test-' + Date.now());
+    
+    try {
+      fs.writeFileSync(testFile, 'test', 'utf8');
+      canCreateFiles = true;
+      fs.unlinkSync(testFile);
+      canDeleteFiles = true;
+    } catch (testErr) {
+      // Clean up if we created but couldn't delete
+      try { fs.unlinkSync(testFile); } catch {}
+    }
+    
+    return {
+      ok: true,
+      permissions: {
+        read: canRead !== undefined,
+        write: canWrite !== undefined,
+        execute: canExecute !== undefined,
+        createFiles: canCreateFiles,
+        deleteFiles: canDeleteFiles,
+        mode: permissionString,
+        owner: stats.uid,
+        group: stats.gid
+      },
+      recommendations: []
+    };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
+// Attempt to fix directory permissions (macOS specific)
+ipcMain.handle('fix-directory-permissions', async (_e, { directoryPath }) => {
+  try {
+    const fs = require('fs');
+    const { exec } = require('child_process');
+    const util = require('util');
+    const execAsync = util.promisify(exec);
+    
+    if (!directoryPath || !fs.existsSync(directoryPath)) {
+      return { ok: false, error: 'Directory does not exist' };
+    }
+    
+    // On macOS, try to fix permissions using chmod
+    if (process.platform === 'darwin') {
+      try {
+        // Make directory readable, writable, and executable by owner
+        await execAsync(`chmod 755 "${directoryPath}"`);
+        
+        // Try to change ownership to current user if possible
+        const currentUser = process.env.USER || process.env.USERNAME;
+        if (currentUser) {
+          try {
+            await execAsync(`chown "${currentUser}" "${directoryPath}"`);
+          } catch (chownErr) {
+            console.warn('Could not change ownership (may require sudo):', chownErr.message);
+          }
+        }
+        
+        // Verify the fix worked
+        const stats = fs.statSync(directoryPath);
+        const mode = (stats.mode & parseInt('777', 8)).toString(8);
+        
+        return {
+          ok: true,
+          message: `Permissions fixed successfully. New mode: ${mode}`,
+          newMode: mode
+        };
+      } catch (chmodErr) {
+        return {
+          ok: false,
+          error: `Failed to fix permissions: ${chmodErr.message}. You may need to run the app with elevated privileges.`,
+          suggestion: 'Try running the app with sudo or check folder permissions in Finder'
+        };
+      }
+    } else {
+      return {
+        ok: false,
+        error: 'Permission fixing is currently only supported on macOS',
+        suggestion: 'Please manually check and fix folder permissions'
+      };
+    }
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
 });
 
 // Kill all processes for a specific session
@@ -1845,19 +1977,59 @@ ipcMain.handle('packages-install', async (_e, { folderPath, manager = 'yarn' }) 
 ipcMain.handle('project-create', async (_e, { parentDir, projectName, template, prompt }) => {
   try {
     if (!parentDir || !projectName) throw new Error('Missing parentDir or projectName');
+    
+    // Check if parent directory exists and is accessible
     if (!fs.existsSync(parentDir) || !fs.statSync(parentDir).isDirectory()) {
       throw new Error('Parent directory does not exist or is not a directory');
     }
+    
+    // Check parent directory permissions
+    try {
+      fs.accessSync(parentDir, fs.constants.W_OK);
+    } catch (permErr) {
+      throw new Error(`Insufficient permissions to write to parent directory: ${parentDir}. Please check folder permissions.`);
+    }
+    
     const safeName = projectName.replace(/[^a-zA-Z0-9-_]/g, '-');
     const targetDir = path.join(parentDir, safeName);
+    
     if (fs.existsSync(targetDir)) {
       throw new Error('Target folder already exists');
     }
+    
+    // Create the project directory
     fs.mkdirSync(targetDir, { recursive: true });
+    
+    // Verify we can write to the created directory
+    try {
+      fs.accessSync(targetDir, fs.constants.W_OK);
+    } catch (permErr) {
+      // Clean up the created directory if we can't write to it
+      try {
+        fs.rmdirSync(targetDir);
+      } catch (cleanupErr) {
+        console.warn('Failed to cleanup directory after permission error:', cleanupErr.message);
+      }
+      throw new Error(`Insufficient permissions to write to created project directory: ${targetDir}. Please check folder permissions.`);
+    }
+    
+    // Create project setup file
     const md = `# Project Setup\n\n- Name: ${projectName}\n- Template: ${template}\n- Created: ${new Date().toISOString()}\n\n## Prompt\n\n${prompt || ''}\n`;
     fs.writeFileSync(path.join(targetDir, 'project-setup.md'), md, 'utf8');
+    
+    // Test write permissions by creating a temporary file
+    const testFile = path.join(targetDir, '.permission-test');
+    try {
+      fs.writeFileSync(testFile, 'test', 'utf8');
+      fs.unlinkSync(testFile);
+    } catch (testErr) {
+      throw new Error(`Project directory created but cursor-agent may not have sufficient permissions to work properly. Please check folder permissions for: ${targetDir}`);
+    }
+    
+    console.log(`✅ Project created successfully: ${targetDir}`);
     return { ok: true, path: targetDir };
   } catch (err) {
+    console.error('Project creation failed:', err.message);
     return { ok: false, error: err.message };
   }
 });

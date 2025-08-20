@@ -31,7 +31,8 @@ export function useChatSend({
   getCurrentSessionToolCalls,
   setSessionHideToolCallIndicators,
   markSessionRunningTerminal,
-  send // Get the centralized send function from SessionProvider
+  send, // Get the centralized send function from SessionProvider
+  clearInput // Function to clear the input field after sending
 }) {
   const sendMessage = useCallback(async (text) => {
     console.log(`🔍 useChatSend.sendMessage called with:`, { text, textType: typeof text, textLength: text?.length });
@@ -64,6 +65,12 @@ export function useChatSend({
       // Use the centralized send function from SessionProvider
       await send(text, currentSession);
       console.log(`✅ Message sent successfully via SessionProvider.send`);
+      
+      // Clear the input field after successful send
+      if (clearInput && typeof clearInput === 'function') {
+        clearInput();
+        console.log(`🧹 Input field cleared after successful send`);
+      }
     } catch (error) {
       console.error(`❌ Error sending message via SessionProvider.send:`, error);
       
@@ -73,7 +80,7 @@ export function useChatSend({
       // Mark session as not busy
       setSessionBusy(currentSessionId, false);
     }
-  }, [currentSessionId, sessions, markSessionRunningTerminal, send, setSessionBusy]);
+  }, [currentSessionId, sessions, markSessionRunningTerminal, send, setSessionBusy, clearInput]);
 
   return { sendMessage };
 }

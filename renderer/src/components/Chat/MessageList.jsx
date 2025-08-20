@@ -2,7 +2,14 @@ import React from 'react';
 import Bubble from './Bubble';
 import StreamingTextDisplay from './StreamingTextDisplay';
 
-export default function MessageList({ messages, toolCalls, searchQuery, cwd, streamingText }) {
+export default function MessageList({ 
+  messages, 
+  toolCalls, 
+  searchQuery, 
+  cwd, 
+  streamingText,
+  scroller 
+}) {
   // Find the last user message index to place streaming text after it
   const lastUserMessageIndex = messages.map((msg, index) => ({ msg, index }))
     .filter(({ msg }) => msg.who === 'user')
@@ -13,7 +20,7 @@ export default function MessageList({ messages, toolCalls, searchQuery, cwd, str
   const showStreamingTextAtEnd = shouldShowStreamingText && lastUserMessageIndex === -1;
 
   return (
-    <div className="messages" ref={null}>
+    <div className="message-list" ref={scroller}>
       {messages.length === 0 ? (
         <div style={{
           padding: '20px',

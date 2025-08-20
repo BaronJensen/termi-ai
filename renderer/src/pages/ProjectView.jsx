@@ -52,21 +52,21 @@ function ProjectViewInner({ projectId, onBack, initialMessage }) {
   // Commit modal state
   const [showCommit, setShowCommit] = useState(false);
   const [isMiniGameOpen, setIsMiniGameOpen] = useState(false); // Mini-game state
-  const [gameTimeLeft, setGameTimeLeft] = useState(30); // Timer state
+  const [gameTimeLeft, setGameTimeLeft] = useState(12); // Timer state
 
   // Mini-game handlers
   const handlePlayMiniGame = () => {
     console.log('🎮 Play mini-game button clicked');
     setIsMiniGameOpen(true);
-    setGameTimeLeft(30); // Reset timer to 30, but don't start counting yet
+    setGameTimeLeft(12); // Reset timer to 12, but don't start counting yet
     console.log('🎮 Mini-game state set to:', true);
-    console.log('⏰ Timer ready: 30 seconds (will start when session is not busy)');
+    console.log('⏰ Timer ready: 12 seconds (will start when session is not busy)');
   };
 
   const handleCloseMiniGame = () => {
     console.log('🚀 Close mini-game button clicked');
     setIsMiniGameOpen(false);
-    setGameTimeLeft(30); // Reset timer for next time
+    setGameTimeLeft(12); // Reset timer for next time
     console.log('🎮 Mini-game state set to:', false);
   };
 
@@ -105,7 +105,7 @@ function ProjectViewInner({ projectId, onBack, initialMessage }) {
   useEffect(() => {
     if (isMiniGameOpen) {
       const isSessionBusy = sessionData?.getCurrentSessionBusy?.() || false;
-      if (!isSessionBusy && gameTimeLeft === 30) {
+      if (!isSessionBusy && gameTimeLeft === 12) {
         console.log('🎯 Session became not busy - starting mini-game countdown!');
         // Timer will start in the next render cycle
       }

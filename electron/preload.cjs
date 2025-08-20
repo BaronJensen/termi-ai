@@ -69,5 +69,8 @@ contextBridge.exposeInMainWorld('cursovable', {
   restoreLocalCommit: (opts) => ipcRenderer.invoke('git-restore-local', opts),
   // Debug mode APIs
   setDebugMode: (opts) => ipcRenderer.invoke('debug-mode-set', opts),
-  getDebugMode: () => ipcRenderer.invoke('debug-mode-get')
+  getDebugMode: () => ipcRenderer.invoke('debug-mode-get'),
+  // Permission management APIs
+  checkDirectoryPermissions: (opts) => ipcRenderer.invoke('check-directory-permissions', opts),
+  fixDirectoryPermissions: (opts) => ipcRenderer.invoke('fix-directory-permissions', opts)
 });

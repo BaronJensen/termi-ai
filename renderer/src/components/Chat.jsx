@@ -59,25 +59,6 @@ export default function Chat({ cwd, initialMessage, projectId, onPlayMiniGame, o
       };
     }, []);
 
-    // Debug terminal logs state
-    useEffect(() => {
-      console.log('🔍 Chat component terminal logs debug:');
-      console.log('terminalLogs:', terminalLogs);
-      console.log('getTerminalLogStats function:', getTerminalLogStats);
-      console.log('clearSessionTerminalLogs function:', clearSessionTerminalLogs);
-      console.log('clearAllTerminalLogs function:', clearAllTerminalLogs);
-      console.log('currentSessionId:', currentSessionId);
-      
-      if (terminalLogs && typeof terminalLogs.get === 'function') {
-        console.log('terminalLogs is a Map with size:', terminalLogs.size);
-        console.log('terminalLogs entries:', Array.from(terminalLogs.entries()));
-      } else {
-        console.warn('terminalLogs is not a Map:', terminalLogs);
-      }
-    }, [terminalLogs, getTerminalLogStats, clearSessionTerminalLogs, clearAllTerminalLogs, currentSessionId]);
-
-    
-    
     // Get messages from the current session instead of local state
     const currentSession = sessions.find(s => s.id === currentSessionId);
     const messages = currentSession?.messages || [];
@@ -108,36 +89,60 @@ export default function Chat({ cwd, initialMessage, projectId, onPlayMiniGame, o
       'gpt-4.1-mini'
     ];
 
-
     const [model, setModel] = useState(() => {
       try {
         const stored = localStorage.getItem(modelStorageKey);
         return stored !== null ? stored : '';
       } catch { return ''; }
     });
+    
     // Persist model per project (must be after model is declared)
     useEffect(() => {
       try { localStorage.setItem(modelStorageKey, model); } catch {}
     }, [model, modelStorageKey]);
+    
     const scroller = useRef(null);
     const unsubRef = useRef(null);
-    
-    // Enhanced auto-scroll function
-    const scrollToBottom = useCallback((behavior = 'smooth', delay = 100) => {
-      if (scroller.current) {
-        setTimeout(() => {
-          if (scroller.current) {
-            scroller.current.scrollTo({
-              top: scroller.current.scrollHeight,
-              behavior: behavior
-            });
-          }
-        }, delay);
-      }
-    }, []);
-    
 
-    
+    // Use the extracted send hook
+    const { sendMessage } = useChatSend({
+      currentSessionId,
+      sessions,
+      setSessionBusy,
+      setSessionToolCalls,
+      getCurrentSessionToolCalls,
+      setSessionHideToolCallIndicators,
+      markSessionRunningTerminal,
+      send, // Get the send function from SessionProvider
+      clearInput: () => setInput('') // Function to clear input after sending
+    });
+
+    // Auto-send initial message once when cwd and initialMessage are present
+    const hasAutoSentRef = useRef(false);
+    useEffect(() => {
+      if (!hasAutoSentRef.current && initialMessage && cwd) {
+        hasAutoSentRef.current = true;
+        sendMessage(initialMessage);
+      }
+    }, [initialMessage, cwd, sendMessage]);
+
+    // Debug terminal logs state
+    useEffect(() => {
+      console.log('🔍 Chat component terminal logs debug:');
+      console.log('terminalLogs:', terminalLogs);
+      console.log('getTerminalLogStats function:', getTerminalLogStats);
+      console.log('clearSessionTerminalLogs function:', clearSessionTerminalLogs);
+      console.log('clearAllTerminalLogs function:', clearAllTerminalLogs);
+      console.log('currentSessionId:', currentSessionId);
+      
+      if (terminalLogs && typeof terminalLogs.get === 'function') {
+        console.log('terminalLogs is a Map with size:', terminalLogs.size);
+        console.log('terminalLogs entries:', Array.from(terminalLogs.entries()));
+      } else {
+        console.warn('terminalLogs is not a Map:', terminalLogs);
+      }
+    }, [terminalLogs, getTerminalLogStats, clearSessionTerminalLogs, clearAllTerminalLogs, currentSessionId]);
+
     // Get session status information for debugging
     const getSessionStatus = () => {
       return {
@@ -198,6 +203,15 @@ export default function Chat({ cwd, initialMessage, projectId, onPlayMiniGame, o
 
     // (Removed debug session storage helper)
 
+    // Reset textarea height when input changes
+    useEffect(() => {
+      const textarea = document.querySelector('textarea');
+      if (textarea) {
+        textarea.style.height = 'auto';
+        textarea.style.height = Math.min(textarea.scrollHeight, 200) + 'px';
+      }
+    }, [input]);
+
     // Check terminal status on mount and when current session's busy state changes
     const checkTerminalStatus = useCallback(async () => {
       try {
@@ -223,29 +237,12 @@ export default function Chat({ cwd, initialMessage, projectId, onPlayMiniGame, o
         // }]); // This line is removed
       }
     }, []);
-    
+
+    // Check terminal status on mount and when current session's busy state changes
     useEffect(() => {
       checkTerminalStatus();
     }, [currentSessionId, busyBySession, checkTerminalStatus]);
     
-    
-    // Auto-scroll to bottom when new messages are added
-    useEffect(() => {
-      if (scroller.current && messages.length > 0) {
-        const shouldScroll = scroller.current.scrollTop + scroller.current.clientHeight >= scroller.current.scrollHeight - 100;
-        if (shouldScroll) {
-          scrollToBottom('smooth', 100);
-        }
-      }
-    }, [messages, scrollToBottom]);
-
-    // Reset textarea height when input changes
-    useEffect(() => {
-      const textarea = document.querySelector('.input textarea');
-      if (textarea && !input) {
-        textarea.style.height = '64px';
-      }
-    }, [input]);
     
     // Navigate to next/previous search result
     const navigateSearch = (direction) => {
@@ -291,72 +288,6 @@ export default function Chat({ cwd, initialMessage, projectId, onPlayMiniGame, o
       document.addEventListener('keydown', handleKeyDown);
       return () => document.removeEventListener('keydown', handleKeyDown);
     }, [showSearch, searchQuery, filteredMessages.length]);
-  
-     // Auto-scroll to bottom when messages change
-     useEffect(() => {
-       scrollToBottom('smooth', 50);
-     }, [messages, currentSessionId, busyBySession, scrollToBottom]);
-     
-     // Auto-scroll when streaming text updates
-     useEffect(() => {
-       const streamingText = getCurrentSessionStreamingText();
-       if (streamingText && streamingText.length > 0) {
-         scrollToBottom('smooth', 50);
-       }
-     }, [getCurrentSessionStreamingText, scrollToBottom]);
-     
-     // Auto-scroll when tool calls update
-     useEffect(() => {
-       const toolCalls = getCurrentSessionToolCalls();
-       if (toolCalls && toolCalls.size > 0) {
-         scrollToBottom('smooth', 100);
-       }
-     }, [getCurrentSessionToolCalls, scrollToBottom]);
-     
-     // Auto-scroll when session busy state changes (new content incoming)
-     useEffect(() => {
-       const isBusy = getCurrentSessionBusy();
-       if (isBusy) {
-         // When session becomes busy, scroll to bottom to show new content area
-         scrollToBottom('smooth', 50);
-       }
-     }, [getCurrentSessionBusy, scrollToBottom]);
-     
-     // Auto-scroll when mini-game closes to ensure chat is visible
-     useEffect(() => {
-       if (!isMiniGameOpen) {
-         scrollToBottom('smooth', 200);
-       }
-     }, [isMiniGameOpen, scrollToBottom]);
-     
-     // Auto-scroll when search is cleared to return to normal view
-     useEffect(() => {
-       if (!searchQuery) {
-         scrollToBottom('smooth', 100);
-       }
-     }, [searchQuery, scrollToBottom]);
-    
-    // Use the extracted send hook
-    const { sendMessage } = useChatSend({
-      currentSessionId,
-      sessions,
-      setSessionBusy,
-      setSessionToolCalls,
-      getCurrentSessionToolCalls,
-      setSessionHideToolCallIndicators,
-      markSessionRunningTerminal,
-      send // Get the send function from SessionProvider
-    });
-
- 
-    // Auto-send initial message once when cwd and initialMessage are present
-    const hasAutoSentRef = useRef(false);
-    useEffect(() => {
-      if (!hasAutoSentRef.current && initialMessage && cwd) {
-        hasAutoSentRef.current = true;
-        sendMessage(initialMessage);
-      }
-    }, [initialMessage, cwd]);
 
     // Ensure we unsubscribe from any log listener on unmount to avoid leaks
     useEffect(() => {
@@ -411,6 +342,10 @@ export default function Chat({ cwd, initialMessage, projectId, onPlayMiniGame, o
           cwd={cwd}
           hideToolCallIndicators={getCurrentSessionHideToolCallIndicators()}
           streamingText={getCurrentSessionStreamingText()}
+          currentSessionId={currentSessionId}
+          projectId={projectId}
+          isMiniGameOpen={isMiniGameOpen}
+          showSessionList={showSessionList}
         />
          
         {/* Status indicators at the bottom */}

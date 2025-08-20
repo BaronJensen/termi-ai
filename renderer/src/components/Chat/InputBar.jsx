@@ -33,7 +33,7 @@ export default function InputBar({
   // Show close game button when mini-game is open
   if (isMiniGameOpen) {
     // Blue button when busy (to return to work), Red button when not busy (to close game)
-    const isUrgent = gameTimeLeft <= 10;
+    const isUrgent = gameTimeLeft <= 5;
     const showBlueButton = isSessionBusy; // When busy, show blue "Let's go back to work"
     const showRedButton = !isSessionBusy;  // When not busy, show red "Close Game"
 

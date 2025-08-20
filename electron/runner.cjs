@@ -370,6 +370,29 @@ function startCursorAgent(message, sessionObject, onLog, options = {}) {
     return startMockCursorAgent(message, sessionObject, onLog, options);
   }
   
+  // Check permissions before starting cursor-agent
+  if (options.cwd) {
+    try {
+      const fs = require('fs');
+      fs.accessSync(options.cwd, fs.constants.R_OK | fs.constants.W_OK);
+      
+      // Test file creation/deletion
+      const testFile = require('path').join(options.cwd, '.cursor-agent-startup-test');
+      fs.writeFileSync(testFile, 'test', 'utf8');
+      fs.unlinkSync(testFile);
+    } catch (permErr) {
+      if (onLog) onLog('error', `[${sessionObject?.id ? `Session ${sessionObject.id.slice(0, 8)}` : 'Default'}] Permission check failed: ${permErr.message}`);
+      return {
+        child: null,
+        wait: Promise.resolve({ 
+          type: 'error', 
+          error: `Permission denied: cursor-agent cannot read/write in working directory: ${options.cwd}. Please check folder permissions.`,
+          permission_error: true
+        })
+      };
+    }
+  }
+  
   let timeoutId = null;
   let idleTimeoutId = null;
   let settled = false;
@@ -491,6 +514,7 @@ function startCursorAgent(message, sessionObject, onLog, options = {}) {
             settled = true;
             clearTimeout(timeoutId);
             clearTimeout(idleTimeoutId);
+            clearTimeout(quickTimeoutId);
             try { 
               if (childRef && typeof childRef.kill === 'function') {
                 childRef.kill('SIGTERM');
@@ -550,6 +574,7 @@ function startCursorAgent(message, sessionObject, onLog, options = {}) {
       settled = true;
       clearTimeout(timeoutId);
       clearTimeout(idleTimeoutId);
+      clearTimeout(quickTimeoutId);
       try { 
         if (childRef && typeof childRef.kill === 'function') {
           childRef.kill('SIGTERM');
@@ -600,6 +625,7 @@ function startCursorAgent(message, sessionObject, onLog, options = {}) {
               settled = true;
               clearTimeout(timeoutId);
               clearTimeout(idleTimeoutId);
+              clearTimeout(quickTimeoutId);
               resolve(normalized);
               return;
             }
@@ -611,12 +637,14 @@ function startCursorAgent(message, sessionObject, onLog, options = {}) {
         settled = true;
         clearTimeout(timeoutId);
         clearTimeout(idleTimeoutId);
+        clearTimeout(quickTimeoutId);
         reject(new Error(`[${sessionLabel}] cursor-agent exited with code ${code}. Output:\n${buffer}`));
       } else if (!settled) {
         // could have been success without our pattern
         settled = true;
         clearTimeout(timeoutId);
         clearTimeout(idleTimeoutId);
+        clearTimeout(quickTimeoutId);
         resolve({ type: 'raw', output: buffer });
       }
     };
@@ -683,6 +711,20 @@ function startCursorAgent(message, sessionObject, onLog, options = {}) {
         resolve({ type: 'raw', output: buffer, idle_timeout: true });
       }
     }, 10000); // Check every 10 seconds - less frequent checking
+
+    // Quick timeout for permission-related issues (cursor-agent getting stuck)
+    const quickTimeoutMs = 30000; // 30 seconds for permission issues
+    const quickTimeoutId = setTimeout(() => {
+      if (settled) return;
+      if (onLog) onLog('warn', `[${sessionLabel}] Quick timeout after ${quickTimeoutMs}ms - cursor-agent may be stuck due to permissions`);
+      cleanup();
+      resolve({ 
+        type: 'error', 
+        error: 'cursor-agent appears to be stuck, possibly due to permission issues. Please check folder permissions.',
+        quick_timeout: true,
+        permission_warning: true
+      });
+    }, quickTimeoutMs);
 
     // Overall timeout support
     const timeoutMs = typeof options.timeoutMs === 'number' ? options.timeoutMs : 900000; // 15 min default - increased for long-running commands
