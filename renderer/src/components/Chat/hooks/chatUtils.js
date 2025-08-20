@@ -113,23 +113,62 @@ export const createCursorAgentTimeout = (timeoutMs, runId, onTimeout) => {
  * Normalize tool call data from various formats
  */
 export const normalizeToolCallData = (parsed) => {
-  let callId = parsed.call_id || parsed.id;
-  let toolCallData = parsed.tool_call;
-  let subtype = parsed.subtype || parsed.status || (parsed.result ? 'completed' : (parsed.args ? 'started' : 'update'));
+  console.log('🔧 normalizeToolCallData input:', parsed);
   
-  if (!toolCallData) {
-    const name = (parsed.tool && (parsed.tool.name || parsed.tool.tool || parsed.tool.type)) || parsed.name || 'tool';
-    const args = (parsed.tool && (parsed.tool.args || parsed.tool.parameters)) || parsed.args || {};
+  let callId = null;
+  let toolCallData = null;
+  let subtype = 'started';
+  
+  // Handle tool_calls array format (most common)
+  if (parsed.tool_calls && Array.isArray(parsed.tool_calls) && parsed.tool_calls.length > 0) {
+    const firstToolCall = parsed.tool_calls[0];
+    callId = firstToolCall.id || firstToolCall.call_id || generateRunId();
+    toolCallData = firstToolCall;
+    subtype = firstToolCall.subtype || parsed.subtype || 'started';
+    console.log('🔧 Using tool_calls array format:', { callId, toolCallData, subtype });
+  }
+  // Handle single tool_call format
+  else if (parsed.tool_call) {
+    callId = parsed.tool_call.id || parsed.tool_call.call_id || parsed.call_id || parsed.id || generateRunId();
+    toolCallData = parsed.tool_call;
+    subtype = parsed.tool_call.subtype || parsed.subtype || parsed.status || 'started';
+    console.log('🔧 Using single tool_call format:', { callId, toolCallData, subtype });
+  }
+  // Handle legacy tool format
+  else if (parsed.tool) {
+    callId = parsed.tool.id || parsed.tool.call_id || parsed.call_id || parsed.id || generateRunId();
+    const name = parsed.tool.name || parsed.tool.tool || parsed.tool.type || parsed.name || 'tool';
+    const args = parsed.tool.args || parsed.tool.parameters || parsed.args || {};
     const result = parsed.result;
-    const key = `${String(name).replace(/\s+/g, '')}ToolCall`;
-    toolCallData = { [key]: { args, ...(result !== undefined ? { result } : {}) } };
+    toolCallData = { name, args, result };
+    subtype = parsed.tool.subtype || parsed.subtype || parsed.status || 'started';
+    console.log('🔧 Using legacy tool format:', { callId, toolCallData, subtype });
+  }
+  // Handle direct properties
+  else if (parsed.name === 'tool' || parsed.args) {
+    callId = parsed.call_id || parsed.id || generateRunId();
+    const name = parsed.name || 'tool';
+    const args = parsed.args || {};
+    const result = parsed.result;
+    toolCallData = { name, args, result };
+    subtype = parsed.subtype || parsed.status || (parsed.result ? 'completed' : 'started');
+    console.log('🔧 Using direct properties format:', { callId, toolCallData, subtype });
+  }
+  
+  // Determine subtype based on message content or type
+  if (parsed.type === 'result' || parsed.completed) {
+    subtype = 'completed';
+  } else if (parsed.started) {
+    subtype = 'started';
   }
   
   if (!callId) {
     callId = generateRunId();
   }
   
-  return { callId, toolCallData, subtype };
+  const result = { callId, toolCallData, subtype };
+  console.log('🔧 normalizeToolCallData result:', result);
+  return result;
 };
 
 /**

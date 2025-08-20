@@ -22,11 +22,9 @@ export default function Chat({ cwd, initialMessage, projectId }) {
       busyBySession,
       toolCallsBySession,
       hideToolCallIndicatorsBySession,
-      streamingTextBySession,
       createNewSession,
       loadSession,
       deleteSession,
-      updateSessionWithCursorId,
       saveCurrentSession,
       markSessionRunningTerminal,
       setSessionBusy,
@@ -36,8 +34,10 @@ export default function Chat({ cwd, initialMessage, projectId }) {
       getCurrentSessionToolCalls,
       getCurrentSessionHideToolCallIndicators,
       getCurrentSessionStreamingText,
-      deriveSessionNameFromMessage,
-      send
+      send,
+      clearSessionTerminalLogs,
+      clearAllTerminalLogs,
+      getTerminalLogStats
     } = useSession();
 
     // Add CSS animations and styles
@@ -341,6 +341,101 @@ export default function Chat({ cwd, initialMessage, projectId }) {
           streamingText={getCurrentSessionStreamingText()}
         />
         
+        {/* Debug tool calls */}
+        {process.env.NODE_ENV === 'development' && (
+          <div style={{
+            padding: '8px',
+            margin: '8px',
+            background: '#1f2937',
+            border: '1px solid #374151',
+            borderRadius: '4px',
+            fontSize: '10px',
+            color: '#d1d5db'
+          }}>
+            <strong>Debug Tool Calls:</strong><br/>
+            Current Session ID: {currentSessionId}<br/>
+            Tool Calls: {JSON.stringify(Array.from(getCurrentSessionToolCalls().entries()))}<br/>
+            Hide Indicators: {getCurrentSessionHideToolCallIndicators() ? 'true' : 'false'}<br/>
+            All Tool Calls: {JSON.stringify(Array.from(toolCallsBySession.entries()))}<br/>
+            <button 
+              onClick={() => {
+                const testToolCall = {
+                  type: 'tool_call',
+                  tool_calls: [{
+                    id: 'test-tool-123',
+                    name: 'test_tool',
+                    args: { test: 'data' }
+                  }]
+                };
+                console.log('🧪 Testing tool call:', testToolCall);
+                // Use the messageHandler from the session manager
+                if (sessionManager && sessionManager.messageHandler) {
+                  sessionManager.messageHandler.handleParsedMessage(testToolCall, currentSessionId);
+                } else {
+                  console.warn('sessionManager not found. Cannot trigger tool call.');
+                }
+              }}
+              style={{
+                marginTop: '8px',
+                padding: '4px 8px',
+                background: '#3b82f6',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                fontSize: '10px'
+              }}
+            >
+              Test Tool Call
+            </button>
+            
+            <hr style={{ margin: '8px 0', border: '1px solid #374151' }} />
+            
+            <strong>Terminal Logs:</strong><br/>
+            {(() => {
+              const stats = getTerminalLogStats();
+              return (
+                <>
+                  Total Sessions: {stats.totalSessions}<br/>
+                  Total Logs: {stats.totalLogs}<br/>
+                  Current Session Logs: {stats.sessionDetails[currentSessionId]?.logCount || 0}<br/>
+                </>
+              );
+            })()}
+            
+            <div style={{ marginTop: '8px' }}>
+              <button 
+                onClick={() => clearSessionTerminalLogs(currentSessionId)}
+                style={{
+                  marginRight: '4px',
+                  padding: '4px 8px',
+                  background: '#ef4444',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '10px'
+                }}
+              >
+                Clear Current Session Logs
+              </button>
+              <button 
+                onClick={clearAllTerminalLogs}
+                style={{
+                  padding: '4px 8px',
+                  background: '#dc2626',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '10px'
+                }}
+              >
+                Clear All Logs
+              </button>
+            </div>
+          </div>
+        )}
    
       
         {/* Status indicators at the bottom */}

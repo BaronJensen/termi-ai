@@ -2,7 +2,6 @@ import React from 'react';
 import { marked } from 'marked';
 
 export default function StreamingTextDisplay({ streamingText, className = '' }) {
-  streamingText = 'Generating response...'
   if (!streamingText || !streamingText.trim().length > 0) {
     return null;
   }

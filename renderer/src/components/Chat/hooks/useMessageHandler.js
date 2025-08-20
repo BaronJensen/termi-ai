@@ -30,6 +30,13 @@ export const useMessageHandler = (
   // Handle different types of parsed messages from cursor sessions
   const handleParsedMessage = useCallback((parsed, sessionId) => {
     console.log(`🔧 Processing message type '${parsed.type}' for session ${sessionId}:`, parsed);
+    console.log(`🔧 Message keys:`, Object.keys(parsed));
+    console.log(`🔧 Tool call indicators:`, {
+      tool_call: !!parsed.tool_call,
+      tool: !!parsed.tool,
+      name: parsed.name,
+      tool_calls: !!parsed.tool_calls
+    });
     
     switch (parsed.type) {
         
@@ -48,6 +55,7 @@ export const useMessageHandler = (
       case 'tool_call':
       case 'tool':
       case 'function_call':
+        console.log(`🔧 Handling tool call message for session ${sessionId}`);
         handleToolCall(parsed, sessionId);
         break;
         
@@ -157,14 +165,30 @@ export const useMessageHandler = (
   // Handle tool calls with comprehensive state management
   const handleToolCall = useCallback((parsed, sessionId) => {
     console.log(`🔧 Tool call for session ${sessionId}:`, parsed);
+    console.log(`🔧 Session ID type: ${typeof sessionId}, value: ${sessionId}`);
+    console.log(`🔧 Parsed message keys:`, Object.keys(parsed));
+    console.log(`🔧 Tool call detection:`, {
+      type: parsed.type,
+      hasToolCalls: !!parsed.tool_calls,
+      hasToolCall: !!parsed.tool_call,
+      hasTool: !!parsed.tool,
+      hasName: !!parsed.name,
+      toolCallsLength: parsed.tool_calls?.length || 0
+    });
     
     // Normalize tool call data (this function should be imported from chatUtils)
     const { callId, toolCallData, subtype } = normalizeToolCallData(parsed);
     console.log('Normalized tool call data:', { callId, toolCallData, subtype });
     
     if (callId) {
+      console.log(`🔧 Setting tool call ${callId} for session ${sessionId}`);
+      
       // Update session tool calls state
       setSessionToolCalls(sessionId, prev => {
+        console.log(`🔧 Previous tool calls for session ${sessionId}:`, prev);
+        console.log(`🔧 Previous tool calls size:`, prev.size);
+        console.log(`🔧 Previous tool calls entries:`, Array.from(prev.entries()));
+        
         const newMap = new Map(prev);
         const existing = newMap.get(callId);
         
@@ -189,6 +213,10 @@ export const useMessageHandler = (
             lastUpdated: Date.now()
           });
         }
+        
+        console.log(`🔧 New tool calls map for session ${sessionId}:`, newMap);
+        console.log(`🔧 New tool calls size:`, newMap.size);
+        console.log(`🔧 New tool calls entries:`, Array.from(newMap.entries()));
         return newMap;
       });
       

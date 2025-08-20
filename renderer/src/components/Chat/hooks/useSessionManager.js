@@ -96,9 +96,14 @@ export const useSessionManager = (projectId) => {
   }, [toolCallsBySession]);
 
   const setSessionToolCalls = useCallback((sessionId, toolCalls) => {
+    console.log(`🔧 setSessionToolCalls called with sessionId: ${sessionId}, toolCalls:`, toolCalls);
+    console.log(`🔧 Session ID type: ${typeof sessionId}, value: ${sessionId}`);
+    
     setToolCallsBySession(prev => {
+      console.log(`🔧 Previous toolCallsBySession:`, prev);
       const next = new Map(prev);
       next.set(sessionId, toolCalls);
+      console.log(`🔧 Updated toolCallsBySession:`, next);
       return next;
     });
   }, []);
@@ -109,6 +114,7 @@ export const useSessionManager = (projectId) => {
       return new Map();
     }
     const toolCalls = getSessionToolCalls(currentSessionId);
+    console.log(`🔧 getCurrentSessionToolCalls for session ${currentSessionId}:`, toolCalls);
     return toolCalls instanceof Map ? toolCalls : new Map();
   }, [currentSessionId, getSessionToolCalls]);
 
@@ -470,6 +476,42 @@ export const useSessionManager = (projectId) => {
     }
   }, [sessions, currentSessionId]);
 
+  // Clear terminal logs for a session to prevent memory overload
+  const clearSessionTerminalLogs = useCallback((sessionId) => {
+    console.log(`🧹 Clearing terminal logs for session ${sessionId}`);
+    setTerminalLogs(prev => {
+      const next = new Map(prev);
+      next.set(sessionId, { cursor: [] });
+      return next;
+    });
+  }, []);
+
+  // Clear all terminal logs for all sessions (global cleanup)
+  const clearAllTerminalLogs = useCallback(() => {
+    console.log(`🧹 Clearing all terminal logs for all sessions`);
+    setTerminalLogs(new Map());
+  }, []);
+
+  // Get terminal log statistics for memory monitoring
+  const getTerminalLogStats = useCallback(() => {
+    const stats = {
+      totalSessions: terminalLogs.size,
+      totalLogs: 0,
+      sessionDetails: {}
+    };
+    
+    for (const [sessionId, logs] of terminalLogs.entries()) {
+      const sessionLogCount = logs.cursor?.length || 0;
+      stats.totalLogs += sessionLogCount;
+      stats.sessionDetails[sessionId] = {
+        logCount: sessionLogCount,
+        hasLogs: sessionLogCount > 0
+      };
+    }
+    
+    return stats;
+  }, [terminalLogs]);
+
   // ===== CURSOR COMMAND EXECUTION =====
   
   const send = useCallback(async (text, fullSessionObj) => {
@@ -504,6 +546,9 @@ export const useSessionManager = (projectId) => {
       saveSessions(updatedSessions);
       return updatedSessions;
     });
+    
+    // Clear terminal logs for this session to prevent memory overload
+    clearSessionTerminalLogs(sessionId);
     
     // Mark session as busy
     setSessionBusy(sessionId, true);
@@ -571,7 +616,7 @@ export const useSessionManager = (projectId) => {
         window.cursovableLogRouter.unregisterHandler(runId);
       }
     }
-  }, [sessions, saveSessions, setSessionBusy, updateSessionWithCursorId]);
+  }, [sessions, saveSessions, setSessionBusy, updateSessionWithCursorId, clearSessionTerminalLogs]);
 
   // Helper function to add messages to sessions
   const addMessageToSession = useCallback((sessionId, message) => {
@@ -914,6 +959,11 @@ export const useSessionManager = (projectId) => {
     getInternalSessionId,
     showTerminal,
     hideTerminal,
-    isTerminalVisible
+    isTerminalVisible,
+    
+    // Terminal log management
+    clearSessionTerminalLogs,
+    clearAllTerminalLogs,
+    getTerminalLogStats
   };
 };
