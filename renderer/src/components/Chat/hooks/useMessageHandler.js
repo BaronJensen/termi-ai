@@ -1,4 +1,5 @@
 import { useCallback } from 'react';
+import { normalizeToolCallData } from './chatUtils';
 
 /**
  * Hook for handling different types of parsed messages from cursor sessions
@@ -9,17 +10,31 @@ import { useCallback } from 'react';
  * 
  * @param {Function} addMessageToSession - Function to add messages to a session
  * @param {Function} updateSessionWithCursorId - Function to update session with cursor session ID
+ * @param {Function} setSessionToolCalls - Function to set tool calls for a session
+ * @param {Function} setSessionHideToolCallIndicators - Function to hide tool call indicators
+ * @param {Function} setSessionBusy - Function to set session busy state
+ * @param {Function} setSessionStreamingText - Function to set streaming text for a session
+ * @param {Object} toolCallsRef - Optional ref to store tool calls for final snapshot
  * @returns {Object} Object with message handling functions
  */
-export const useMessageHandler = (addMessageToSession, updateSessionWithCursorId) => {
+export const useMessageHandler = (
+  addMessageToSession, 
+  updateSessionWithCursorId,
+  setSessionToolCalls,
+  setSessionHideToolCallIndicators,
+  setSessionBusy,
+  setSessionStreamingText,
+  toolCallsRef = null
+) => {
   
   // Handle different types of parsed messages from cursor sessions
   const handleParsedMessage = useCallback((parsed, sessionId) => {
     console.log(`🔧 Processing message type '${parsed.type}' for session ${sessionId}:`, parsed);
     
     switch (parsed.type) {
-      case 'session_start':
-        handleSessionStart(parsed, sessionId);
+        
+      case 'system':
+        handleSystemMessage(parsed, sessionId);
         break;
         
       case 'assistant':
@@ -31,35 +46,9 @@ export const useMessageHandler = (addMessageToSession, updateSessionWithCursorId
         break;
         
       case 'tool_call':
+      case 'tool':
+      case 'function_call':
         handleToolCall(parsed, sessionId);
-        break;
-        
-      case 'tool_result':
-        handleToolResult(parsed, sessionId);
-        break;
-        
-      case 'session_end':
-        handleSessionEnd(parsed, sessionId);
-        break;
-        
-      case 'stream':
-        handleStreamMessage(parsed, sessionId);
-        break;
-        
-      case 'patch':
-        handlePatchMessage(parsed, sessionId);
-        break;
-        
-      case 'file_operation':
-        handleFileOperation(parsed, sessionId);
-        break;
-        
-      case 'command':
-        handleCommandMessage(parsed, sessionId);
-        break;
-        
-      case 'thinking':
-        handleThinkingMessage(parsed, sessionId);
         break;
         
       case 'error':
@@ -67,10 +56,27 @@ export const useMessageHandler = (addMessageToSession, updateSessionWithCursorId
         break;
         
       default:
-        console.log(`🔧 Unhandled message type '${parsed.type}' for session ${sessionId}:`, parsed);
+        // Check for tool call indicators in other message types
+        if (parsed.tool_call || parsed.tool || parsed.name === 'tool') {
+          handleToolCall(parsed, sessionId);
+        } else {
+          console.log(`🔧 Unhandled message type '${parsed.type}' for session ${sessionId}:`, parsed);
+        }
         break;
     }
-  }, [addMessageToSession, updateSessionWithCursorId]);
+  }, [addMessageToSession, updateSessionWithCursorId, setSessionToolCalls, setSessionHideToolCallIndicators, setSessionBusy, setSessionStreamingText, toolCallsRef]);
+
+  // Handle system messages (including init subtype for starting streaming)
+  const handleSystemMessage = useCallback((parsed, sessionId) => {
+    console.log(`🔧 System message for session ${sessionId}:`, parsed);
+    
+    // If this is an init message, start streaming text accumulation
+    if (parsed.subtype === 'init') {
+      console.log(`🔧 Starting streaming text accumulation for session ${sessionId}`);
+      setSessionStreamingText(sessionId, '');
+    }
+  
+  }, [addMessageToSession, setSessionStreamingText]);
 
   // Handle session start messages
   const handleSessionStart = useCallback((parsed, sessionId) => {
@@ -92,23 +98,50 @@ export const useMessageHandler = (addMessageToSession, updateSessionWithCursorId
     addMessageToSession(sessionId, sessionStartMessage);
   }, [updateSessionWithCursorId, addMessageToSession]);
 
-  // Handle assistant messages
+  // Handle assistant messages with streaming text accumulation
   const handleAssistantMessage = useCallback((parsed, sessionId) => {
+    console.log(`🔧 Assistant message for session ${sessionId}:`, parsed);
+    
     if (parsed.message?.content?.[0]?.text) {
-      const assistantMessage = {
-        id: `msg-${Date.now()}-${Math.random().toString(36).slice(2,8)}`,
-        who: 'assistant',
-        text: parsed.message.content[0].text,
-        timestamp: Date.now(),
-        rawData: parsed
-      };
+      const assistantContent = parsed.message.content[0].text;
       
-      addMessageToSession(sessionId, assistantMessage);
+      // Accumulate streaming text for this session
+      setSessionStreamingText(sessionId, prev => {
+        const newText = prev + assistantContent;
+        console.log(`🔧 Accumulated streaming text for session ${sessionId}:`, newText.length, 'characters');
+        return newText;
+      });
+      
     }
-  }, [addMessageToSession]);
+  }, [addMessageToSession, setSessionStreamingText]);
 
-  // Handle result messages
+  // Handle result messages with comprehensive tool call completion and streaming cleanup
   const handleResultMessage = useCallback((parsed, sessionId) => {
+    console.log(`🔧 Result message for session ${sessionId}:`, parsed);
+    
+    // Mark all tool calls as completed
+    setSessionToolCalls(sessionId, prev => {
+      const newMap = new Map();
+      for (const [callId, toolCallInfo] of prev.entries()) {
+        newMap.set(callId, {
+          ...toolCallInfo,
+          isCompleted: true,
+          completedAt: Date.now(),
+          lastUpdated: Date.now()
+        });
+      }
+      return newMap;
+    });
+    
+    // Hide tool call indicators
+    setSessionHideToolCallIndicators(sessionId, true);
+    
+    // Set session as not busy
+    setSessionBusy(sessionId, false);
+    
+    // Clear streaming text state for this session
+    setSessionStreamingText(sessionId, '');
+    
     const resultMessage = {
       id: `msg-${Date.now()}-${Math.random().toString(36).slice(2,8)}`,
       who: 'assistant',
@@ -119,12 +152,78 @@ export const useMessageHandler = (addMessageToSession, updateSessionWithCursorId
     };
     
     addMessageToSession(sessionId, resultMessage);
-  }, [addMessageToSession]);
+  }, [addMessageToSession, setSessionToolCalls, setSessionHideToolCallIndicators, setSessionBusy, setSessionStreamingText]);
 
-  // Handle tool calls
+  // Handle tool calls with comprehensive state management
   const handleToolCall = useCallback((parsed, sessionId) => {
     console.log(`🔧 Tool call for session ${sessionId}:`, parsed);
     
+    // Normalize tool call data (this function should be imported from chatUtils)
+    const { callId, toolCallData, subtype } = normalizeToolCallData(parsed);
+    console.log('Normalized tool call data:', { callId, toolCallData, subtype });
+    
+    if (callId) {
+      // Update session tool calls state
+      setSessionToolCalls(sessionId, prev => {
+        const newMap = new Map(prev);
+        const existing = newMap.get(callId);
+        
+        if (existing) {
+          newMap.set(callId, {
+            ...existing,
+            toolCall: toolCallData,
+            isCompleted: subtype === 'completed' || subtype === 'end' || subtype === 'finished',
+            isStarted: subtype === 'started' || subtype === 'start',
+            completedAt: (subtype === 'completed' || subtype === 'end' || subtype === 'finished') ? Date.now() : existing.completedAt,
+            rawData: parsed,
+            lastUpdated: Date.now()
+          });
+        } else {
+          newMap.set(callId, {
+            toolCall: toolCallData,
+            isCompleted: subtype === 'completed' || subtype === 'end' || subtype === 'finished',
+            isStarted: subtype === 'started' || subtype === 'start',
+            startedAt: Date.now(),
+            completedAt: (subtype === 'completed' || subtype === 'end' || subtype === 'finished') ? Date.now() : null,
+            rawData: parsed,
+            lastUpdated: Date.now()
+          });
+        }
+        return newMap;
+      });
+      
+      // Also mirror into ref when available so final snapshot can include latest
+      if (typeof window !== 'undefined' && window.requestAnimationFrame && toolCallsRef?.current) {
+        try {
+          const existing = toolCallsRef.current.get(callId);
+          if (existing) {
+            toolCallsRef.current.set(callId, {
+              ...existing,
+              toolCall: toolCallData,
+              isCompleted: subtype === 'completed' || subtype === 'end' || subtype === 'finished',
+              isStarted: subtype === 'started' || subtype === 'start',
+              completedAt: (subtype === 'completed' || subtype === 'end' || subtype === 'finished') ? Date.now() : existing.completedAt,
+              rawData: parsed,
+              lastUpdated: Date.now()
+            });
+          } else {
+            toolCallsRef.current.set(callId, {
+              toolCall: toolCallData,
+              isCompleted: subtype === 'completed' || subtype === 'end' || subtype === 'finished',
+              isStarted: subtype === 'started' || subtype === 'start',
+              startedAt: Date.now(),
+              completedAt: (subtype === 'completed' || subtype === 'end' || subtype === 'finished') ? Date.now() : null,
+              rawData: parsed,
+              lastUpdated: Date.now()
+            });
+          }
+        } catch (error) {
+          console.warn('Error updating tool calls ref:', error);
+        }
+      }
+    }
+    
+    // Add tool call message to chat
     if (parsed.tool_calls?.[0]) {
       const toolCallMessage = {
         id: `msg-${Date.now()}-${Math.random().toString(36).slice(2,8)}`,
@@ -137,7 +236,7 @@ export const useMessageHandler = (addMessageToSession, updateSessionWithCursorId
       
       addMessageToSession(sessionId, toolCallMessage);
     }
-  }, [addMessageToSession]);
+  }, [addMessageToSession, setSessionToolCalls, toolCallsRef]);
 
   // Handle tool results
   const handleToolResult = useCallback((parsed, sessionId) => {
@@ -256,6 +355,7 @@ export const useMessageHandler = (addMessageToSession, updateSessionWithCursorId
   return {
     handleParsedMessage,
     // Individual handlers for specific use cases
+    handleSystemMessage,
     handleSessionStart,
     handleAssistantMessage,
     handleResultMessage,

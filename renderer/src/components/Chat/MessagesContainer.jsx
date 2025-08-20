@@ -8,7 +8,8 @@ export default function MessagesContainer({
   toolCalls, 
   searchQuery, 
   cwd, 
-  hideToolCallIndicators 
+  hideToolCallIndicators,
+  streamingText
 }) {
   // Debug logging to help track down toolCalls issues
   if (toolCalls && !(toolCalls instanceof Map)) {
@@ -19,6 +20,7 @@ export default function MessagesContainer({
       isMap: toolCalls instanceof Map
     });
   }
+  
   return (
     <div className="messages" ref={scroller}>
       <MessageList 
@@ -26,6 +28,7 @@ export default function MessagesContainer({
         toolCalls={toolCalls} 
         searchQuery={searchQuery} 
         cwd={cwd || ''} 
+        streamingText={streamingText}
       />
 
       {/* Tool Call Indicators - Only show while conversation is active */}

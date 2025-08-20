@@ -22,6 +22,7 @@ export default function Chat({ cwd, initialMessage, projectId }) {
       busyBySession,
       toolCallsBySession,
       hideToolCallIndicatorsBySession,
+      streamingTextBySession,
       createNewSession,
       loadSession,
       deleteSession,
@@ -34,6 +35,7 @@ export default function Chat({ cwd, initialMessage, projectId }) {
       getCurrentSessionBusy,
       getCurrentSessionToolCalls,
       getCurrentSessionHideToolCallIndicators,
+      getCurrentSessionStreamingText,
       deriveSessionNameFromMessage,
       send
     } = useSession();
@@ -336,6 +338,7 @@ export default function Chat({ cwd, initialMessage, projectId }) {
           searchQuery={searchQuery}
           cwd={cwd}
           hideToolCallIndicators={getCurrentSessionHideToolCallIndicators()}
+          streamingText={getCurrentSessionStreamingText()}
         />
         
    

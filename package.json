@@ -5,7 +5,8 @@
   "main": "electron/main.cjs",
   "type": "commonjs",
   "scripts": {
-    "dev": "cross-env CURSOVABLE_DEBUG_MODE=1 concurrently -k \"npm:renderer\" \"npm:electron\"",
+    "dev": "concurrently -k \"npm:renderer\" \"npm:electron\"",
+    "dev:debug": "cross-env CURSOVABLE_DEBUG_MODE=1 concurrently -k \"npm:renderer\" \"npm:electron\"",
     "dev:hot": "concurrently -k \"npm:renderer\" \"npm:electron:hot\"",
     "renderer": "vite --config renderer/vite.config.cjs",
     "electron": "wait-on http://localhost:5174 && cross-env RENDERER_URL=http://localhost:5174 electron .",

@@ -10,6 +10,7 @@ export const useSessionManager = (projectId) => {
   const [busyBySession, setBusyBySession] = useState(new Map());
   const [toolCallsBySession, setToolCallsBySession] = useState(new Map());
   const [hideToolCallIndicatorsBySession, setHideToolCallIndicatorsBySession] = useState(new Map());
+  const [streamingTextBySession, setStreamingTextBySession] = useState(new Map());
   const [terminalLogs, setTerminalLogs] = useState(new Map());
   const [showRawTerminal, setShowRawTerminal] = useState(new Map());
   const [visibleTerminals, setVisibleTerminals] = useState(new Set()); // Track which terminals are visible
@@ -131,6 +132,34 @@ export const useSessionManager = (projectId) => {
     return getSessionHideToolCallIndicators(currentSessionId);
   }, [currentSessionId, getSessionHideToolCallIndicators]);
 
+  // Streaming text management
+  const getSessionStreamingText = useCallback((sessionId) => {
+    return streamingTextBySession.get(sessionId) || '';
+  }, [streamingTextBySession]);
+
+  const setSessionStreamingText = useCallback((sessionId, text) => {
+    setStreamingTextBySession(prev => {
+      const next = new Map(prev);
+      if (typeof text === 'function') {
+        // Handle function-based updates (for accumulation)
+        const currentText = next.get(sessionId) || '';
+        next.set(sessionId, text(currentText));
+      } else {
+        // Handle direct value updates
+        next.set(sessionId, text);
+      }
+      return next;
+    });
+  }, []);
+
+  const getCurrentSessionStreamingText = useCallback(() => {
+    if (!currentSessionId) {
+      console.warn('getCurrentSessionStreamingText called with null currentSessionId');
+      return '';
+    }
+    return getSessionStreamingText(currentSessionId);
+  }, [currentSessionId, getSessionStreamingText]);
+
   // ===== SESSION MANAGEMENT =====
   
   const createNewSession = useCallback((existingSessions = null) => {
@@ -162,6 +191,11 @@ export const useSessionManager = (projectId) => {
     setHideToolCallIndicatorsBySession(prev => {
       const next = new Map(prev);
       next.set(newSessionId, false);
+      return next;
+    });
+    setStreamingTextBySession(prev => {
+      const next = new Map(prev);
+      next.set(newSessionId, '');
       return next;
     });
     setTerminalLogs(prev => {
@@ -217,6 +251,11 @@ export const useSessionManager = (projectId) => {
       return next;
     });
     setHideToolCallIndicatorsBySession(prev => {
+      const next = new Map(prev);
+      next.delete(sessionId);
+      return next;
+    });
+    setStreamingTextBySession(prev => {
       const next = new Map(prev);
       next.delete(sessionId);
       return next;
@@ -611,7 +650,14 @@ export const useSessionManager = (projectId) => {
   // ===== HOOK INITIALIZATIONS =====
   
   // Initialize the message handler hook
-  const messageHandler = useMessageHandler(addMessageToSession, updateSessionWithCursorId);
+  const messageHandler = useMessageHandler(
+    addMessageToSession, 
+    updateSessionWithCursorId,
+    setSessionToolCalls,
+    setSessionHideToolCallIndicators,
+    setSessionBusy,
+    setSessionStreamingText
+  );
   console.log('🔧 useSessionManager: Initialized message handler with capabilities:', Object.keys(messageHandler));
 
   // ===== TERMINAL COMMUNICATION =====
@@ -800,6 +846,7 @@ export const useSessionManager = (projectId) => {
     busyBySession,
     toolCallsBySession,
     hideToolCallIndicatorsBySession,
+    streamingTextBySession,
     terminalLogs,
     showRawTerminal,
     visibleTerminals,
@@ -819,6 +866,11 @@ export const useSessionManager = (projectId) => {
     getCurrentSessionToolCalls,
     getSessionHideToolCallIndicators,
     getCurrentSessionHideToolCallIndicators,
+    
+    // Streaming text
+    getSessionStreamingText,
+    setSessionStreamingText,
+    getCurrentSessionStreamingText,
     
     // Session management
     createNewSession,

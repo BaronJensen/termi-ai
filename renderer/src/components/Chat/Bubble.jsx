@@ -5,63 +5,57 @@ import ActionLog from './ActionLog';
 export default function Bubble({
   who,
   children,
-  isStreaming = false,
-  rawData = null,
   showActionLog = false,
   toolCalls = null,
-  searchQuery = '',
   cwd = '',
+  messageType = 'user'
 }) {
   const [isActionLogExpanded, setIsActionLogExpanded] = useState(false);
-  const [copySuccess, setCopySuccess] = useState(false);
+  // Define background colors for different message types
+  const getMessageStyle = () => {
+    const baseStyle = {
+      fontSize: 12,
+      wordWrap: 'break-word',
+      overflowWrap: 'break-word',
+      maxWidth: '100%',
+      height: 'auto',
+      minHeight: 'fit-content',
+      position: 'relative',
+      transition: 'all 0.3s ease',
+      borderRadius: '12px',
+      padding: '6px 16px',
+      margin: '8px 0'
+    };
 
-  const highlightText = (text, query) => {
-    if (!query || !text) return text;
-    const regex = new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
-    const parts = text.split(regex);
-    return parts.map((part, index) =>
-      regex.test(part) ? (
-        <mark
-          key={index}
-          style={{
-            backgroundColor: '#fbbf24',
-            color: '#000',
-            padding: '0 2px',
-            borderRadius: '2px',
-            fontWeight: 'bold',
-          }}
-        >
-          {part}
-        </mark>
-      ) : (
-        part
-      )
-    );
-  };
+    switch (messageType) {
+      case 'user':
+        return {
+          ...baseStyle,
+          background: 'transparent',
+          color: '#f9fafb',
+          padding: '6px 16px',
+          border: '1px solid #4b5563'
+        };
+     
+      case 'result':
+        return {
+          ...baseStyle,
+          background: 'transparent',
+          color: '#f0fdf4', 
+          border: 'none'
 
-  const handleCopy = async (text) => {
-    try {
-      if (navigator.clipboard) {
-        await navigator.clipboard.writeText(text);
-        setCopySuccess(true);
-        setTimeout(() => setCopySuccess(false), 2000);
-      } else {
-        const textArea = document.createElement('textarea');
-        textArea.value = text;
-        document.body.appendChild(textArea);
-        textArea.select();
-        document.execCommand('copy');
-        document.body.removeChild(textArea);
-        setCopySuccess(true);
-        setTimeout(() => setCopySuccess(false), 2000);
-      }
-    } catch (err) {
-      console.error('Failed to copy text: ', err);
-      alert('Failed to copy text to clipboard');
+        };
+
+      default:
+        return {
+          ...baseStyle,
+          background: 'transparent',
+          color: '#f3f4f6',
+          boxShadow: 'none',
+          border: 'none'
+        };
     }
   };
-
-  // Allow native context and keyboard shortcuts for copy/select
 
   const content = (
     <div
@@ -71,58 +65,31 @@ export default function Bubble({
           gfm: true,
           headerIds: false,
           mangle: false,
+          sanitize: false,
+          smartLists: true,
+          smartypants: true,
+          xhtml: false,
+          highlight: null,
+          langPrefix: 'language-',
+          pedantic: false,
+          renderer: new marked.Renderer()
         }),
       }}
-      style={{ userSelect: 'text', cursor: 'text', lineHeight: 1.4, fontSize: 12 }}
-      className={`markdown-content${isStreaming ? ' streaming-text' : ''}`}
+      style={{ userSelect: 'text', cursor: 'text', lineHeight: 0.9, fontSize: 12 }}
+      className={`markdown-content`}
     />
   );
+
 
   return (
     <div
       className={`bubble ${who}`}
-      style={{
-        fontSize: 12,
-        lineHeight: 1.4,
-        wordWrap: 'break-word',
-        overflowWrap: 'break-word',
-        maxWidth: '100%',
-        height: 'auto',
-        minHeight: 'fit-content',
-        position: 'relative',
-        // Start assistant bubble hidden until content arrives, then fade in
-        opacity: who === 'assistant' && !(children && String(children).trim().length > 0) ? 0 : 1,
-        transition: 'opacity 0.25s ease, transform 0.2s ease',
-      }}
+      style={getMessageStyle()}
       // Do not block the native context menu or key events here
       tabIndex={0}
     >
-      <button
-        onClick={() => handleCopy(children)}
-        style={{
-          position: 'absolute',
-          top: '8px',
-          right: '8px',
-          background: copySuccess ? '#10b981' : 'rgba(60, 109, 240, 0.8)',
-          color: '#e6e6e6',
-          border: 'none',
-          borderRadius: '4px',
-          padding: '4px 8px',
-          fontSize: '10px',
-          cursor: 'pointer',
-          opacity: copySuccess ? 1 : 0,
-          transition: 'all 0.2s ease',
-          zIndex: 10,
-        }}
-        onMouseEnter={(e) => !copySuccess && (e.target.style.opacity = 1)}
-        onMouseLeave={(e) => !copySuccess && (e.target.style.opacity = 0)}
-        aria-label={copySuccess ? 'Message copied to clipboard' : 'Copy message to clipboard'}
-      >
-        {copySuccess ? '✓' : 'Copy'}
-      </button>
 
       {/* Removed raw JSON hover overlay */}
-
       {content}
 
       {showActionLog && toolCalls && (
