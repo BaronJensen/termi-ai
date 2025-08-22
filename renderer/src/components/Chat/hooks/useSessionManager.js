@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useMessageHandler } from './useMessageHandler';
+import { loadSettings } from '../../../store/settings';
+import { getProject } from '../../../store/projects';
 
 export const useSessionManager = (projectId) => {
   console.log('🔍 useSessionManager hook initialized with projectId:', projectId);
@@ -534,8 +536,6 @@ export const useSessionManager = (projectId) => {
 
   // Clear terminal logs for a session to prevent memory overload
   const clearSessionTerminalLogs = useCallback((sessionId) => {
-    console.log(`🧹 clearSessionTerminalLogs called for session ${sessionId}`);
-    console.log(`🧹 Before clear - terminalLogs:`, terminalLogs);
     setTerminalLogs(prev => {
       const next = new Map(prev);
       next.set(sessionId, { cursor: [] });
@@ -546,8 +546,6 @@ export const useSessionManager = (projectId) => {
 
   // Clear all terminal logs for all sessions (global cleanup)
   const clearAllTerminalLogs = useCallback(() => {
-    console.log(`🧹 clearAllTerminalLogs called`);
-    console.log(`🧹 Before clear - terminalLogs:`, terminalLogs);
     setTerminalLogs(new Map());
     console.log(`🧹 After clear - terminalLogs reset to new Map`);
   }, []);
@@ -555,7 +553,6 @@ export const useSessionManager = (projectId) => {
   // ===== CURSOR COMMAND EXECUTION =====
   
   const send = useCallback(async (text, fullSessionObj) => {
-    console.log(`🚀 SessionProvider.send called with text: "${text}" and session:`, fullSessionObj);
     
     if (!fullSessionObj || !fullSessionObj.id) {
       console.error(`❌ Cannot send message: invalid session object`, fullSessionObj);
@@ -607,20 +604,24 @@ export const useSessionManager = (projectId) => {
       
       // Register the session object in the log router
       if (window.cursovableLogRouter) {
-        console.log(`🔧 useSessionManager: Creating message handler for runId ${runId}, sessionId ${sessionId}`);
         const messageHandler = createMessageHandler(runId, sessionId);
         window.cursovableLogRouter.registerHandler(runId, messageHandler, sessionObject);
-        console.log(`🔧 useSessionManager: Registered message handler for runId ${runId}`);
       }
+      
+      // Get project information and settings
+      const project = getProject(projectId);
+      const settings = loadSettings();
       
       // Call the cursor-agent CLI
       const result = await window.cursovable.runCursor({
         message: text,
         sessionObject,
-        timeoutMs: 300000 // 5 minutes
+        cwd: project?.path || await window.cursovable.getWorkingDirectory(),
+        apiKey: settings.apiKey || undefined,
+        timeoutMs: settings.cursorAgentTimeoutMs || 300000, // Use setting or default to 5 minutes
+        model: undefined, // Could be added to settings later
+        debugMode: false // Could be added to settings later
       });
-      
-      console.log(`🚀 Cursor command completed for session: ${sessionId}, result:`, result);
       
     } catch (error) {
       console.error(`❌ Error running cursor command for session: ${sessionId}:`, error);
@@ -735,7 +736,6 @@ export const useSessionManager = (projectId) => {
   }, [deferredMessages, sessions, send]);
 
   // ===== INITIALIZATION =====
-  
   // Check if this is a new project that needs auto-start
   const shouldAutoStartNewProject = useCallback(() => {
     // Check if we have a project ID and if it's a new project
@@ -822,7 +822,6 @@ export const useSessionManager = (projectId) => {
       return;
     }
     
-    console.log(`Loading sessions for project: ${projectId || 'legacy'}`);
     const loadedSessions = loadSessions();
     
     setSessions(loadedSessions);
@@ -885,19 +884,11 @@ export const useSessionManager = (projectId) => {
     
     // Mark as initialized to prevent future overrides
     hasInitializedRef.current = true;
-    console.log('Session initialization complete');
   }, [projectId, loadSessions, createNewSession, createNewProjectSession, shouldAutoStartNewProject, currentSessionId]);
 
   // Process deferred messages after send function is available
   useEffect(() => {
-    console.log('🔍 Deferred messages useEffect triggered:', {
-      deferredMessagesSize: deferredMessages.size,
-      sendFunctionAvailable: typeof send === 'function',
-      hasProcessFunction: typeof processDeferredMessages === 'function'
-    });
-    
     if (deferredMessages.size > 0 && typeof send === 'function') {
-      console.log('🚀 Send function available, processing deferred messages');
       processDeferredMessages();
     }
   }, [deferredMessages, send, processDeferredMessages]);
@@ -913,7 +904,7 @@ export const useSessionManager = (projectId) => {
     setSessionBusy,
     setSessionStreamingText
   );
-  console.log('🔧 useSessionManager: Initialized message handler with capabilities:', Object.keys(messageHandler));
+  
 
   // ===== TERMINAL COMMUNICATION =====
   
@@ -967,7 +958,6 @@ export const useSessionManager = (projectId) => {
         const handler = this.handlers.get(payload.runId);
         if (handler) {
           try {
-            console.log(`🔧 Log router: calling handler for runId ${payload.runId}`);
             handler(payload);
           } catch (error) {
             console.error(`❌ Log router: error in handler for runId ${payload.runId}:`, error);
@@ -1048,36 +1038,17 @@ export const useSessionManager = (projectId) => {
 
   // Helper function to create message handlers for each run
   const createMessageHandler = useCallback((runId, sessionId) => {
-    return (payload) => {
-      console.log(`🔧 Message handler for runId ${runId}, sessionId ${sessionId}:`, {
-        level: payload?.level,
-        hasLine: !!payload?.line,
-        linePreview: payload?.line?.substring(0, 100)
-      });
-      
+    return (payload) => {      
       if (payload && payload.line) {
         try {
           // Try to parse JSON logs
           if (payload.level === 'json') {
             const parsed = JSON.parse(payload.line);
-            console.log(`🔧 Parsed JSON message for session ${sessionId}:`, {
-              type: parsed.type,
-              hasSessionId: !!parsed.session_id,
-              hasMessage: !!parsed.message
-            });
-            
             // Use the message handler hook to process the message
-            console.log(`🔧 useSessionManager: Routing message to message handler:`, {
-              type: parsed.type,
-              sessionId: sessionId,
-              hasSessionId: !!parsed.session_id
-            });
             messageHandler.handleParsedMessage(parsed, sessionId);
             
             // Handle tool calls separately (they need to update tool state)
             if (parsed.type === 'tool_call' && parsed.tool_calls) {
-              console.log(`🔧 SessionProvider: Processing tool call for session ${sessionId}:`, parsed);
-              
               // Update tool calls for this session
               setSessionToolCalls(sessionId, new Map([
                 ...Array.from(getSessionToolCalls(sessionId)),
@@ -1093,7 +1064,7 @@ export const useSessionManager = (projectId) => {
   }, [messageHandler, setSessionToolCalls, getSessionToolCalls]);
 
   // ===== RETURN VALUES =====
-  
+
   const returnValue = {
     // State
     sessions,
