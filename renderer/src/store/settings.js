@@ -11,7 +11,9 @@ export function getDefaultSettings() {
     // Default JS package manager: yarn | npm | pnpm
     packageManager: 'yarn',
     // Optional API key for token-based auth
-    apiKey: ''
+    apiKey: '',
+    // Default AI model for cursor-agent (empty string means auto/default)
+    defaultModel: ''
   };
 }
 
