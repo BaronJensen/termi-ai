@@ -23,31 +23,12 @@ markdown: kramdown
 highlighter: rouge
 permalink: pretty
 
-# Collections
-collections:
-  docs:
-    output: true
-    permalink: /docs/:path/
-
-# Defaults
-defaults:
-  - scope:
-      path: ""
-      type: "posts"
-    values:
-      layout: "post"
-  - scope:
-      path: ""
-      type: "docs"
-    values:
-      layout: "docs"
+# Collections and defaults removed for GitHub Pages compatibility
 
 # Plugins
 plugins:
   - jekyll-seo-tag
   - jekyll-sitemap
-  - jekyll-feed
-  - jekyll-redirect-from
 
 # Exclude from processing
 exclude:
@@ -63,27 +44,11 @@ exclude:
   - CODE_OF_CONDUCT.md
   - CHANGELOG.md
 
-# Include in processing
-include:
-  - _pages
-  - _posts
-  - _drafts
-
-# Pagination
-paginate: 10
-paginate_path: "/blog/page:num/"
-
 # Social media
 social:
   - name: GitHub
     url: https://github.com/yourusername/cursovable
     icon: fab fa-github
-  - name: Twitter
-    url: https://twitter.com/cursovable
-    icon: fab fa-twitter
-  - name: Discord
-    url: https://discord.gg/cursovable
-    icon: fab fa-discord
 
 # SEO settings
 seo:
@@ -116,19 +81,10 @@ seo:
 # disqus:
 #   shortname: cursovable
 
-# Search
-search: true
-search_full_content: true
-
 # Sitemap
 sitemap:
   changefreq: weekly
   priority: 0.8
-
-# Feed
-feed:
-  path: feed.xml
-  limit: 20
 
 # Redirects
 redirect_from:
@@ -137,21 +93,7 @@ redirect_from:
   - /downloads
   - /docs
 
-redirect_to:
-  /home: /
-  /about: /#features
-  /downloads: /#download
-  /docs: /#docs
-
-# Head and footer includes
-head_includes:
-  - meta
-  - links
-  - scripts
-
-footer_includes:
-  - analytics
-  - social
+# Head and footer includes removed for GitHub Pages compatibility
 
 # Custom variables
 cursovable:
