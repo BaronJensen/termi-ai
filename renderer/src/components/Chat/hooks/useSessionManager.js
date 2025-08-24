@@ -619,7 +619,7 @@ export const useSessionManager = (projectId) => {
         cwd: project?.path || await window.cursovable.getWorkingDirectory(),
         apiKey: settings.apiKey || undefined,
         timeoutMs: settings.cursorAgentTimeoutMs || 300000, // Use setting or default to 5 minutes
-        model: undefined, // Could be added to settings later
+        model: settings.defaultModel || undefined, // Use default model from settings
         debugMode: false // Could be added to settings later
       });
       

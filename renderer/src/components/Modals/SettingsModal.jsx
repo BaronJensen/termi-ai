@@ -15,6 +15,17 @@ function SettingsModal({ initial, onClose, onSave }) {
   const [pkgMgr, setPkgMgr] = useState(initial?.packageManager || 'yarn');
   const [availableEditors, setAvailableEditors] = useState([]);
   const [apiKey, setApiKey] = useState(initial?.apiKey || '');
+  const [defaultModel, setDefaultModel] = useState(initial?.defaultModel || '');
+
+  // Available AI models for cursor-agent
+  const availableModels = [
+    'gpt-5',
+    'gpt-5-fast',
+    'sonnet-4',
+    'sonnet-4-thinking',
+    'gpt-4.1',
+    'gpt-4.1-mini'
+  ];
 
   useEffect(() => {
     let mounted = true;
@@ -46,7 +57,7 @@ function SettingsModal({ initial, onClose, onSave }) {
   const footer = (
     <>
       <Button variant="secondary" onClick={onClose}>Cancel</Button>
-      <Button onClick={() => onSave({ cursorAgentTimeoutMs: parsedTimeout, defaultEditor: editor, packageManager: pkgMgr, apiKey })}>
+      <Button onClick={() => onSave({ cursorAgentTimeoutMs: parsedTimeout, defaultEditor: editor, packageManager: pkgMgr, apiKey, defaultModel })}>
         Save
       </Button>
     </>
@@ -83,10 +94,25 @@ function SettingsModal({ initial, onClose, onSave }) {
             <option value="pnpm">pnpm</option>
           </Select>
         </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <Label>Default AI Model</Label>
+          <Select value={defaultModel} onChange={(e) => setDefaultModel(e.target.value)}>
+            <option value="">Auto (default)</option>
+            {availableModels.map((model) => (
+              <option key={model} value={model}>{model}</option>
+            ))}
+          </Select>
+          <div style={{ fontSize: 11, color: '#9ca3af' }}>Leave empty to let cursor-agent choose automatically</div>
+        </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6, gridColumn: '1 / span 2' }}>
-          <Label>API Key</Label>
-          <Input type="password" value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder="Enter API Key" />
-          <div style={{ fontSize: 11, color: '#9ca3af' }}>Stored locally. Used for token-based auth and passed securely to the agent process.</div>
+          <Label>API Key (Optional)</Label>
+          <Input
+            type="password"
+            value={apiKey}
+            onChange={(e) => setApiKey(e.target.value)}
+            placeholder="Enter your OpenAI API key..."
+          />
+          <div style={{ fontSize: 11, color: '#9ca3af' }}>Used for cursor-agent authentication. Leave empty if not needed.</div>
         </div>
       </div>
     </Modal>

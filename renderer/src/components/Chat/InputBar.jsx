@@ -181,6 +181,7 @@ export default function InputBar({
           value={model}
           onChange={(e) => setModel(e.target.value)}
           aria-label="Select model"
+          title={model === '' ? 'Using default model from settings' : `Selected model: ${model}`}
         >
           <option value="">Auto (default)</option>
           {suggestedModels.map(m => (
@@ -192,6 +193,31 @@ export default function InputBar({
             <option key={m} value={m} />
           ))}
         </datalist>
+        {model === '' && (
+          <div style={{ 
+            fontSize: '11px', 
+            color: '#9ca3af',
+            fontStyle: 'italic',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '4px'
+          }}>
+            <span>⚙️</span>
+            Using default from settings
+          </div>
+        )}
+        {model !== '' && (
+          <div style={{ 
+            fontSize: '11px', 
+            color: '#6b7280',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '4px'
+          }}>
+            <span>📝</span>
+            Project override
+          </div>
+        )}
       </div>
     </div>
   );

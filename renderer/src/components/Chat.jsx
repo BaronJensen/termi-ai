@@ -10,6 +10,7 @@ import SearchBar from './Chat/SearchBar';
 import MessagesContainer from './Chat/MessagesContainer';
 import { useChatSend } from './Chat/hooks/useChatSend';
 import { useSession } from '../providers/SessionProvider.jsx';
+import { loadSettings } from '../store/settings';
 
 import { styles } from './Chat/styles';
 
@@ -89,17 +90,45 @@ export default function Chat({ cwd, projectId, onPlayMiniGame, onCloseMiniGame, 
       'gpt-4.1-mini'
     ];
 
+    // Load settings to get default model
+    const settings = loadSettings();
+
     const [model, setModel] = useState(() => {
       try {
         const stored = localStorage.getItem(modelStorageKey);
-        return stored !== null ? stored : '';
-      } catch { return ''; }
+        // If no project-specific model is stored, use the default from settings
+        return stored !== null ? stored : settings.defaultModel || '';
+      } catch { return settings.defaultModel || ''; }
     });
     
     // Persist model per project (must be after model is declared)
     useEffect(() => {
       try { localStorage.setItem(modelStorageKey, model); } catch {}
     }, [model, modelStorageKey]);
+
+    // Update model when default model in settings changes (if no project-specific model is set)
+    useEffect(() => {
+      if (model === '') {
+        const currentSettings = loadSettings();
+        if (currentSettings.defaultModel !== settings.defaultModel) {
+          setModel(currentSettings.defaultModel || '');
+        }
+      }
+    }, [model, settings.defaultModel]);
+
+    // Also update when settings change (for real-time updates)
+    useEffect(() => {
+      const handleSettingsChange = () => {
+        if (model === '') {
+          const currentSettings = loadSettings();
+          setModel(currentSettings.defaultModel || '');
+        }
+      };
+
+      // Listen for storage changes (when settings are updated in another tab/window)
+      window.addEventListener('storage', handleSettingsChange);
+      return () => window.removeEventListener('storage', handleSettingsChange);
+    }, [model]);
     
     const scroller = useRef(null);
     const unsubRef = useRef(null);
