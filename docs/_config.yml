@@ -1,0 +1,174 @@
+# Cursovable GitHub Pages Configuration
+# This file configures Jekyll for GitHub Pages
+
+# Site settings
+title: Cursovable
+description: Your AI-powered development companion - A desktop app that combines live project previews with intelligent AI assistance using Cursor Agent.
+url: "https://yourusername.github.io"
+baseurl: "/cursovable"
+
+# Author information
+author:
+  name: Cursovable Team
+  email: hello@cursovable.com
+  bio: Building the future of AI-powered development
+  location: Worldwide
+  links:
+    - label: GitHub
+      icon: fab fa-github
+      url: https://github.com/yourusername/cursovable
+
+# Build settings
+markdown: kramdown
+highlighter: rouge
+permalink: pretty
+
+# Collections
+collections:
+  docs:
+    output: true
+    permalink: /docs/:path/
+
+# Defaults
+defaults:
+  - scope:
+      path: ""
+      type: "posts"
+    values:
+      layout: "post"
+  - scope:
+      path: ""
+      type: "docs"
+    values:
+      layout: "docs"
+
+# Plugins
+plugins:
+  - jekyll-seo-tag
+  - jekyll-sitemap
+  - jekyll-feed
+  - jekyll-redirect-from
+
+# Exclude from processing
+exclude:
+  - Gemfile
+  - Gemfile.lock
+  - node_modules
+  - vendor
+  - .git
+  - .github
+  - README.md
+  - LICENSE
+  - CONTRIBUTING.md
+  - CODE_OF_CONDUCT.md
+  - CHANGELOG.md
+
+# Include in processing
+include:
+  - _pages
+  - _posts
+  - _drafts
+
+# Pagination
+paginate: 10
+paginate_path: "/blog/page:num/"
+
+# Social media
+social:
+  - name: GitHub
+    url: https://github.com/yourusername/cursovable
+    icon: fab fa-github
+  - name: Twitter
+    url: https://twitter.com/cursovable
+    icon: fab fa-twitter
+  - name: Discord
+    url: https://discord.gg/cursovable
+    icon: fab fa-discord
+
+# SEO settings
+seo:
+  title: Cursovable - Your AI-Powered Development Companion
+  description: Combine live project previews with intelligent AI assistance using Cursor Agent. Available for macOS, Windows, and Linux.
+  keywords:
+    - cursovable
+    - electron
+    - react
+    - vite
+    - ai
+    - development
+    - cursor agent
+    - desktop app
+    - open source
+  image: /assets/og-image.png
+  type: website
+  twitter:
+    card: summary_large_image
+    creator: "@cursovable"
+  og:
+    type: website
+    site_name: Cursovable
+
+# Analytics (uncomment and configure as needed)
+# google_analytics: UA-XXXXXXXXX-X
+# google_tag_manager: GTM-XXXXXXX
+
+# Comments (uncomment and configure as needed)
+# disqus:
+#   shortname: cursovable
+
+# Search
+search: true
+search_full_content: true
+
+# Sitemap
+sitemap:
+  changefreq: weekly
+  priority: 0.8
+
+# Feed
+feed:
+  path: feed.xml
+  limit: 20
+
+# Redirects
+redirect_from:
+  - /home
+  - /about
+  - /downloads
+  - /docs
+
+redirect_to:
+  /home: /
+  /about: /#features
+  /downloads: /#download
+  /docs: /#docs
+
+# Head and footer includes
+head_includes:
+  - meta
+  - links
+  - scripts
+
+footer_includes:
+  - analytics
+  - social
+
+# Custom variables
+cursovable:
+  version: "0.1.0"
+  latest_release: "2024-12-19"
+  platforms:
+    - macOS
+    - Windows
+    - Linux
+  package_managers:
+    - yarn
+    - npm
+    - pnpm
+  features:
+    - Live Project Preview
+    - AI Development Assistant
+    - Smart Terminal Integration
+    - Cross-Platform Support
+    - Persistent History
+    - Responsive Design

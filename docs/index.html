@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cursovable - Your AI-Powered Development Companion</title>
+    <meta name="description" content="Cursovable helps you avoid token costs from AI platforms like Lovable and V0. Download projects and continue development locally with cursor-cli for unlimited AI assistance.">
+    <meta name="keywords" content="cursovable, electron, react, vite, ai, development, cursor agent, desktop app, lovable alternative, v0 alternative, token cost savings, local ai development">
+    
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://yourusername.github.io/cursovable/">
+    <meta property="og:title" content="Cursovable - Stop Paying for AI Tokens, Build Locally">
+    <meta property="og:description" content="Download projects from Lovable, V0, and other AI platforms. Continue development locally with cursor-cli for unlimited AI assistance.">
+    <meta property="og:image" content="https://yourusername.github.io/cursovable/assets/og-image.png">
+
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary_large_image">
+    <meta property="twitter:url" content="https://yourusername.github.io/cursovable/">
+    <meta property="twitter:title" content="Cursovable - Stop Paying for AI Tokens, Build Locally">
+    <meta property="twitter:description" content="Download projects from Lovable, V0, and other AI platforms. Continue development locally with cursor-cli for unlimited AI assistance.">
+    <meta property="twitter:image" content="https://yourusername.github.io/cursovable/assets/og-image.png">
+
+    <link rel="icon" type="image/x-icon" href="assets/favicon.ico">
+    <link rel="stylesheet" href="styles.css">
+    
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar">
+        <div class="nav-container">
+            <div class="nav-logo">
+                <i class="fas fa-rocket"></i>
+                <span>Cursovable</span>
+            </div>
+            <div class="nav-links">
+                <a href="#features">Features</a>
+                <a href="#download">Download</a>
+                <a href="#docs">Documentation</a>
+                <a href="https://github.com/yourusername/cursovable" target="_blank" rel="noopener">
+                    <i class="fab fa-github"></i>
+                    GitHub
+                </a>
+            </div>
+            <div class="nav-toggle">
+                <span></span>
+                <span></span>
+                <span></span>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section class="hero">
+        <div class="hero-container">
+            <div class="hero-content">
+                <h1 class="hero-title">
+                    Skip the Token Costs,
+                    <span class="gradient-text">Build Locally</span>
+                </h1>
+                <p class="hero-description">
+                    Tired of paying per-token for AI development tools like Lovable or V0? Cursovable lets you download projects from these platforms and continue development locally using cursor-cli. 
+                    <strong>Zero ongoing costs, full control, unlimited AI assistance.</strong>
+                </p>
+                <div class="hero-buttons">
+                    <a href="#download" class="btn btn-primary btn-coming-soon">
+                        <i class="fas fa-clock"></i>
+                        Coming Soon
+                    </a>
+                    <a href="https://github.com/yourusername/cursovable" target="_blank" rel="noopener" class="btn btn-secondary">
+                        <i class="fab fa-github"></i>
+                        View on GitHub
+                    </a>
+                </div>
+                <div class="hero-stats">
+                    <div class="stat">
+                        <span class="stat-number">3</span>
+                        <span class="stat-label">Platforms</span>
+                    </div>
+                    <div class="stat">
+                        <span class="stat-number">3</span>
+                        <span class="stat-label">Package Managers</span>
+                    </div>
+                    <div class="stat">
+                        <span class="stat-number">100%</span>
+                        <span class="stat-label">Open Source</span>
+                    </div>
+                </div>
+            </div>
+            <div class="hero-visual">
+                <div class="app-preview">
+                    <div class="app-window">
+                        <div class="app-header">
+                            <div class="app-buttons">
+                                <span class="btn-red"></span>
+                                <span class="btn-yellow"></span>
+                                <span class="btn-green"></span>
+                            </div>
+                        </div>
+                        <div class="app-content">
+                            <div class="preview-panel">
+                                <div class="preview-header">
+                                    <i class="fas fa-eye"></i>
+                                    <span>Live Preview</span>
+                                </div>
+                                <div class="preview-content">
+                                    <div class="code-preview">
+                                        <div class="code-line"></div>
+                                        <div class="code-line"></div>
+                                        <div class="code-line"></div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="chat-panel">
+                                <div class="chat-header">
+                                    <i class="fas fa-robot"></i>
+                                    <span>AI Assistant</span>
+                                </div>
+                                <div class="chat-content">
+                                    <div class="chat-message ai">
+                                        <i class="fas fa-robot"></i>
+                                        <span>How can I help you today?</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Features Section -->
+    <section id="features" class="features">
+        <div class="container">
+            <div class="section-header">
+                <h2>Why Choose Cursovable?</h2>
+                <p>Built for developers who want to avoid recurring AI costs while maintaining full control over their development environment</p>
+            </div>
+            <div class="features-grid">
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <i class="fas fa-dollar-sign"></i>
+                    </div>
+                    <h3>Zero Token Costs</h3>
+                    <p>Download projects from Lovable, V0, or other AI platforms and continue development locally without paying per-token fees.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <i class="fas fa-download"></i>
+                    </div>
+                    <h3>Import from AI Platforms</h3>
+                    <p>Seamlessly import projects from Lovable, V0, and other AI development platforms. Continue where you left off locally.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <i class="fas fa-robot"></i>
+                    </div>
+                    <h3>Unlimited AI Assistance</h3>
+                    <p>Powered by cursor-cli for unlimited AI development help. No more worrying about token limits or usage quotas.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <i class="fas fa-eye"></i>
+                    </div>
+                    <h3>Live Project Preview</h3>
+                    <p>See your imported projects running in real-time. Preview changes instantly as you continue development locally.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <i class="fas fa-terminal"></i>
+                    </div>
+                    <h3>Smart Terminal Integration</h3>
+                    <p>Native PTY support with intelligent process management. Monitor and control your development servers effortlessly.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <i class="fas fa-lock"></i>
+                    </div>
+                    <h3>Full Local Control</h3>
+                    <p>Keep your projects and AI interactions completely local. No data sent to external servers, complete privacy and control.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Cost Comparison Section -->
+    <section class="cost-comparison">
+        <div class="container">
+            <div class="section-header">
+                <h2>Stop Paying Per-Token</h2>
+                <p>See how much you can save by switching to local development</p>
+            </div>
+            <div class="comparison-grid">
+                <div class="comparison-card other-platforms">
+                    <div class="comparison-header">
+                        <h3>Other AI Platforms</h3>
+                        <div class="cost-badge expensive">Expensive</div>
+                    </div>
+                    <ul class="comparison-list">
+                        <li><i class="fas fa-times"></i> Pay per token used</li>
+                        <li><i class="fas fa-times"></i> Monthly subscription fees</li>
+                        <li><i class="fas fa-times"></i> Usage limits and quotas</li>
+                        <li><i class="fas fa-times"></i> Data stored on external servers</li>
+                        <li><i class="fas fa-times"></i> Vendor lock-in</li>
+                    </ul>
+                    <div class="estimated-cost">
+                        <span class="cost-label">Estimated Monthly Cost:</span>
+                        <span class="cost-amount">$50 - $200+</span>
+                    </div>
+                </div>
+                <div class="comparison-card cursovable">
+                    <div class="comparison-header">
+                        <h3>Cursovable</h3>
+                        <div class="cost-badge affordable">Free Forever</div>
+                    </div>
+                    <ul class="comparison-list">
+                        <li><i class="fas fa-check"></i> One-time setup, no recurring fees</li>
+                        <li><i class="fas fa-check"></i> Unlimited AI assistance via cursor-cli</li>
+                        <li><i class="fas fa-check"></i> Complete local control</li>
+                        <li><i class="fas fa-check"></i> Import from any AI platform</li>
+                        <li><i class="fas fa-check"></i> No usage limits</li>
+                    </ul>
+                    <div class="estimated-cost">
+                        <span class="cost-label">Total Cost:</span>
+                        <span class="cost-amount">$0</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- How It Works Section -->
+    <section class="how-it-works">
+        <div class="container">
+            <div class="section-header">
+                <h2>How It Works</h2>
+                <p>Escape token costs and continue development locally</p>
+            </div>
+            <div class="steps">
+                <div class="step">
+                    <div class="step-number">1</div>
+                    <div class="step-content">
+                        <h3>Download from AI Platforms</h3>
+                        <p>Get your project from Lovable, V0, or other AI development tools</p>
+                    </div>
+                </div>
+                <div class="step">
+                    <div class="step-number">2</div>
+                    <div class="step-content">
+                        <h3>Import into Cursovable</h3>
+                        <p>Load your project and see it running with live preview</p>
+                    </div>
+                </div>
+                <div class="step">
+                    <div class="step-number">3</div>
+                    <div class="step-content">
+                        <h3>Continue with cursor-cli</h3>
+                        <p>Get unlimited AI assistance locally without token costs</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Download Section -->
+    <section id="download" class="download">
+        <div class="container">
+            <div class="section-header">
+                <h2>Download Cursovable</h2>
+                <p>Coming soon to all major platforms</p>
+            </div>
+            <div class="download-grid">
+                <div class="download-card">
+                    <div class="platform-icon">
+                        <i class="fab fa-apple"></i>
+                    </div>
+                    <h3>macOS</h3>
+                    <p>Intel & Apple Silicon</p>
+                    <div class="btn btn-download btn-coming-soon" style="cursor: not-allowed;">
+                        <i class="fas fa-clock"></i>
+                        Coming Soon
+                    </div>
+                    <div class="download-info">
+                        <span>.dmg installer</span>
+                        <span>.zip archive</span>
+                    </div>
+                </div>
+                <div class="download-card">
+                    <div class="platform-icon">
+                        <i class="fab fa-windows"></i>
+                    </div>
+                    <h3>Windows</h3>
+                    <p>Windows 10 & 11</p>
+                    <div class="btn btn-download btn-coming-soon" style="cursor: not-allowed;">
+                        <i class="fas fa-clock"></i>
+                        Coming Soon
+                    </div>
+                    <div class="download-info">
+                        <span>.exe installer</span>
+                        <span>.zip archive</span>
+                    </div>
+                </div>
+                <div class="download-card">
+                    <div class="platform-icon">
+                        <i class="fab fa-linux"></i>
+                    </div>
+                    <h3>Linux</h3>
+                    <p>Ubuntu, Debian & more</p>
+                    <div class="btn btn-download btn-coming-soon" style="cursor: not-allowed;">
+                        <i class="fas fa-clock"></i>
+                        Coming Soon
+                    </div>
+                    <div class="download-info">
+                        <span>.AppImage</span>
+                        <span>.deb package</span>
+                    </div>
+                </div>
+            </div>
+            <div class="build-from-source">
+                <h3>🚀 Try It Now - Build from Source</h3>
+                <p>While we prepare the official releases, you can build and run Cursovable from source! Check out our <a href="https://github.com/yourusername/cursovable#build-from-source" target="_blank" rel="noopener">installation guide</a> to get started immediately.</p>
+                <div class="build-steps">
+                    <div class="build-step">
+                        <i class="fas fa-terminal"></i>
+                        <span>Clone the repository</span>
+                    </div>
+                    <div class="build-step">
+                        <i class="fas fa-download"></i>
+                        <span>Install dependencies</span>
+                    </div>
+                    <div class="build-step">
+                        <i class="fas fa-play"></i>
+                        <span>Run the app</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Documentation Section -->
+    <section id="docs" class="documentation">
+        <div class="container">
+            <div class="section-header">
+                <h2>Documentation & Resources</h2>
+                <p>Everything you need to get started and contribute</p>
+            </div>
+            <div class="docs-grid">
+                <div class="doc-card">
+                    <div class="doc-icon">
+                        <i class="fas fa-book"></i>
+                    </div>
+                    <h3>Getting Started</h3>
+                    <p>Quick setup guide and first steps with Cursovable</p>
+                    <a href="https://github.com/yourusername/cursovable#quick-start" target="_blank" rel="noopener" class="doc-link">
+                        Read Guide <i class="fas fa-arrow-right"></i>
+                    </a>
+                </div>
+                <div class="doc-card">
+                    <div class="doc-icon">
+                        <i class="fas fa-code"></i>
+                    </div>
+                    <h3>Contributing</h3>
+                    <p>Learn how to contribute to the project</p>
+                    <a href="https://github.com/yourusername/cursovable/blob/main/CONTRIBUTING.md" target="_blank" rel="noopener" class="doc-link">
+                        View Guidelines <i class="fas fa-arrow-right"></i>
+                    </a>
+                </div>
+                <div class="doc-card">
+                    <div class="doc-icon">
+                        <i class="fas fa-bug"></i>
+                    </div>
+                    <h3>Troubleshooting</h3>
+                    <p>Common issues and their solutions</p>
+                    <a href="https://github.com/yourusername/cursovable#troubleshooting" target="_blank" rel="noopener" class="doc-link">
+                        View Solutions <i class="fas fa-arrow-right"></i>
+                    </a>
+                </div>
+                <div class="doc-card">
+                    <div class="doc-icon">
+                        <i class="fas fa-question-circle"></i>
+                    </div>
+                    <h3>FAQ</h3>
+                    <p>Frequently asked questions and answers</p>
+                    <a href="https://github.com/yourusername/cursovable/discussions" target="_blank" rel="noopener" class="doc-link">
+                        Ask Questions <i class="fas fa-arrow-right"></i>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- CTA Section -->
+    <section class="cta">
+        <div class="container">
+            <div class="cta-content">
+                <h2>Ready to Stop Paying for AI Tokens?</h2>
+                <p>Join developers who've escaped the recurring costs of Lovable, V0, and other AI platforms while maintaining full control over their development environment.</p>
+                <div class="cta-buttons">
+                    <a href="https://github.com/yourusername/cursovable" target="_blank" rel="noopener" class="btn btn-primary btn-large">
+                        <i class="fab fa-github"></i>
+                        Star on GitHub
+                    </a>
+                    <a href="https://github.com/yourusername/cursovable" target="_blank" rel="noopener" class="btn btn-secondary btn-large">
+                        <i class="fas fa-code"></i>
+                        View Source Code
+                    </a>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-section">
+                    <div class="footer-logo">
+                        <i class="fas fa-rocket"></i>
+                        <span>Cursovable</span>
+                    </div>
+                    <p>Your AI-powered development companion</p>
+                    <div class="social-links">
+                        <a href="https://github.com/yourusername/cursovable" target="_blank" rel="noopener" aria-label="GitHub">
+                            <i class="fab fa-github"></i>
+                        </a>
+                        <a href="https://github.com/yourusername/cursovable/discussions" target="_blank" rel="noopener" aria-label="Discussions">
+                            <i class="fas fa-comments"></i>
+                        </a>
+                        <a href="https://github.com/yourusername/cursovable/issues" target="_blank" rel="noopener" aria-label="Issues">
+                            <i class="fas fa-bug"></i>
+                        </a>
+                    </div>
+                </div>
+                <div class="footer-section">
+                    <h4>Project</h4>
+                    <ul>
+                        <li><a href="https://github.com/yourusername/cursovable/releases" target="_blank" rel="noopener">Releases</a></li>
+                        <li><a href="https://github.com/yourusername/cursovable/blob/main/CHANGELOG.md" target="_blank" rel="noopener">Changelog</a></li>
+                        <li><a href="https://github.com/yourusername/cursovable/blob/main/CONTRIBUTING.md" target="_blank" rel="noopener">Contributing</a></li>
+                        <li><a href="https://github.com/yourusername/cursovable/blob/main/CODE_OF_CONDUCT.md" target="_blank" rel="noopener">Code of Conduct</a></li>
+                    </ul>
+                </div>
+                <div class="footer-section">
+                    <h4>Resources</h4>
+                    <ul>
+                        <li><a href="https://electronjs.org/" target="_blank" rel="noopener">Electron</a></li>
+                        <li><a href="https://cursor.sh/" target="_blank" rel="noopener">Cursor Agent</a></li>
+                        <li><a href="https://reactjs.org/" target="_blank" rel="noopener">React</a></li>
+                        <li><a href="https://vitejs.dev/" target="_blank" rel="noopener">Vite</a></li>
+                    </ul>
+                </div>
+                <div class="footer-section">
+                    <h4>Legal</h4>
+                    <ul>
+                        <li><a href="https://github.com/yourusername/cursovable/blob/main/LICENSE" target="_blank" rel="noopener">MIT License</a></li>
+                        <li><a href="https://github.com/yourusername/cursovable/blob/main/CODE_OF_CONDUCT.md" target="_blank" rel="noopener">Code of Conduct</a></li>
+                        <li><a href="https://github.com/yourusername/cursovable/security" target="_blank" rel="noopener">Security</a></li>
+                    </ul>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <p>&copy; 2024 Cursovable. Made with ❤️ by the open source community.</p>
+            </div>
+        </div>
+    </footer>
+
+    <script src="script.js"></script>
+</body>
+</html>
