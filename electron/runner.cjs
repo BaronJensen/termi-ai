@@ -415,8 +415,6 @@ function startCursorAgent(message, sessionObject, onLog, options = {}) {
     }
   }
   
-  let timeoutId = null;
-  let idleTimeoutId = null;
   let settled = false;
   let childRef = null;
   let lastActivity = Date.now();
@@ -548,20 +546,11 @@ function startCursorAgent(message, sessionObject, onLog, options = {}) {
             // Forward all parsed JSON to renderer; renderer decides how to use it
             if (onLog) { try { onLog('json', stableSerialize(obj)); } catch {} }
           }
-          // Resolve on success objects to finish the run
+          // Resolve on success objects to finish the run - let process exit naturally
           const normalized = normalizeSuccessObject(obj);
           if (normalized) {
             settled = true;
-            clearTimeout(timeoutId);
-            clearTimeout(idleTimeoutId);
-            clearTimeout(quickTimeoutId);
-            try { 
-              if (childRef && typeof childRef.kill === 'function') {
-                childRef.kill('SIGTERM');
-              } else if (childRef && childRef.pid) {
-                process.kill(childRef.pid, 'SIGTERM');
-              }
-            } catch {}
+            if (onLog) onLog('info', `[${sessionLabel}] ✅ Run completed successfully - waiting for cursor-agent to finish cleanup`);
             resolve(normalized);
           }
         } catch {}
@@ -609,22 +598,26 @@ function startCursorAgent(message, sessionObject, onLog, options = {}) {
       }
     };
 
-    const cleanup = () => {
+    const forceCleanup = (reason) => {
       if (settled) return;
       settled = true;
-      clearTimeout(timeoutId);
+      if (onLog) onLog('warn', `[${sessionLabel}] 🧹 Force cleanup initiated (${reason}) - killing terminal process`);
       try { 
         if (childRef && typeof childRef.kill === 'function') {
           childRef.kill('SIGTERM');
+          if (onLog) onLog('info', `[${sessionLabel}] 💀 Terminal process force killed (SIGTERM)`);
         } else if (childRef && childRef.pid) {
           process.kill(childRef.pid, 'SIGTERM');
+          if (onLog) onLog('info', `[${sessionLabel}] 💀 Terminal process force killed via PID ${childRef.pid} (SIGTERM)`);
         }
-      } catch {}
-      if (onLog) onLog('info', `[${sessionLabel}] Cleanup completed`);
+      } catch (killErr) {
+        if (onLog) onLog('warn', `[${sessionLabel}] ⚠️  Failed to force kill terminal process: ${killErr.message}`);
+      }
+      if (onLog) onLog('info', `[${sessionLabel}] ✅ Force cleanup completed`);
     };
 
     const childExitHandler = (code) => {
-      if (onLog) onLog('info', `[${sessionLabel}] cursor-agent exited with code ${code}`);
+      if (onLog) onLog('info', `[${sessionLabel}] 💀 cursor-agent process exited naturally with code ${code}`);
       // If not already resolved, try one last parse
       // Final pass on remaining buffer
       if (buffer) {
@@ -661,9 +654,7 @@ function startCursorAgent(message, sessionObject, onLog, options = {}) {
             const normalized = normalizeSuccessObject(obj);
             if (normalized) {
               settled = true;
-              clearTimeout(timeoutId);
-              clearTimeout(idleTimeoutId);
-              clearTimeout(quickTimeoutId);
+              if (onLog) onLog('info', `[${sessionLabel}] ✅ Found success result in final buffer - run completed`);
               resolve(normalized);
               return;
             }
@@ -673,17 +664,16 @@ function startCursorAgent(message, sessionObject, onLog, options = {}) {
       // As a fallback, reject with raw output
       if (code !== 0 && !settled) {
         settled = true;
-        clearTimeout(timeoutId);
-        clearTimeout(idleTimeoutId);
-        clearTimeout(quickTimeoutId);
+        if (onLog) onLog('error', `[${sessionLabel}] ❌ cursor-agent exited with error code ${code}`);
         reject(new Error(`[${sessionLabel}] cursor-agent exited with code ${code}. Output:\n${buffer}`));
       } else if (!settled) {
         // could have been success without our pattern
         settled = true;
-        clearTimeout(timeoutId);
-        clearTimeout(idleTimeoutId);
-        clearTimeout(quickTimeoutId);
+        if (onLog) onLog('info', `[${sessionLabel}] ✅ cursor-agent completed without clear success signal (code ${code})`);
         resolve({ type: 'raw', output: buffer });
+      } else {
+        // Process exited after we already resolved - this is normal
+        if (onLog) onLog('info', `[${sessionLabel}] ✅ cursor-agent finished cleanup and exited (code ${code})`);
       }
     };
 
@@ -745,7 +735,7 @@ function startCursorAgent(message, sessionObject, onLog, options = {}) {
       child.stderr.on('data', handleData);
       child.on('error', (err) => {
         if (onLog) onLog('error', `[${sessionLabel}] ${err.message}`);
-        cleanup();
+        forceCleanup('spawn error');
         reject(new Error(`[${sessionLabel}] Failed to start cursor-agent: ${err.message}`));
       });
       child.on('exit', (code) => childExitHandler(code));
@@ -760,16 +750,7 @@ function startCursorAgent(message, sessionObject, onLog, options = {}) {
     }
 
 
-    // Overall timeout support (only use if explicitly set in options)
-    const timeoutMs = typeof options.timeoutMs === 'number' ? options.timeoutMs : 0; // Default: no timeout (infinite)
-    if (timeoutMs > 0) {
-      timeoutId = setTimeout(() => {
-        if (settled) return;
-        if (onLog) onLog('error', `[${sessionLabel}] cursor-agent timeout after ${timeoutMs}ms`);
-        cleanup();
-        resolve({ type: 'raw', output: buffer, timeout: true });
-      }, timeoutMs);
-    }
+    if (onLog) onLog('info', `[${sessionLabel}] 🚀 cursor-agent process started - no timeout, will run until completion`);
   });
   
   return { child: childRef, wait };
