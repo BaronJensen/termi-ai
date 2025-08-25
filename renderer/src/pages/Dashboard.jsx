@@ -84,7 +84,17 @@ export default function Dashboard({ onOpenProject }) {
         tabIndex={0}
         onClick={() => onOpenProject(p.id)}
         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onOpenProject(p.id); }}
-        style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 10, cursor: 'pointer', position: 'relative', transition: 'transform .12s ease, box-shadow .2s ease' }}
+        style={{ 
+          padding: 14, 
+          display: 'flex', 
+          flexDirection: 'column', 
+          gap: 10, 
+          cursor: 'pointer', 
+          position: 'relative', 
+          transition: 'transform .12s ease, box-shadow .2s ease',
+          overflow: 'hidden',
+          minHeight: '140px'
+        }}
         onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 12px 28px rgba(0,0,0,0.35)'; }}
         onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = 'var(--ds-shadow)'; }}
       >
@@ -99,14 +109,43 @@ export default function Dashboard({ onOpenProject }) {
             <path d="M10 10v7M14 10v7" stroke="#cde3ff" strokeWidth="1.6" strokeLinecap="round"/>
           </svg>
         </IconButton>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingRight: 40 }}>
-          <div style={{ fontWeight: 700, color: '#e6eeff' }}>{p.name}</div>
-          <Badge>{(p.runningConfig?.projectType || 'app').toUpperCase()}</Badge>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', paddingRight: 40, gap: 8 }}>
+          <div style={{ 
+            fontWeight: 700, 
+            color: '#e6eeff', 
+            flex: 1,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+            minWidth: 0
+          }}>
+            {p.name}
+          </div>
+          <Badge style={{ flexShrink: 0 }}>{(p.runningConfig?.projectType || 'app').toUpperCase()}</Badge>
         </div>
         {p.description && (
-          <div style={{ fontSize: 12, opacity: 0.85 }}>{p.description}</div>
+          <div style={{ 
+            fontSize: 12, 
+            opacity: 0.85,
+            overflow: 'hidden',
+            display: '-webkit-box',
+            WebkitLineClamp: 2,
+            WebkitBoxOrient: 'vertical',
+            lineHeight: '1.4em',
+            maxHeight: '2.8em'
+          }}>
+            {p.description}
+          </div>
         )}
-        <div style={{ ...metaStyle, opacity: 0.7 }}>Path: {p.path}</div>
+        <div style={{ 
+          ...metaStyle, 
+          opacity: 0.7,
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap'
+        }}>
+          Path: {p.path}
+        </div>
         {p.createdAt && (
           <div style={metaStyle}>Created: {new Date(p.createdAt).toLocaleDateString()}</div>
         )}
@@ -156,9 +195,16 @@ export default function Dashboard({ onOpenProject }) {
             <rect x="3" y="4" width="18" height="12" rx="2" stroke="#cde3ff" strokeWidth="1.6" />
             <path d="M8 20h8M12 16v4" stroke="#cde3ff" strokeWidth="1.6" strokeLinecap="round"/>
           </svg>
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-            <div style={{ fontWeight: 700, color: '#e6eeff' }}>Load existing project</div>
-            <div style={{ fontSize: 12, opacity: 0.8 }}>Import a folder with package.json or index.html</div>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center' }}>
+            <div style={{ fontWeight: 700, color: '#e6eeff', marginBottom: 4 }}>Load existing project</div>
+            <div style={{ 
+              fontSize: 12, 
+              opacity: 0.8,
+              lineHeight: '1.3em',
+              maxWidth: '200px'
+            }}>
+              Import a folder with package.json or index.html
+            </div>
           </div>
         </Card>
 

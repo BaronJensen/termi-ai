@@ -58,6 +58,12 @@ export function useChatSend({
     console.log(`🚀 useChatSend: Sending message "${text}" in session:`, currentSession);
     console.log(`🚀 useChatSend: send function available:`, !!send, typeof send);
 
+    // Clear the input field immediately after validation to prevent state conflicts
+    if (clearInput && typeof clearInput === 'function') {
+      clearInput();
+      console.log(`🧹 Input field cleared immediately after send validation`);
+    }
+
     // Mark this session as running terminal
     markSessionRunningTerminal(currentSessionId);
 
@@ -65,12 +71,6 @@ export function useChatSend({
       // Use the centralized send function from SessionProvider
       await send(text, currentSession);
       console.log(`✅ Message sent successfully via SessionProvider.send`);
-      
-      // Clear the input field after successful send
-      if (clearInput && typeof clearInput === 'function') {
-        clearInput();
-        console.log(`🧹 Input field cleared after successful send`);
-      }
     } catch (error) {
       console.error(`❌ Error sending message via SessionProvider.send:`, error);
       

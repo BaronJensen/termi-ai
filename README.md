@@ -1,7 +1,7 @@
 # 🚀 Cursovable
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-lightgrey.svg)](https://github.com/yourusername/cursovable)
+[![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-lightgrey.svg)](https://github.com/jensbaronville/cursovable)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen.svg)](https://nodejs.org/)
 [![Electron](https://img.shields.io/badge/Electron-30.0.9-blue.svg)](https://electronjs.org/)
 
@@ -53,7 +53,7 @@ Before you begin, ensure you have the following installed:
 
 ### Option 1: Download Pre-built Release
 
-1. Go to the [Releases page](https://github.com/yourusername/cursovable/releases)
+1. Go to the [Releases page](https://github.com/jensbaronville/cursovable/releases)
 2. Download the appropriate version for your platform
 3. Install and run the application
 
@@ -61,7 +61,7 @@ Before you begin, ensure you have the following installed:
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/cursovable.git
+git clone https://github.com/jensbaronville/cursovable.git
 cd cursovable
 
 # Install dependencies
@@ -208,9 +208,9 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 📞 Support
 
-- **Issues**: [GitHub Issues](https://github.com/yourusername/cursovable/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/yourusername/cursovable/discussions)
-- **Wiki**: [Project Wiki](https://github.com/yourusername/cursovable/wiki)
+- **Issues**: [GitHub Issues](https://github.com/jensbaronville/cursovable/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/jensbaronville/cursovable/discussions)
+- **Wiki**: [Project Wiki](https://github.com/jensbaronville/cursovable/wiki)
 
 ---
 

@@ -5,6 +5,28 @@ let pty = null;
 try { pty = require('node-pty'); } catch {}
 const fs = require('fs');
 const path = require('path');
+
+// Properly escape shell arguments to handle quotes, newlines, and other special characters
+function escapeShellArg(arg) {
+  if (typeof arg !== 'string') {
+    return String(arg);
+  }
+  
+  // On Windows, use different escaping
+  if (process.platform === 'win32') {
+    // Windows cmd/PowerShell escaping - wrap in double quotes and escape internal quotes
+    return '"' + arg.replace(/"/g, '""') + '"';
+  }
+  
+  // Unix shell escaping - wrap in single quotes and handle internal single quotes
+  if (arg.includes("'")) {
+    // If the string contains single quotes, we need to close the quote, escape the single quote, and reopen
+    return "'" + arg.replace(/'/g, "'\"'\"'") + "'";
+  }
+  
+  // Simple case - just wrap in single quotes
+  return "'" + arg + "'";
+}
 const { stripAnsiAndControls: stripAnsi } = require('./utils/ansi.cjs');
 const { MockDataGenerator } = require('./mockDataGenerator.cjs');
 
@@ -410,7 +432,7 @@ function startCursorAgent(message, sessionObject, onLog, options = {}) {
   const wait = new Promise((resolve, reject) => {
     const STREAM_DEBUG = process.env.CURSOVABLE_STREAM_DEBUG === '1' || options.debugStream === true;
     let lastBufferWarnAt = 0;
-    const args = ['-p', '--output-format="stream-json"'];
+    const args = ['-p', '--output-format=stream-json', '--force'];
     // If using token auth, append -a <API_TOKEN>
     if (options.useTokenAuth && options.apiKey) {
       args.push('-a', String(options.apiKey));
@@ -423,13 +445,26 @@ function startCursorAgent(message, sessionObject, onLog, options = {}) {
     // Add --resume sessionId if sessionId is provided
     if (sessionId) {
       args.push('--resume', sessionId);
+      if (onLog) onLog('info', `[${sessionLabel}] Resuming existing session: ${sessionId}`);
+    } else {
+      if (onLog) onLog('info', `[${sessionLabel}] Starting new session (no existing session ID)`);
     }
     
-    args.push(`${message}. Avoid running build tools or scripts, we are already running the project`);
+    // Handle long messages by using stdin instead of command line args
+    const fullMessage = `${message}. Avoid running build tools or scripts, we are already running the project`;
+    const MESSAGE_LENGTH_LIMIT = 8000; // Safe command line length limit
+    const useStdin = fullMessage.length > MESSAGE_LENGTH_LIMIT;
+    
+    if (useStdin) {
+      if (onLog) onLog('info', `[${sessionLabel}] Message too long (${fullMessage.length} chars), using stdin`);
+      // Don't add message to args, will be passed via stdin
+    } else {
+      args.push(fullMessage);
+    }
     
     // Safe display of args (mask API token if present)
     const displayArgs = args.map(a => (options && options.apiKey && a === String(options.apiKey)) ? '********' : a);
-    if (onLog) onLog('info', `[${sessionLabel}] Running: cursor-agent ${displayArgs.map(a => (a.includes(' ') ? '"'+a+'"' : a)).join(' ')}`);
+    if (onLog) onLog('info', `[${sessionLabel}] Running: cursor-agent ${displayArgs.map(a => escapeShellArg(a)).join(' ')}`);
     if (onLog) onLog('info', `[${sessionLabel}] Working directory: ${options.cwd || process.cwd()}`);
     
     // Log the session information being used for this run
@@ -463,6 +498,11 @@ function startCursorAgent(message, sessionObject, onLog, options = {}) {
       const str = stripAnsi(data.toString());
       // Update activity timestamp
       lastActivity = Date.now();
+      
+      // Debug: Log first data received to detect if cursor-agent is responding
+      if (buffer === '' && str.length > 0) {
+        if (onLog) onLog('info', `[${sessionLabel}] First data received (${str.length} chars): ${str.slice(0, 100)}${str.length > 100 ? '...' : ''}`);
+      }
       
       // Append to buffer first
       buffer += str;
@@ -573,8 +613,6 @@ function startCursorAgent(message, sessionObject, onLog, options = {}) {
       if (settled) return;
       settled = true;
       clearTimeout(timeoutId);
-      clearTimeout(idleTimeoutId);
-      clearTimeout(quickTimeoutId);
       try { 
         if (childRef && typeof childRef.kill === 'function') {
           childRef.kill('SIGTERM');
@@ -654,7 +692,7 @@ function startCursorAgent(message, sessionObject, onLog, options = {}) {
     if (pty && !ptyFailed) {
       try {
         const shell = process.platform === 'win32' ? 'powershell.exe' : (process.env.SHELL || '/bin/zsh');
-        const cmdLine = `${resolved} ${args.map(a => (a.includes(' ') ? '"'+a+'"' : a)).join(' ')}`;
+        const cmdLine = `${escapeShellArg(resolved)} ${args.map(a => escapeShellArg(a)).join(' ')}`;
         if (onLog) onLog('info', `[${sessionLabel}] Using PTY with shell: ${shell}`);
         
         const p = pty.spawn(shell, [], {
@@ -670,7 +708,20 @@ function startCursorAgent(message, sessionObject, onLog, options = {}) {
           childExitHandler(exitCode);
         });
         // Write command into the PTY so the environment and login shell are used
-        p.write(cmdLine + '\r');
+        // Add a small delay to ensure shell is ready, then write the command
+        setTimeout(() => {
+          if (onLog) onLog('info', `[${sessionLabel}] Writing command to PTY: ${cmdLine}`);
+          p.write(cmdLine + '\r');
+        }, 50);
+        
+        // If using stdin for long message, write it after the command
+        if (useStdin) {
+          setTimeout(() => {
+            p.write(fullMessage + '\n');
+            // Send EOF to indicate end of stdin input
+            p.write('\x04'); // Ctrl+D (EOF)
+          }, 100); // Small delay to ensure command is processed first
+        }
         
         if (onLog) onLog('info', `[${sessionLabel}] PTY terminal created successfully`);
       } catch (err) {
@@ -698,36 +749,19 @@ function startCursorAgent(message, sessionObject, onLog, options = {}) {
         reject(new Error(`[${sessionLabel}] Failed to start cursor-agent: ${err.message}`));
       });
       child.on('exit', (code) => childExitHandler(code));
+      
+      // If using stdin for long message, write it to the process
+      if (useStdin) {
+        setTimeout(() => {
+          child.stdin.write(fullMessage + '\n');
+          child.stdin.end(); // Close stdin to signal end of input
+        }, 100); // Small delay to ensure process is ready
+      }
     }
 
-    // Idle timeout - kill process if no output for extended period
-    const idleTimeoutMs = 300000; // 5 minutes - increased for long-running commands
-    idleTimeoutId = setInterval(() => {
-      if (settled) return;
-      const timeSinceActivity = Date.now() - lastActivity;
-      if (timeSinceActivity > idleTimeoutMs) {
-        if (onLog) onLog('error', `[${sessionLabel}] cursor-agent idle timeout after ${idleTimeoutMs}ms of no output`);
-        cleanup();
-        resolve({ type: 'raw', output: buffer, idle_timeout: true });
-      }
-    }, 10000); // Check every 10 seconds - less frequent checking
 
-    // Quick timeout for permission-related issues (cursor-agent getting stuck)
-    const quickTimeoutMs = 30000; // 30 seconds for permission issues
-    const quickTimeoutId = setTimeout(() => {
-      if (settled) return;
-      if (onLog) onLog('warn', `[${sessionLabel}] Quick timeout after ${quickTimeoutMs}ms - cursor-agent may be stuck due to permissions`);
-      cleanup();
-      resolve({ 
-        type: 'error', 
-        error: 'cursor-agent appears to be stuck, possibly due to permission issues. Please check folder permissions.',
-        quick_timeout: true,
-        permission_warning: true
-      });
-    }, quickTimeoutMs);
-
-    // Overall timeout support
-    const timeoutMs = typeof options.timeoutMs === 'number' ? options.timeoutMs : 900000; // 15 min default - increased for long-running commands
+    // Overall timeout support (only use if explicitly set in options)
+    const timeoutMs = typeof options.timeoutMs === 'number' ? options.timeoutMs : 0; // Default: no timeout (infinite)
     if (timeoutMs > 0) {
       timeoutId = setTimeout(() => {
         if (settled) return;
