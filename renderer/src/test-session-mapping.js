@@ -13,7 +13,7 @@ const mockCursorAgentResponses = {
         level: 'json',
         line: JSON.stringify({
           "apiKeySource": "login",
-          "cwd": "/Users/jensenbaronville/dev/projects/auto-cto",
+          "cwd": "/Users/BaronJensen/dev/projects/auto-cto",
           "model": "GPT-5",
           "permissionMode": "default",
           "session_id": "a655af1f-adb8-4211-8220-a8bd5c09d5fe",
@@ -78,7 +78,7 @@ const mockCursorAgentResponses = {
         level: 'json',
         line: JSON.stringify({
           "apiKeySource": "login",
-          "cwd": "/Users/jensenbaronville/dev/projects/auto-cto",
+          "cwd": "/Users/BaronJensen/dev/projects/auto-cto",
           "model": "GPT-5",
           "permissionMode": "default",
           "session_id": "0b21192b-6aaa-4ecf-90fa-9ee0dd2be31d",

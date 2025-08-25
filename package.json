@@ -4,6 +4,11 @@
   "private": true,
   "main": "electron/main.cjs",
   "type": "commonjs",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/BaronJensen/cursovable.git"
+  },
+  "homepage": "https://github.com/BaronJensen/cursovable",
   "scripts": {
     "dev": "concurrently -k \"npm:renderer\" \"npm:electron\"",
     "dev:debug": "cross-env CURSOVABLE_DEBUG_MODE=1 concurrently -k \"npm:renderer\" \"npm:electron\"",
