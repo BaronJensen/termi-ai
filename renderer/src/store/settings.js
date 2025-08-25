@@ -4,8 +4,8 @@ const STORAGE_KEY = 'cursovable-settings';
 
 export function getDefaultSettings() {
   return {
-    // Cursor agent overall timeout in milliseconds (0 to disable)
-    cursorAgentTimeoutMs: 900000, // 15 minutes
+    // DEPRECATED: Cursor agent timeout (no longer used - processes run until completion)
+    cursorAgentTimeoutMs: 900000, // 15 minutes - kept for compatibility
     // Preferred editor id for Project View options: code | cursor | webstorm | idea | subl
     defaultEditor: '',
     // Default JS package manager: yarn | npm | pnpm

@@ -868,7 +868,7 @@ ipcMain.handle('html-stop', async () => {
   return true;
 });
 
-ipcMain.handle('cursor-run', async (_e, { message, cwd, runId: clientRunId, sessionObject, model, timeoutMs, apiKey, debugMode }) => {
+ipcMain.handle('cursor-run', async (_e, { message, cwd, runId: clientRunId, sessionObject, model, apiKey, debugMode }) => {
   if (!message || !message.trim()) {
     throw new Error('Empty message');
   }
@@ -942,7 +942,7 @@ ipcMain.handle('cursor-run', async (_e, { message, cwd, runId: clientRunId, sess
   }, { 
     cwd: workingDir, 
     model, 
-    ...(typeof timeoutMs === 'number' ? { timeoutMs } : {}), 
+ 
     ...(apiKey ? { apiKey, useTokenAuth: true } : {}),
     ...(debugMode ? { debugMode } : {})
   });
@@ -955,39 +955,69 @@ ipcMain.handle('cursor-run', async (_e, { message, cwd, runId: clientRunId, sess
   // Update menu to show new process
   updateMenuStatus();
   
+  const sessionLabel = sessionObject.id ? `Session ${sessionObject.id.slice(0, 8)}` : 'Default';
+  console.log(`📱 [${sessionLabel}] Starting run ${runId.slice(0, 8)} - awaiting completion`);
+  
   let resultJson;
   try {
     resultJson = await wait;
+    console.log(`✅ [${sessionLabel}] Run ${runId.slice(0, 8)} completed successfully`);
   } catch (error) {
-    console.error('Cursor agent error:', error);
+    console.error(`❌ [${sessionLabel}] Run ${runId.slice(0, 8)} failed:`, error.message);
     // Clean up on error
     if (child) {
       try {
         if (typeof child.kill === 'function') {
           child.kill('SIGTERM');
+          console.log(`💀 [${sessionLabel}] Terminal killed after error (SIGTERM)`);
         } else if (child.pid) {
           process.kill(child.pid, 'SIGTERM');
+          console.log(`💀 [${sessionLabel}] Terminal killed after error via PID ${child.pid} (SIGTERM)`);
         }
       } catch (err) {
-        console.warn('Failed to kill process on error:', err.message);
+        console.warn(`⚠️  [${sessionLabel}] Failed to kill process on error: ${err.message}`);
       }
     }
     throw error;
   } finally {
-    // Always clean up
+    // Clean up tracking - let process exit naturally
+    console.log(`🧹 [${sessionLabel}] Cleaning up run ${runId.slice(0, 8)} - removing from tracking`);
+    
+    // Give the process a moment to exit naturally after completing
     if (child) {
-      try {
-        if (typeof child.kill === 'function') {
-          child.kill('SIGTERM');
-        } else if (child.pid) {
-          process.kill(child.pid, 'SIGTERM');
-        }
-      } catch (err) {
-        console.warn('Failed to kill process in cleanup:', err.message);
+      // Check if process is still alive before attempting to kill
+      const isStillRunning = child.pid && !child.killed;
+      if (isStillRunning) {
+        console.log(`⏳ [${sessionLabel}] Cursor-agent still running, giving it time to exit naturally...`);
+        
+        // Wait a bit for natural exit, then force cleanup if needed
+        setTimeout(() => {
+          try {
+            const stillAlive = child.pid && !child.killed;
+            if (stillAlive) {
+              console.log(`⚠️  [${sessionLabel}] Process still running after grace period, force killing...`);
+              if (typeof child.kill === 'function') {
+                child.kill('SIGTERM');
+                console.log(`💀 [${sessionLabel}] Terminal force killed after grace period (SIGTERM)`);
+              } else if (child.pid) {
+                process.kill(child.pid, 'SIGTERM');
+                console.log(`💀 [${sessionLabel}] Terminal force killed after grace period via PID ${child.pid} (SIGTERM)`);
+              }
+            } else {
+              console.log(`✅ [${sessionLabel}] Process exited naturally during grace period`);
+            }
+          } catch (err) {
+            console.warn(`⚠️  [${sessionLabel}] Error during delayed cleanup: ${err.message}`);
+          }
+        }, 3000); // 3 second grace period
+      } else {
+        console.log(`✅ [${sessionLabel}] Process already exited naturally`);
       }
     }
+    
     agentProcs.delete(runId);
     removeSessionProcess(sessionObject.id, runId);
+    console.log(`✅ [${sessionLabel}] Run ${runId.slice(0, 8)} cleanup completed - process removed from tracking`);
     // Update menu after cleanup
     updateMenuStatus();
   }

@@ -618,7 +618,7 @@ export const useSessionManager = (projectId) => {
         sessionObject,
         cwd: project?.path || await window.cursovable.getWorkingDirectory(),
         apiKey: settings.apiKey || undefined,
-        timeoutMs: settings.cursorAgentTimeoutMs || 300000, // Use setting or default to 5 minutes
+        // No timeout - cursor-agent can run for hours depending on complexity
         model: settings.defaultModel || undefined, // Use default model from settings
         debugMode: false // Could be added to settings later
       });
