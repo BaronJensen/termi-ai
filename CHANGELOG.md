@@ -7,17 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
+## [0.1.1] - 2025-08-25
 
-- Initial open source release
-- Comprehensive documentation
-- Contributing guidelines
-- MIT License
+### Fixed
 
-### Changed
-
-- Updated README for open source launch
-- Improved project documentation structure
+- Fixed performance issue with terminal not cleaning up properly
 
 ## [0.1.0] - 2024-12-19
 
