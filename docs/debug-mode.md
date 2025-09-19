@@ -1,6 +1,6 @@
-# Debug Mode for Cursovable
+# Debug Mode for Termi AI
 
-The debug mode allows you to test the Cursovable application without calling the real `cursor-agent` CLI. Instead, it uses a mock data generator that simulates realistic responses.
+The debug mode allows you to test the Termi AI application without calling the real `cursor-agent` CLI. Instead, it uses a mock data generator that simulates realistic responses.
 
 ## Features
 

@@ -5,7 +5,7 @@ import Select from '../../ui/Select';
 function Hero({ idea, setIdea, template, setTemplate, onCreateClick }) {
   return (
     <div className="ds-hero">
-      <div className="ds-hero-title">Build <span className="accent">Cursovable</span> projects with AI</div>
+      <div className="ds-hero-title">Build <span className="accent">Termi AI</span> projects with AI</div>
       <div className="ds-hero-subtitle">Create apps locally with AI</div>
       <div className="ds-hero-bar">
         <textarea

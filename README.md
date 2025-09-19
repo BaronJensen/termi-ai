@@ -1,4 +1,4 @@
-# 🚀 Cursovable
+# 🚀 Termi AI
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-lightgrey.svg)](https://github.com/BaronJensen/cursovable)
@@ -7,9 +7,9 @@
 
 > **Your AI-powered development companion** - A desktop app that combines live project previews with intelligent AI assistance using Cursor Agent.
 
-## ✨ What is Cursovable?
+## ✨ What is Termi AI?
 
-Cursovable is an Electron-based desktop application that revolutionizes your development workflow by providing:
+Termi AI is an Electron-based desktop application that revolutionizes your development workflow by providing:
 
 - **🖥️ Live Project Preview**: Automatically detect and embed your React/Vite projects in real-time
 - **🤖 AI Development Assistant**: Integrated chat interface powered by Cursor Agent
@@ -76,7 +76,7 @@ npm run dev
 
 ## 🚀 Quick Start
 
-1. **Launch the App**: Start Cursovable from your applications menu
+1. **Launch the App**: Start Termi AI from your applications menu
 2. **Choose Your Project**: Click "Choose folder" and select your React/Vite project
 3. **Select Package Manager**: Choose between yarn, npm, or pnpm
 4. **Run Development Server**: Click "Run Vite" to start your project
@@ -109,7 +109,7 @@ npm run pack
 ### Project Structure
 
 ```
-cursovable/
+termi-ai/
 ├── electron/           # Electron main process
 │   ├── main.cjs       # Main entry point
 │   ├── preload.cjs    # Preload script for IPC
@@ -125,7 +125,7 @@ cursovable/
 
 ### Environment Variables
 
-- `CURSOVABLE_DEBUG_MODE=1`: Enable debug mode for development
+- `TERMI_AI_DEBUG_MODE=1`: Enable debug mode for development
 - `OPENAI_API_KEY`: Your OpenAI API key (optional, passed to cursor-agent)
 
 ### Build Configuration
@@ -214,6 +214,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-**Made with ❤️ by the Cursovable community**
+**Made with ❤️ by the Termi AI community**
 
 If you find this project helpful, please consider giving it a ⭐ star on GitHub!
