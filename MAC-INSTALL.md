@@ -1,6 +1,6 @@
-# Mac Installation Guide for Cursovable
+# Mac Installation Guide for Termi AI
 
-This guide provides step-by-step instructions for installing and running Cursovable on macOS, specifically addressing the challenges of running unsigned applications.
+This guide provides step-by-step instructions for installing and running Termi AI on macOS, specifically addressing the challenges of running unsigned applications.
 
 ## Quick Start
 
@@ -14,8 +14,8 @@ This guide provides step-by-step instructions for installing and running Cursova
 ### Step 1: Download and Extract
 
 - Download the latest `.dmg` file for your Mac's architecture:
-  - **Apple Silicon (M1/M2/M3)**: `Cursovable-0.1.0-arm64.dmg`
-  - **Intel Macs**: `Cursovable-0.1.0-x64.dmg`
+  - **Apple Silicon (M1/M2/M3)**: `Termi-AI-0.1.0-arm64.dmg`
+  - **Intel Macs**: `Termi-AI-0.1.0-x64.dmg`
 - Double-click the `.dmg` file to mount it
 - Drag the app to your Applications folder
 
@@ -23,7 +23,7 @@ This guide provides step-by-step instructions for installing and running Cursova
 
 When you first try to launch the app, macOS will block it with a security warning:
 
-1. **Right-click** (or Control+click) on the Cursovable app
+1. **Right-click** (or Control+click) on the Termi AI app
 2. Select **"Open"** from the context menu
 3. Click **"Open"** in the security dialog that appears
 4. The app will now launch successfully
@@ -34,7 +34,7 @@ When you first try to launch the app, macOS will block it with a security warnin
 
 1. Go to **System Preferences** → **Security & Privacy**
 2. Click the **"General"** tab
-3. Look for a message about "Cursovable was blocked from opening"
+3. Look for a message about "Termi AI was blocked from opening"
 4. Click **"Open Anyway"** to allow the app to run
 5. Try launching the app again
 
@@ -42,10 +42,10 @@ When you first try to launch the app, macOS will block it with a security warnin
 
 ```bash
 # Remove the quarantine attribute (use with caution)
-xattr -rd com.apple.quarantine /Applications/Cursovable.app
+xattr -rd com.apple.quarantine /Applications/Termi-AI.app
 
 # Then launch normally
-open /Applications/Cursovable.app
+open /Applications/Termi-AI.app
 ```
 
 #### Method C: Developer Mode (macOS 13+)
@@ -60,7 +60,7 @@ open /Applications/Cursovable.app
 ```bash
 # Navigate to the app and run directly
 cd /Applications
-./Cursovable.app/Contents/MacOS/Cursovable
+./Termi-AI.app/Contents/MacOS/Termi-AI
 ```
 
 ## Troubleshooting
@@ -71,10 +71,10 @@ If you see "App is damaged and can't be opened":
 
 ```bash
 # Remove quarantine attribute
-xattr -rd com.apple.quarantine /Applications/Cursovable.app
+xattr -rd com.apple.quarantine /Applications/Termi-AI.app
 
 # Or check what attributes are set
-xattr -l /Applications/Cursovable.app
+xattr -l /Applications/Termi-AI.app
 ```
 
 ### "Unidentified Developer" Warning
@@ -91,10 +91,10 @@ This is normal for unsigned apps. Use the right-click "Open" method described ab
 
 ```bash
 # Check file permissions
-ls -la /Applications/Cursovable.app
+ls -la /Applications/Termi-AI.app
 
 # Fix permissions if needed
-chmod +x /Applications/Cursovable.app/Contents/MacOS/Cursovable
+chmod +x /Applications/Termi-AI.app/Contents/MacOS/Termi-AI
 ```
 
 ## Security Considerations
@@ -133,7 +133,7 @@ Currently, the app doesn't support automatic updates. To update:
 
 ```bash
 # Remove old version
-rm -rf /Applications/Cursovable.app
+rm -rf /Applications/Termi-AI.app
 
 # Install new version
 # (Follow installation steps above)

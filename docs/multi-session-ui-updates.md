@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document describes the updates made to the Cursovable UI to support multiple concurrent cursor-agent terminals, allowing users to run multiple chat sessions simultaneously and navigate between them without killing active processes.
+This document describes the updates made to the Termi AI UI to support multiple concurrent cursor-agent terminals, allowing users to run multiple chat sessions simultaneously and navigate between them without killing active processes.
 
 ## Key Changes Made
 

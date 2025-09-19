@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document describes the implementation of multi-session support in Cursovable, allowing multiple chat sessions to run concurrently with unique terminals for better debugging and workflow management.
+This document describes the implementation of multi-session support in Termi AI, allowing multiple chat sessions to run concurrently with unique terminals for better debugging and workflow management.
 
 ## Key Features
 

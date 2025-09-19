@@ -1,6 +1,6 @@
-# Build Instructions for Cursovable
+# Build Instructions for Termi AI
 
-This document provides detailed instructions for building and distributing the Cursovable Electron application.
+This document provides detailed instructions for building and distributing the Termi AI Electron application.
 
 ## Prerequisites
 
@@ -131,7 +131,7 @@ module.exports = defineConfig(({ command, mode }) => ({
 {
   "build": {
     "appId": "com.cursovable.app",
-    "productName": "Cursovable",
+    "productName": "Termi AI",
     "files": ["electron/**", "renderer/dist/**", "package.json"],
     "directories": {
       "buildResources": "assets"
@@ -149,10 +149,10 @@ module.exports = defineConfig(({ command, mode }) => ({
 npm run dist
 
 # Output files in dist/:
-# - Cursovable-0.1.0-arm64.dmg
-# - Cursovable-0.1.0-arm64.zip
-# - Cursovable-0.1.0-x64.dmg
-# - Cursovable-0.1.0-x64.zip
+# - Termi-AI-0.1.0-arm64.dmg
+# - Termi-AI-0.1.0-arm64.zip
+# - Termi-AI-0.1.0-x64.dmg
+# - Termi-AI-0.1.0-x64.zip
 ```
 
 **Note**: macOS builds include both Intel (x64) and Apple Silicon (arm64) versions.
@@ -164,8 +164,8 @@ npm run dist
 npm run dist
 
 # Output files in dist/:
-# - Cursovable Setup 0.1.0.exe
-# - Cursovable-0.1.0-win.zip
+# - Termi-AI Setup 0.1.0.exe
+# - Termi-AI-0.1.0-win.zip
 ```
 
 ### Linux
@@ -175,9 +175,9 @@ npm run dist
 npm run dist
 
 # Output files in dist/:
-# - Cursovable-0.1.0-x86_64.AppImage
-# - Cursovable-0.1.0_amd64.deb
-# - Cursovable-0.1.0-x86_64.tar.gz
+# - Termi-AI-0.1.0-x86_64.AppImage
+# - Termi-AI-0.1.0_amd64.deb
+# - Termi-AI-0.1.0-x86_64.tar.gz
 ```
 
 ## Including snake-game.html
@@ -289,9 +289,9 @@ rm -rf renderer/dist/
 npm run pack
 
 # Test the app
-open dist/mac/Cursovable.app  # macOS
+open dist/mac/Termi-AI.app  # macOS
 # or
-start dist/win-unpacked/Cursovable.exe  # Windows
+start dist/win-unpacked/Termi-AI.exe  # Windows
 ```
 
 ### 2. Test Installer
@@ -301,7 +301,7 @@ start dist/win-unpacked/Cursovable.exe  # Windows
 npm run dist
 
 # Test the installer
-open dist/Cursovable-0.1.0-arm64.dmg  # macOS
+open dist/Termi-AI-0.1.0-arm64.dmg  # macOS
 ```
 
 ## Distribution

@@ -1,6 +1,6 @@
 # Chat Hooks Documentation
 
-This directory contains React hooks that manage the chat functionality, session management, and terminal communication for the Cursovable application.
+This directory contains React hooks that manage the chat functionality, session management, and terminal communication for the Termi AI application.
 
 ## Hook Architecture
 
@@ -21,6 +21,7 @@ SessionProvider (Context Provider)
 The main hook that orchestrates all session-related functionality.
 
 **Responsibilities:**
+
 - Session state management (create, load, delete, switch)
 - Message storage and retrieval
 - Tool call state management
@@ -28,6 +29,7 @@ The main hook that orchestrates all session-related functionality.
 - Cursor command execution
 
 **Key Functions:**
+
 - `createNewSession()` - Create a new chat session
 - `loadSession(sessionId)` - Switch to an existing session
 - `deleteSession(sessionId)` - Remove a session
@@ -35,6 +37,7 @@ The main hook that orchestrates all session-related functionality.
 - `updateSessionWithCursorId(sessionId, cursorSessionId)` - Link internal session to cursor session
 
 **State:**
+
 - `sessions` - Array of all sessions
 - `currentSessionId` - Currently active session
 - `busyBySession` - Map of session busy states
@@ -46,11 +49,13 @@ The main hook that orchestrates all session-related functionality.
 Specialized hook for processing different types of messages from cursor sessions.
 
 **Responsibilities:**
+
 - Parse and handle JSON log messages
 - Create appropriate message objects for different types
 - Route messages to the correct session
 
 **Supported Message Types:**
+
 - `session_start` - Session initialization
 - `assistant` - AI assistant responses
 - `result` - Command execution results
@@ -65,6 +70,7 @@ Specialized hook for processing different types of messages from cursor sessions
 - `error` - Error messages
 
 **Key Functions:**
+
 - `handleParsedMessage(parsed, sessionId)` - Main message processor
 - Individual handlers for each message type
 
@@ -73,12 +79,14 @@ Specialized hook for processing different types of messages from cursor sessions
 Manages terminal communication and cursor session mapping.
 
 **Responsibilities:**
+
 - Set up centralized log router
 - Route logs to appropriate session handlers
 - Provide terminal status information
 - Manage cursor session ID mapping
 
 **Key Functions:**
+
 - `setupLogRouter()` - Initialize the log routing system
 - `handleCursorLog(payload)` - Process incoming cursor logs
 - `getSessionTerminalStatus(sessionId)` - Get terminal status for a session
@@ -86,6 +94,7 @@ Manages terminal communication and cursor session mapping.
 - `cleanupLogRouter()` - Clean up router resources
 
 **State:**
+
 - `logRouter` - Reference to the active log router
 - Session status mapping functions
 
@@ -94,6 +103,7 @@ Manages terminal communication and cursor session mapping.
 Handles chat input and message sending.
 
 **Responsibilities:**
+
 - Manage chat input state
 - Handle message submission
 - Integrate with session manager for sending
@@ -103,22 +113,17 @@ Handles chat input and message sending.
 ### Basic Session Management
 
 ```jsx
-import { useSession } from '../providers/SessionProvider';
+import { useSession } from "../providers/SessionProvider";
 
 function ChatComponent() {
-  const { 
-    sessions, 
-    currentSessionId, 
-    createNewSession, 
-    send 
-  } = useSession();
+  const { sessions, currentSessionId, createNewSession, send } = useSession();
 
   const handleNewSession = () => {
     createNewSession();
   };
 
   const handleSend = (text) => {
-    const currentSession = sessions.find(s => s.id === currentSessionId);
+    const currentSession = sessions.find((s) => s.id === currentSessionId);
     send(text, currentSession);
   };
 
@@ -134,13 +139,11 @@ function ChatComponent() {
 ### Terminal Status Monitoring
 
 ```jsx
-import { useSession } from '../providers/SessionProvider';
+import { useSession } from "../providers/SessionProvider";
 
 function TerminalStatus() {
-  const { 
-    getCurrentTerminalSession,
-    getAllSessionsTerminalStatus 
-  } = useSession();
+  const { getCurrentTerminalSession, getAllSessionsTerminalStatus } =
+    useSession();
 
   const currentTerminal = getCurrentTerminalSession();
   const allStatuses = getAllSessionsTerminalStatus();
@@ -149,9 +152,9 @@ function TerminalStatus() {
     <div>
       <h3>Current Terminal: {currentTerminal?.name}</h3>
       <div>
-        {allStatuses.map(status => (
+        {allStatuses.map((status) => (
           <div key={status.id}>
-            {status.name} - {status.runningTerminal ? 'Running' : 'Idle'}
+            {status.name} - {status.runningTerminal ? "Running" : "Idle"}
           </div>
         ))}
       </div>
@@ -163,20 +166,19 @@ function TerminalStatus() {
 ### Message Processing
 
 ```jsx
-import { useMessageHandler } from './hooks/useMessageHandler';
+import { useMessageHandler } from "./hooks/useMessageHandler";
 
 function MessageProcessor({ addMessageToSession, updateSessionWithCursorId }) {
-  const messageHandler = useMessageHandler(addMessageToSession, updateSessionWithCursorId);
+  const messageHandler = useMessageHandler(
+    addMessageToSession,
+    updateSessionWithCursorId
+  );
 
   const processMessage = (parsedMessage, sessionId) => {
     messageHandler.handleParsedMessage(parsedMessage, sessionId);
   };
 
-  return (
-    <div>
-      {/* Message processing UI */}
-    </div>
-  );
+  return <div>{/* Message processing UI */}</div>;
 }
 ```
 
@@ -199,6 +201,7 @@ function MessageProcessor({ addMessageToSession, updateSessionWithCursorId }) {
 ## Error Handling
 
 All hooks include comprehensive error handling:
+
 - Try-catch blocks around critical operations
 - Console logging for debugging
 - Graceful fallbacks for missing data

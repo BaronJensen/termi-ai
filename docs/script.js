@@ -1,4 +1,4 @@
-// Cursovable GitHub Pages - Interactive Features
+// Termi AI GitHub Pages - Interactive Features
 document.addEventListener('DOMContentLoaded', function() {
     
     // Mobile Navigation Toggle
@@ -401,7 +401,7 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 // Export functions for potential external use
-window.CursovableSite = {
+window.TermiAISite = {
     trackEvent,
     updateGitHubStats,
     performSearch

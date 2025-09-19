@@ -1,6 +1,6 @@
-# Contributing to Cursovable
+# Contributing to Termi AI
 
-Thank you for your interest in contributing to Cursovable! This document provides guidelines and information for contributors.
+Thank you for your interest in contributing to Termi AI! This document provides guidelines and information for contributors.
 
 ## 🤝 How to Contribute
 
@@ -210,4 +210,4 @@ Contributors will be recognized in:
 - Release notes
 - Contributor hall of fame (when implemented)
 
-Thank you for contributing to Cursovable! 🚀
+Thank you for contributing to Termi AI! 🚀

@@ -1,22 +1,22 @@
-# Cursovable GitHub Pages Configuration
+# Termi AI GitHub Pages Configuration
 # This file configures Jekyll for GitHub Pages
 
 # Site settings
-title: Cursovable
+title: Termi AI
 description: Your AI-powered development companion - A desktop app that combines live project previews with intelligent AI assistance using Cursor Agent.
-url: "https://yourusername.github.io"
+url: "https://baronjensen.github.io"
 baseurl: "/cursovable"
 
 # Author information
 author:
-  name: Cursovable Team
-  email: hello@cursovable.com
+  name: Termi AI Team
+  email: hello@termi-ai.com
   bio: Building the future of AI-powered development
   location: Worldwide
   links:
     - label: GitHub
       icon: fab fa-github
-      url: https://github.com/yourusername/cursovable
+      url: https://github.com/BaronJensen/cursovable
 
 # Build settings
 markdown: kramdown
@@ -47,15 +47,15 @@ exclude:
 # Social media
 social:
   - name: GitHub
-    url: https://github.com/yourusername/cursovable
+    url: https://github.com/BaronJensen/cursovable
     icon: fab fa-github
 
 # SEO settings
 seo:
-  title: Cursovable - Your AI-Powered Development Companion
+  title: Termi AI - Your AI-Powered Development Companion
   description: Combine live project previews with intelligent AI assistance using Cursor Agent. Available for macOS, Windows, and Linux.
   keywords:
-    - cursovable
+    - termi ai
     - electron
     - react
     - vite
@@ -68,10 +68,10 @@ seo:
   type: website
   twitter:
     card: summary_large_image
-    creator: "@cursovable"
+    creator: "@termi-ai"
   og:
     type: website
-    site_name: Cursovable
+    site_name: Termi AI
 
 # Analytics (uncomment and configure as needed)
 # google_analytics: UA-XXXXXXXXX-X
@@ -79,7 +79,7 @@ seo:
 
 # Comments (uncomment and configure as needed)
 # disqus:
-#   shortname: cursovable
+#   shortname: termi-ai
 
 # Sitemap
 sitemap:
@@ -96,7 +96,7 @@ redirect_from:
 # Head and footer includes removed for GitHub Pages compatibility
 
 # Custom variables
-cursovable:
+termi-ai:
   version: "0.1.0"
   latest_release: "2024-12-19"
   platforms:

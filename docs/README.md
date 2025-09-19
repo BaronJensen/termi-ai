@@ -1,6 +1,6 @@
-# Cursovable GitHub Pages
+# Termi AI GitHub Pages
 
-This directory contains the source files for the Cursovable GitHub Pages website.
+This directory contains the source files for the Termi AI GitHub Pages website.
 
 ## 🚀 Quick Start
 

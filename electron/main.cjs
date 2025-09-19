@@ -525,8 +525,8 @@ function createMenu() {
           click: () => {
             dialog.showMessageBox(win, {
               type: 'info',
-              title: 'About Cursovable',
-              message: 'Cursovable - AI-powered development environment',
+              title: 'About Termi AI',
+              message: 'Termi AI - AI-powered development environment',
               detail: 'Version 1.0.0\nA modern development environment with AI assistance.'
             });
           }

@@ -1,5 +1,5 @@
 {
-  "name": "cursovable",
+  "name": "termi-ai",
   "version": "0.1.1",
   "private": true,
   "main": "electron/main.cjs",
@@ -11,7 +11,7 @@
   "homepage": "https://github.com/BaronJensen/cursovable",
   "scripts": {
     "dev": "concurrently -k \"npm:renderer\" \"npm:electron\"",
-    "dev:debug": "cross-env CURSOVABLE_DEBUG_MODE=1 concurrently -k \"npm:renderer\" \"npm:electron\"",
+    "dev:debug": "cross-env TERMI_AI_DEBUG_MODE=1 concurrently -k \"npm:renderer\" \"npm:electron\"",
     "dev:hot": "concurrently -k \"npm:renderer\" \"npm:electron:hot\"",
     "renderer": "vite --config renderer/vite.config.cjs",
     "electron": "wait-on http://localhost:5174 && cross-env RENDERER_URL=http://localhost:5174 electron .",
@@ -43,8 +43,8 @@
     "wait-on": "^7.2.0"
   },
   "build": {
-    "appId": "com.cursovable.app",
-    "productName": "Cursovable",
+    "appId": "com.termi-ai.app",
+    "productName": "Termi AI",
     "files": [
       "electron/**",
       "renderer/dist/**",
