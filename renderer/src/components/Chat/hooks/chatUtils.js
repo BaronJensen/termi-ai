@@ -73,7 +73,7 @@ export const generateRunId = () => `${Date.now()}-${Math.random().toString(36).s
 export const verifyAndSwitchWorkingDirectory = async (desiredCwd) => {
   const normalizePath = (p) => (p || '').replace(/\\/g, '/').replace(/\/+$/,'');
   const desired = normalizePath(desiredCwd);
-  let currentWd = normalizePath(await window.cursovable.getWorkingDirectory());
+  let currentWd = normalizePath(await window.termiAI.getWorkingDirectory());
   
   if (!currentWd || currentWd !== desired) {
     const proceed = confirm(
@@ -81,8 +81,8 @@ export const verifyAndSwitchWorkingDirectory = async (desiredCwd) => {
     );
     if (!proceed) return false;
     
-    await window.cursovable.setWorkingDirectory(desired);
-    currentWd = normalizePath(await window.cursovable.getWorkingDirectory());
+    await window.termiAI.setWorkingDirectory(desired);
+    currentWd = normalizePath(await window.termiAI.getWorkingDirectory());
     if (currentWd !== desired) {
       alert('Failed to switch working directory to the project folder. Aborting to keep your environment safe.');
       return false;

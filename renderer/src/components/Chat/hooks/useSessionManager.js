@@ -27,7 +27,7 @@ export const useSessionManager = (projectId) => {
   
   const loadSessions = useCallback(() => {
     try {
-      const storedSessions = localStorage.getItem(`cursovable-sessions-${projectId || 'legacy'}`);
+      const storedSessions = localStorage.getItem(`termi-ai-sessions-${projectId || 'legacy'}`);
       if (storedSessions) {
         const parsedSessions = JSON.parse(storedSessions);
         console.log(`🔍 loadSessions: Loaded ${parsedSessions.length} sessions from localStorage:`, 
@@ -42,7 +42,7 @@ export const useSessionManager = (projectId) => {
 
   const saveSessions = useCallback((sessionsToSave) => {
     try {
-      localStorage.setItem(`cursovable-sessions-${projectId || 'legacy'}`, JSON.stringify(sessionsToSave));
+      localStorage.setItem(`termi-ai-sessions-${projectId || 'legacy'}`, JSON.stringify(sessionsToSave));
     } catch (error) {
       console.warn('Failed to save sessions to localStorage:', error);
     }
@@ -476,8 +476,8 @@ export const useSessionManager = (projectId) => {
     console.log('🔍 SessionProvider received cursor log:', payload);
     
     // Route the log to the appropriate handler based on runId
-    if (window.cursovableLogRouter) {
-      window.cursovableLogRouter.routeLog(payload);
+    if (window.termiAILogRouter) {
+      window.termiAILogRouter.routeLog(payload);
     }
     
     // Handle terminal logs for display
@@ -603,9 +603,9 @@ export const useSessionManager = (projectId) => {
       };
       
       // Register the session object in the log router
-      if (window.cursovableLogRouter) {
+      if (window.termiAILogRouter) {
         const messageHandler = createMessageHandler(runId, sessionId);
-        window.cursovableLogRouter.registerHandler(runId, messageHandler, sessionObject);
+        window.termiAILogRouter.registerHandler(runId, messageHandler, sessionObject);
       }
       
       // Get project information and settings
@@ -613,10 +613,10 @@ export const useSessionManager = (projectId) => {
       const settings = loadSettings();
       
       // Call the cursor-agent CLI
-      const result = await window.cursovable.runCursor({
+      const result = await window.termiAI.runCursor({
         message: text,
         sessionObject,
-        cwd: project?.path || await window.cursovable.getWorkingDirectory(),
+        cwd: project?.path || await window.termiAI.getWorkingDirectory(),
         apiKey: settings.apiKey || undefined,
         // No timeout - cursor-agent can run for hours depending on complexity
         model: settings.defaultModel || undefined, // Use default model from settings
@@ -653,8 +653,8 @@ export const useSessionManager = (projectId) => {
       setSessionBusy(sessionId, false);
       
       // Clean up the handler after completion
-      if (window.cursovableLogRouter) {
-        window.cursovableLogRouter.unregisterHandler(runId);
+      if (window.termiAILogRouter) {
+        window.termiAILogRouter.unregisterHandler(runId);
       }
     }
   }, [sessions, saveSessions, setSessionBusy, updateSessionWithCursorId, clearSessionTerminalLogs]);
@@ -747,15 +747,15 @@ export const useSessionManager = (projectId) => {
     
     // Check if we have a project prompt in localStorage (set by Dashboard)
     try {
-      const projectPrompt = localStorage.getItem(`cursovable-new-project-${projectId}`);
-      const projectTemplate = localStorage.getItem(`cursovable-new-project-template-${projectId}`);
+      const projectPrompt = localStorage.getItem(`termi-ai-new-project-${projectId}`);
+      const projectTemplate = localStorage.getItem(`termi-ai-new-project-template-${projectId}`);
       
       console.log(`🔍 Checking for new project auto-start:`, {
         projectId,
         hasExistingSessions: existingSessions.length > 0,
         projectPrompt,
         projectTemplate,
-        localStorageKeys: Object.keys(localStorage).filter(key => key.includes('cursovable-new-project'))
+        localStorageKeys: Object.keys(localStorage).filter(key => key.includes('termi-ai-new-project'))
       });
       
       if (projectPrompt) {
@@ -869,8 +869,8 @@ export const useSessionManager = (projectId) => {
         createNewProjectSession(newProjectInfo.prompt, newProjectInfo.template).then(() => {
           // Clean up the localStorage after starting
           try {
-            localStorage.removeItem(`cursovable-new-project-${projectId}`);
-            localStorage.removeItem(`cursovable-new-project-template-${projectId}`);
+            localStorage.removeItem(`termi-ai-new-project-${projectId}`);
+            localStorage.removeItem(`termi-ai-new-project-template-${projectId}`);
           } catch (e) {
             console.warn('Failed to cleanup new project localStorage:', e);
           }
@@ -910,9 +910,9 @@ export const useSessionManager = (projectId) => {
   
   // Set up the centralized log router
   const setupLogRouter = useCallback(() => {
-    // Only set up if window.cursovable is available (Electron environment)
-    if (!window.cursovable?.onCursorLog) {
-      console.log('window.cursovable.onCursorLog not available, skipping log router setup');
+    // Only set up if window.termiAI is available (Electron environment)
+    if (!window.termiAI?.onCursorLog) {
+      console.log('window.termiAI.onCursorLog not available, skipping log router setup');
       return null;
     }
 
@@ -980,15 +980,15 @@ export const useSessionManager = (projectId) => {
     };
 
     // Store the router globally
-    window.cursovableLogRouter = logRouter;
+    window.termiAILogRouter = logRouter;
     return logRouter;
   }, [sessions, currentSessionId]);
 
   // Clean up the log router
   const cleanupLogRouter = useCallback(() => {
-    if (window.cursovableLogRouter) {
-      window.cursovableLogRouter.handlers.clear();
-      delete window.cursovableLogRouter;
+    if (window.termiAILogRouter) {
+      window.termiAILogRouter.handlers.clear();
+      delete window.termiAILogRouter;
     }
   }, []);
 
@@ -1129,8 +1129,8 @@ export const useSessionManager = (projectId) => {
       
       // Store test project info in localStorage
       const testProjectId = 'test-project-' + Date.now();
-      localStorage.setItem(`cursovable-new-project-${testProjectId}`, testPrompt);
-      localStorage.setItem(`cursovable-new-project-template-${testProjectId}`, testTemplate);
+      localStorage.setItem(`termi-ai-new-project-${testProjectId}`, testPrompt);
+      localStorage.setItem(`termi-ai-new-project-template-${testProjectId}`, testTemplate);
       
       console.log(`🧪 Stored test project info for: ${testProjectId}`);
       

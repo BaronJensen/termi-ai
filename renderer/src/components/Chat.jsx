@@ -80,7 +80,7 @@ export default function Chat({ cwd, projectId, onPlayMiniGame, onCloseMiniGame, 
       : messages;
 
     // Model selection (empty string means default/auto; don't send to CLI)
-    const modelStorageKey = `cursovable-model-${projectId || 'legacy'}`;
+    const modelStorageKey = `termi-ai-model-${projectId || 'legacy'}`;
     const suggestedModels = [
       'gpt-5',
       'gpt-5-fast',
@@ -237,7 +237,7 @@ export default function Chat({ cwd, projectId, onPlayMiniGame, onCloseMiniGame, 
     // Check terminal status on mount and when current session's busy state changes
     const checkTerminalStatus = useCallback(async () => {
       try {
-        const status = await window.cursovable.getTerminalStatus();
+        const status = await window.termiAI.getTerminalStatus();
         setTerminalStatus(status);
         
         // Add status message if there are issues

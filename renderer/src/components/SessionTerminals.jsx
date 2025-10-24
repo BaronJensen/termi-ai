@@ -357,8 +357,8 @@ export default function SessionTerminals() {
                 <button
                   onClick={() => {
                     // Debug button to show log router state
-                    if (window.cursovableLogRouter) {
-                      window.cursovableLogRouter.debugState();
+                    if (window.termiAILogRouter) {
+                      window.termiAILogRouter.debugState();
                     } else {
                       console.log('🔧 Log router not available');
                     }
@@ -378,8 +378,8 @@ export default function SessionTerminals() {
                 <button
                   onClick={() => {
                     // Debug button to show session state
-                    if (window.cursovableLogRouter) {
-                      window.cursovableLogRouter.debugSessions();
+                    if (window.termiAILogRouter) {
+                      window.termiAILogRouter.debugSessions();
                     } else {
                       console.log('🔧 Log router not available');
                     }

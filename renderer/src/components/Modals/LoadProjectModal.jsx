@@ -33,7 +33,7 @@ function LoadProjectModal({ onClose, onLoad }) {
     setDetectError('');
     setDetecting(true);
     try {
-      const res = await window.cursovable.detectProject(fp);
+      const res = await window.termiAI.detectProject(fp);
       if (!res || !res.ok) {
         throw new Error(res?.error || 'Failed to detect project');
       }
@@ -71,7 +71,7 @@ function LoadProjectModal({ onClose, onLoad }) {
   }
 
   async function pickFolder() {
-    const fp = await window.cursovable.selectFolder();
+    const fp = await window.termiAI.selectFolder();
     if (fp) await detectAndPrefill(fp);
   }
 
