@@ -72,5 +72,11 @@ contextBridge.exposeInMainWorld('cursovable', {
   getDebugMode: () => ipcRenderer.invoke('debug-mode-get'),
   // Permission management APIs
   checkDirectoryPermissions: (opts) => ipcRenderer.invoke('check-directory-permissions', opts),
-  fixDirectoryPermissions: (opts) => ipcRenderer.invoke('fix-directory-permissions', opts)
+  fixDirectoryPermissions: (opts) => ipcRenderer.invoke('fix-directory-permissions', opts),
+  // Multi-provider agent APIs
+  runAgent: (opts) => ipcRenderer.invoke('agent-run', opts),
+  getAgentProviders: () => ipcRenderer.invoke('agent-get-providers'),
+  getAgentProviderInfo: (provider) => ipcRenderer.invoke('agent-get-provider-info', { provider }),
+  sendAgentInput: (opts) => ipcRenderer.invoke('agent-input', opts),
+  sendAgentSignal: (opts) => ipcRenderer.invoke('agent-signal', opts)
 });
