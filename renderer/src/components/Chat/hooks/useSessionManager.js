@@ -173,10 +173,15 @@ export const useSessionManager = (projectId) => {
 
   // ===== SESSION MANAGEMENT =====
   
-  const createNewSession = useCallback(async (existingSessions = null, initialMessage = null) => {
+  const createNewSession = useCallback(async (existingSessions = null, initialMessage = null, provider = null) => {
     const currentSessions = existingSessions || sessions;
     const newSessionId = `session-${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
     const isFirstSession = currentSessions.length === 0;
+
+    // Get default provider from settings if not specified
+    const settings = loadSettings();
+    const sessionProvider = provider || settings.defaultProvider || 'cursor';
+
     const newSession = {
       id: newSessionId,
       name: `Session ${new Date().toLocaleString()}`,
@@ -185,7 +190,9 @@ export const useSessionManager = (projectId) => {
       updatedAt: Date.now(),
       isFirstSession: isFirstSession,
       cursorSessionId: null,
-      runningTerminal: false
+      runningTerminal: false,
+      provider: sessionProvider,  // NEW: Track which provider this session uses
+      providerId: null            // NEW: Provider-specific session ID
     };
     
     const updatedSessions = [...currentSessions, newSession];
@@ -611,16 +618,25 @@ export const useSessionManager = (projectId) => {
       // Get project information and settings
       const project = getProject(projectId);
       const settings = loadSettings();
-      
-      // Call the cursor-agent CLI
-      const result = await window.termiAI.runCursor({
+
+      // Get provider for this session
+      const provider = fullSessionObj.provider || settings.defaultProvider || 'cursor';
+
+      // Get provider-specific API key and model
+      const providerApiKey = settings.providerApiKeys?.[provider] ||
+                            (provider === 'cursor' ? settings.apiKey : '');
+      const providerModel = settings.providerModels?.[provider] ||
+                           (provider === 'cursor' ? settings.defaultModel : '');
+
+      // Call the agent with the session's provider
+      const result = await window.termiAI.runAgent({
+        provider: provider,
         message: text,
         sessionObject,
         cwd: project?.path || await window.termiAI.getWorkingDirectory(),
-        apiKey: settings.apiKey || undefined,
-        // No timeout - cursor-agent can run for hours depending on complexity
-        model: settings.defaultModel || undefined, // Use default model from settings
-        debugMode: false // Could be added to settings later
+        apiKey: providerApiKey || undefined,
+        model: providerModel || undefined,
+        debugMode: false
       });
       
     } catch (error) {
