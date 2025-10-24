@@ -1,7 +1,7 @@
 
 const { contextBridge, ipcRenderer } = require('electron');
 
-contextBridge.exposeInMainWorld('cursovable', {
+contextBridge.exposeInMainWorld('termiAI', {
   selectFolder: () => ipcRenderer.invoke('select-folder'),
   folderSelected: (cb) => {
     const listener = (_e, folderPath) => cb(folderPath);

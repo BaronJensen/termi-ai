@@ -5,9 +5,9 @@ export const useTerminalStatus = (sessions, currentSessionId, updateSessionWithC
 
   // Set up the centralized log router for terminal communication
   const setupLogRouter = useCallback(() => {
-    // Only set up if window.cursovable is available (Electron environment)
-    if (!window.cursovable?.onCursorLog) {
-      console.log('window.cursovable.onCursorLog not available, skipping log router setup');
+    // Only set up if window.termiAI is available (Electron environment)
+    if (!window.termiAI?.onCursorLog) {
+      console.log('window.termiAI.onCursorLog not available, skipping log router setup');
       return null;
     }
 
@@ -70,7 +70,7 @@ export const useTerminalStatus = (sessions, currentSessionId, updateSessionWithC
     };
 
     // Store the router globally and in our ref
-    window.cursovableLogRouter = logRouter;
+    window.termiAILogRouter = logRouter;
     logRouterRef.current = logRouter;
 
     return logRouter;
@@ -136,8 +136,8 @@ export const useTerminalStatus = (sessions, currentSessionId, updateSessionWithC
       logRouterRef.current.handlers.clear();
       logRouterRef.current = null;
     }
-    if (window.cursovableLogRouter) {
-      delete window.cursovableLogRouter;
+    if (window.termiAILogRouter) {
+      delete window.termiAILogRouter;
     }
   }, []);
 

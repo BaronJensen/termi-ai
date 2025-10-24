@@ -36,7 +36,7 @@ export default function AuthProvider({ children }) {
         setShowLogin(false);
         return true;
       }
-      const status = await window.cursovable.getCursorAuthStatus?.();
+      const status = await window.termiAI.getCursorAuthStatus?.();
       const isIn = !!(status && status.loggedIn);
       setLoggedIn(isIn);
       if (!isIn) setShowLogin(true);
@@ -60,7 +60,7 @@ export default function AuthProvider({ children }) {
         setShowLogin(false);
         return;
       }
-      await window.cursovable.triggerCursorAuthLogin?.();
+      await window.termiAI.triggerCursorAuthLogin?.();
       const isIn = await refreshStatus();
       if (isIn) setShowLogin(false);
     } catch {}
@@ -82,18 +82,18 @@ export default function AuthProvider({ children }) {
 
   // Subscribe to auth link/log streams
   useEffect(() => {
-    const unsubLog = window.cursovable.onCursorAuthLog?.((payload) => {
+    const unsubLog = window.termiAI.onCursorAuthLog?.((payload) => {
       setAuthLogs((prev) => {
         const next = [...prev, { ts: payload.ts || Date.now(), line: String(payload.line || '') }];
         return next.length > 500 ? next.slice(-500) : next;
       });
     });
-    const unsubLink = window.cursovable.onCursorAuthLink?.(async ({ url }) => {
+    const unsubLink = window.termiAI.onCursorAuthLink?.(async ({ url }) => {
       if (!url) return;
       setAuthLink(url);
       if (!openedRef.current) {
         openedRef.current = true;
-        try { await window.cursovable.openExternal(url); } catch {}
+        try { await window.termiAI.openExternal(url); } catch {}
       }
     });
     return () => { try { unsubLog && unsubLog(); } catch {} try { unsubLink && unsubLink(); } catch {} };
@@ -140,14 +140,14 @@ export default function AuthProvider({ children }) {
               </div>
             </div>
             <div style={{ fontSize: 12, color: '#9ca3af' }}>
-              Learn more in the <a href="#" onClick={async (e) => { e.preventDefault(); try { await window.cursovable.openExternal('https://docs.cursor.com/en/cli/overview'); } catch {} }} style={{ color: '#93c5fd', textDecoration: 'underline' }}>Cursor CLI docs</a>.
+              Learn more in the <a href="#" onClick={async (e) => { e.preventDefault(); try { await window.termiAI.openExternal('https://docs.cursor.com/en/cli/overview'); } catch {} }} style={{ color: '#93c5fd', textDecoration: 'underline' }}>Cursor CLI docs</a>.
             </div>
             {authLink && (
               <div style={{ fontSize: 12, background: '#0b0f16', border: '1px solid #27354a', borderRadius: 6, padding: 10 }}>
                 <div style={{ color: '#cde3ff', marginBottom: 6 }}>Authentication link</div>
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                   <Input value={authLink} readOnly />
-                  <Button className="compact" onClick={async () => { try { await window.cursovable.openExternal(authLink); } catch {} }}>Open</Button>
+                  <Button className="compact" onClick={async () => { try { await window.termiAI.openExternal(authLink); } catch {} }}>Open</Button>
                 </div>
                 {/* Spinner + Waiting text */}
                 <style>{`@keyframes auth-spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>

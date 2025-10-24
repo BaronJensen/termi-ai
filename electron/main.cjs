@@ -477,8 +477,8 @@ function createMenu() {
             try {
               if (lastViteFolder) {
                 await win.webContents.executeJavaScript(`
-                  if (window.cursovable && window.cursovable.startVite) {
-                    window.cursovable.startVite({ folderPath: '${lastViteFolder}', manager: 'yarn' });
+                  if (window.termiAI && window.termiAI.startVite) {
+                    window.termiAI.startVite({ folderPath: '${lastViteFolder}', manager: 'yarn' });
                   }
                 `);
               }
@@ -494,8 +494,8 @@ function createMenu() {
           click: async () => {
             try {
               await win.webContents.executeJavaScript(`
-                if (window.cursovable && window.cursovable.stopVite) {
-                  window.cursovable.stopVite();
+                if (window.termiAI && window.termiAI.stopVite) {
+                  window.termiAI.stopVite();
                 }
               `);
             } catch (err) {
@@ -509,8 +509,8 @@ function createMenu() {
           click: async () => {
             try {
               await win.webContents.executeJavaScript(`
-                if (window.cursovable && window.cursovable.forceTerminalCleanup) {
-                  window.cursovable.forceTerminalCleanup();
+                if (window.termiAI && window.termiAI.forceTerminalCleanup) {
+                  window.termiAI.forceTerminalCleanup();
                 }
               `);
             } catch (err) {

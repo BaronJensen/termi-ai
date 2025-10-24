@@ -1,6 +1,6 @@
 // Simple localStorage-backed project store
 
-const STORAGE_KEY = 'cursovable-projects';
+const STORAGE_KEY = 'termi-ai-projects';
 
 export function loadProjects() {
   try {

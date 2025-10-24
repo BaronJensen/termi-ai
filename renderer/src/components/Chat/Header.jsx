@@ -205,8 +205,8 @@ export default function Header({
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
             <button
               onClick={() => {
-                if (window.cursovableLogRouter) {
-                  window.cursovableLogRouter.debugState();
+                if (window.termiAILogRouter) {
+                  window.termiAILogRouter.debugState();
                 }
               }}
               style={{
@@ -223,8 +223,8 @@ export default function Header({
             </button>
             <button
               onClick={() => {
-                if (window.cursovableLogRouter) {
-                  window.cursovableLogRouter.debugSessions();
+                if (window.termiAILogRouter) {
+                  window.termiAILogRouter.debugSessions();
                 }
               }}
               style={{
