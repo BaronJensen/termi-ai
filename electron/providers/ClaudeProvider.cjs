@@ -101,10 +101,8 @@ class ClaudeProvider extends BaseAgentProvider {
       args.push('--model', model);
     }
 
-    // Working directory
-    if (cwd) {
-      args.push('--cwd', cwd);
-    }
+    // Note: Claude CLI doesn't have --cwd flag
+    // Working directory is set via spawn options in agentRunner
 
     // API key (Claude Code uses environment variable or config file)
     const env = {
