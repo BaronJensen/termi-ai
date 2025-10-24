@@ -277,14 +277,7 @@ class CodexProvider extends BaseAgentProvider {
       return baseValidation;
     }
 
-    // Codex requires OpenAI API key
-    if (!options.apiKey && !process.env.OPENAI_API_KEY) {
-      return {
-        valid: false,
-        error: 'Codex requires an OpenAI API key. Set OPENAI_API_KEY or provide apiKey in options.'
-      };
-    }
-
+    // API key is optional - will use terminal auth if not provided
     return { valid: true };
   }
 

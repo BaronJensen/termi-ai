@@ -265,14 +265,7 @@ class ClaudeProvider extends BaseAgentProvider {
       return baseValidation;
     }
 
-    // Claude Code requires API key
-    if (!options.apiKey && !process.env.ANTHROPIC_API_KEY) {
-      return {
-        valid: false,
-        error: 'Claude Code requires an Anthropic API key. Set ANTHROPIC_API_KEY or provide apiKey in options.'
-      };
-    }
-
+    // API key is optional - will use terminal auth if not provided
     return { valid: true };
   }
 
