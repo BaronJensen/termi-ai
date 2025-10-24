@@ -174,7 +174,64 @@ class ClaudeProvider extends BaseAgentProvider {
    * This ensures compatibility with the existing UI
    */
   transformClaudeMessage(parsed) {
-    // Claude API format transformation
+    // Claude Code CLI format with stream-json
+
+    // System initialization message
+    if (parsed.type === 'system' && parsed.subtype === 'init') {
+      return {
+        type: 'status',
+        text: 'Claude Code initialized',
+        session_id: parsed.session_id,
+        model: parsed.model,
+        tools: parsed.tools
+      };
+    }
+
+    // Assistant message (final response)
+    if (parsed.type === 'assistant') {
+      const content = parsed.message?.content || [];
+      const textContent = content.find(c => c.type === 'text');
+      return {
+        type: 'assistant',
+        text: textContent?.text || '',
+        model: parsed.message?.model,
+        session_id: parsed.session_id
+      };
+    }
+
+    // Tool use messages
+    if (parsed.type === 'tool_use') {
+      return {
+        type: 'tool_call',
+        tool: parsed.tool_name,
+        arguments: parsed.arguments,
+        tool_use_id: parsed.tool_use_id,
+        session_id: parsed.session_id
+      };
+    }
+
+    // Tool result messages
+    if (parsed.type === 'tool_result') {
+      return {
+        type: 'tool_result',
+        result: parsed.result,
+        tool_use_id: parsed.tool_use_id,
+        session_id: parsed.session_id
+      };
+    }
+
+    // Result summary
+    if (parsed.type === 'result') {
+      return {
+        type: 'result',
+        text: parsed.result || '',
+        success: parsed.subtype === 'success',
+        duration_ms: parsed.duration_ms,
+        cost_usd: parsed.total_cost_usd
+      };
+    }
+
+    // Older Claude API streaming format (for backwards compatibility)
     if (parsed.type === 'message') {
       return {
         type: 'assistant',
@@ -220,8 +277,8 @@ class ClaudeProvider extends BaseAgentProvider {
       };
     }
 
-    // Tool use (similar to cursor's tool_call)
-    if (parsed.type === 'tool_use') {
+    // Legacy tool_use format
+    if (parsed.type === 'tool_use_legacy') {
       return {
         type: 'tool_call',
         tool_calls: [{
