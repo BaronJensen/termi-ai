@@ -83,16 +83,17 @@ class ClaudeProvider extends BaseAgentProvider {
 
     const args = [];
 
-    // Claude Code uses a different command structure
-    // Assuming it follows a similar pattern to cursor-agent
-    // Format: claude [options] <message>
+    // Claude Code CLI command structure
+    // Format: claude --print --output-format stream-json [options] <prompt>
 
-    // Add streaming output format
-    args.push('--json'); // JSON output format
+    // Non-interactive mode with streaming JSON output
+    args.push('--print');
+    args.push('--output-format', 'stream-json');
+    args.push('--include-partial-messages'); // Get streaming chunks
 
-    // Session resumption (if supported by Claude Code)
+    // Session resumption
     if (sessionId) {
-      args.push('--session', sessionId);
+      args.push('--resume', sessionId);
     }
 
     // Model selection
@@ -100,7 +101,12 @@ class ClaudeProvider extends BaseAgentProvider {
       args.push('--model', model);
     }
 
-    // API key (Claude Code typically uses environment variable or config file)
+    // Working directory
+    if (cwd) {
+      args.push('--cwd', cwd);
+    }
+
+    // API key (Claude Code uses environment variable or config file)
     const env = {
       ...process.env
     };
@@ -109,20 +115,16 @@ class ClaudeProvider extends BaseAgentProvider {
       env.ANTHROPIC_API_KEY = apiKey;
     }
 
-    // Working directory
-    args.push('--cwd', cwd);
-
-    // Message handling - use stdin for long messages
-    const useStdin = message && message.length > 8000;
-    if (message && !useStdin) {
+    // Message handling - always add the prompt at the end
+    if (message) {
       args.push(message);
     }
 
     return {
       args,
       env,
-      useStdin,
-      stdinData: useStdin ? message : undefined
+      useStdin: false, // Claude CLI doesn't use stdin for prompts
+      stdinData: undefined
     };
   }
 

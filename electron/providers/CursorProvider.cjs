@@ -79,7 +79,7 @@ class CursorProvider extends BaseAgentProvider {
       cwd
     } = options;
 
-    const args = ['-p', '--output-format=stream-json', '--force'];
+    const args = ['-p', '--output-format', 'stream-json', '--stream-partial-output', '--force'];
 
     // Session resumption
     if (sessionId) {

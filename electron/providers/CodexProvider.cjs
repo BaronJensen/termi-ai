@@ -97,23 +97,24 @@ class CodexProvider extends BaseAgentProvider {
 
     const args = [];
 
-    // Codex CLI format (based on OpenAI CLI structure)
-    // Format: codex <command> [options]
+    // Codex CLI command structure
+    // Format: codex exec [options] <prompt>
 
-    // Add JSON output format
-    args.push('--json');
+    // Use 'exec' command for non-interactive execution
+    args.push('exec');
 
-    // Session/conversation ID for context
-    if (sessionId) {
-      args.push('--conversation-id', sessionId);
+    // Model selection
+    if (model) {
+      args.push('--model', model);
     }
 
-    // Model selection (default to code-davinci-002 or gpt-4)
-    const selectedModel = model || 'gpt-4';
-    args.push('--model', selectedModel);
+    // Working directory
+    if (cwd) {
+      args.push('--cd', cwd);
+    }
 
-    // Working directory context
-    args.push('--directory', cwd);
+    // Enable automatic approval for tool calls (similar to cursor-agent --force)
+    args.push('--full-auto');
 
     // Environment variables for API key
     const env = {
@@ -124,17 +125,16 @@ class CodexProvider extends BaseAgentProvider {
       env.OPENAI_API_KEY = apiKey;
     }
 
-    // Message handling
-    const useStdin = message && message.length > 8000;
-    if (message && !useStdin) {
-      args.push('--prompt', message);
+    // The prompt should be the last argument
+    if (message) {
+      args.push(message);
     }
 
     return {
       args,
       env,
-      useStdin,
-      stdinData: useStdin ? message : undefined
+      useStdin: false, // Codex CLI takes prompt as argument
+      stdinData: undefined
     };
   }
 
