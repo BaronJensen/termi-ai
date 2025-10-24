@@ -39,30 +39,49 @@ export const useMessageHandler = (
     });
     
     switch (parsed.type) {
-        
+
       case 'system':
+      case 'status':
         handleSystemMessage(parsed, sessionId);
         break;
-        
+
       case 'assistant':
         handleAssistantMessage(parsed, sessionId);
         break;
-        
+
       case 'result':
         handleResultMessage(parsed, sessionId);
         break;
-        
+
       case 'tool_call':
       case 'tool':
       case 'function_call':
         console.log(`🔧 Handling tool call message for session ${sessionId}`);
         handleToolCall(parsed, sessionId);
         break;
-        
+
+      case 'tool_output':
+      case 'tool_result':
+        handleToolResult(parsed, sessionId);
+        break;
+
+      case 'reasoning':
+        handleReasoningMessage(parsed, sessionId);
+        break;
+
+      case 'file_edit':
+      case 'diff':
+        handleFileEditMessage(parsed, sessionId);
+        break;
+
+      case 'streaming':
+        handleStreamingDelta(parsed, sessionId);
+        break;
+
       case 'error':
         handleErrorMessage(parsed, sessionId);
         break;
-        
+
       default:
         // Check for tool call indicators in other message types
         if (parsed.tool_call || parsed.tool || parsed.name === 'tool') {
@@ -382,8 +401,47 @@ export const useMessageHandler = (
       isError: true,
       rawData: parsed
     };
-    
+
     addMessageToSession(sessionId, errorMessage);
+  }, [addMessageToSession]);
+
+  // Handle reasoning messages (from Codex)
+  const handleReasoningMessage = useCallback((parsed, sessionId) => {
+    const reasoningMessage = {
+      id: `msg-${Date.now()}-${Math.random().toString(36).slice(2,8)}`,
+      who: 'assistant',
+      text: parsed.text || 'Thinking...',
+      timestamp: Date.now(),
+      isReasoning: true,
+      rawData: parsed
+    };
+
+    addMessageToSession(sessionId, reasoningMessage);
+  }, [addMessageToSession]);
+
+  // Handle streaming delta messages
+  const handleStreamingDelta = useCallback((parsed, sessionId) => {
+    // Accumulate streaming text for this session
+    setSessionStreamingText(sessionId, prev => {
+      const newText = prev + (parsed.text || '');
+      return newText;
+    });
+  }, [setSessionStreamingText]);
+
+  // Handle file edit messages (from Codex patch operations)
+  const handleFileEditMessage = useCallback((parsed, sessionId) => {
+    const fileEditMessage = {
+      id: `msg-${Date.now()}-${Math.random().toString(36).slice(2,8)}`,
+      who: 'assistant',
+      text: parsed.type === 'diff'
+        ? `\`\`\`diff\n${parsed.text}\n\`\`\``
+        : `File edit: ${parsed.success ? 'Success' : 'Failed'}\n${parsed.stdout || ''}`,
+      timestamp: Date.now(),
+      isFileEdit: true,
+      rawData: parsed
+    };
+
+    addMessageToSession(sessionId, fileEditMessage);
   }, [addMessageToSession]);
 
   return {
@@ -401,6 +459,9 @@ export const useMessageHandler = (
     handleFileOperation,
     handleCommandMessage,
     handleThinkingMessage,
-    handleErrorMessage
+    handleErrorMessage,
+    handleReasoningMessage,
+    handleStreamingDelta,
+    handleFileEditMessage
   };
 };
