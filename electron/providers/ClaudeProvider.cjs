@@ -84,11 +84,12 @@ class ClaudeProvider extends BaseAgentProvider {
     const args = [];
 
     // Claude Code CLI command structure
-    // Format: claude --print --output-format stream-json [options] <prompt>
+    // Format: claude --print --output-format stream-json --verbose [options] <prompt>
 
     // Non-interactive mode with streaming JSON output
     args.push('--print');
     args.push('--output-format', 'stream-json');
+    args.push('--verbose'); // Required for stream-json format
     args.push('--include-partial-messages'); // Get streaming chunks
 
     // Session resumption
