@@ -264,7 +264,7 @@ class CodexProvider extends BaseAgentProvider {
       supportsStreaming: true,
       supportsToolCalls: true, // GPT-4 supports function calling
       supportsModelSelection: true,
-      requiresApiKey: true
+      requiresApiKey: false // Optional - uses terminal auth if already authenticated
     };
   }
 

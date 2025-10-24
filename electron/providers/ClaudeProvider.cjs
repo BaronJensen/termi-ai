@@ -252,7 +252,7 @@ class ClaudeProvider extends BaseAgentProvider {
       supportsStreaming: true,
       supportsToolCalls: true,
       supportsModelSelection: true,
-      requiresApiKey: true
+      requiresApiKey: false // Optional - uses terminal auth if already authenticated
     };
   }
 

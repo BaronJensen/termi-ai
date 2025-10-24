@@ -200,16 +200,16 @@ function SettingsModal({ initial, onClose, onSave }) {
               </Select>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <Label>API Key (Required)</Label>
+              <Label>API Key (Optional)</Label>
               <Input
                 type="password"
                 value={claudeApiKey}
                 onChange={(e) => setClaudeApiKey(e.target.value)}
-                placeholder="sk-ant-..."
+                placeholder="Optional..."
               />
             </div>
           </div>
-          <div style={{ fontSize: 10, color: '#9ca3af', marginTop: 8 }}>Get your API key from console.anthropic.com</div>
+          <div style={{ fontSize: 10, color: '#9ca3af', marginTop: 8 }}>Leave empty if already authenticated with Claude Code CLI</div>
         </div>
 
         {/* Codex Settings */}
@@ -227,16 +227,16 @@ function SettingsModal({ initial, onClose, onSave }) {
               </Select>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <Label>API Key (Required)</Label>
+              <Label>API Key (Optional)</Label>
               <Input
                 type="password"
                 value={codexApiKey}
                 onChange={(e) => setCodexApiKey(e.target.value)}
-                placeholder="sk-..."
+                placeholder="Optional..."
               />
             </div>
           </div>
-          <div style={{ fontSize: 10, color: '#9ca3af', marginTop: 8 }}>Get your API key from platform.openai.com</div>
+          <div style={{ fontSize: 10, color: '#9ca3af', marginTop: 8 }}>Leave empty if already authenticated with OpenAI CLI</div>
         </div>
       </div>
     </Modal>
