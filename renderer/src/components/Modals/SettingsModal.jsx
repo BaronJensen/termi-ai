@@ -24,7 +24,7 @@ function SettingsModal({ initial, onClose, onSave }) {
   const [codexApiKey, setCodexApiKey] = useState(initial?.providerApiKeys?.codex || '');
   const [cursorModel, setCursorModel] = useState(initial?.providerModels?.cursor || initial?.defaultModel || '');
   const [claudeModel, setClaudeModel] = useState(initial?.providerModels?.claude || 'claude-3-5-sonnet-20241022');
-  const [codexModel, setCodexModel] = useState(initial?.providerModels?.codex || 'gpt-4');
+  const [codexModel, setCodexModel] = useState(initial?.providerModels?.codex || 'gpt-5-codex');
 
   // Available AI models for cursor-agent
   const availableModels = [
@@ -46,10 +46,8 @@ function SettingsModal({ initial, onClose, onSave }) {
 
   // Available models for Codex
   const codexModels = [
-    'gpt-4',
-    'gpt-4-turbo-preview',
-    'gpt-3.5-turbo',
-    'code-davinci-002'
+    'gpt-5-codex',
+    'gpt-5'
   ];
 
   useEffect(() => {

@@ -103,6 +103,9 @@ class CodexProvider extends BaseAgentProvider {
     // Use 'exec' command for non-interactive execution
     args.push('exec');
 
+    // Add JSON output format flag
+    args.push('--json');
+
     // Model selection
     if (model) {
       args.push('--model', model);

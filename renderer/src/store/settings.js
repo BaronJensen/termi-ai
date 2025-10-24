@@ -27,7 +27,7 @@ export function getDefaultSettings() {
     providerModels: {
       cursor: '', // Empty means auto/default
       claude: 'claude-3-5-sonnet-20241022',
-      codex: 'gpt-4'
+      codex: 'gpt-5-codex'
     },
     // Provider-specific settings
     providerSettings: {
