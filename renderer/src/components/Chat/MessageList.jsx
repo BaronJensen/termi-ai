@@ -34,7 +34,7 @@ export default function MessageList({
         <>
           {messages.map((m, i) => (
             <React.Fragment key={i}>
-              <Bubble 
+              <Bubble
                 who={m.who}
                 isStreaming={m.isStreaming}
                 rawData={m.rawData}
@@ -47,6 +47,8 @@ export default function MessageList({
                 isToolCall={m.isToolCall}
                 toolCallData={m.toolCallData}
                 toolCallSubtype={m.toolCallSubtype}
+                isReasoning={m.isReasoning}
+                isFileEdit={m.isFileEdit}
               >
                 {m.text}
               </Bubble>
