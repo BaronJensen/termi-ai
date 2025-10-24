@@ -186,38 +186,104 @@ class CodexProvider extends BaseAgentProvider {
 
   /**
    * Transform Codex message format to common format
-   * Maps OpenAI Codex response format to our internal format
+   * Maps Codex CLI JSON format to our internal format
    */
   transformCodexMessage(parsed) {
-    // OpenAI completion format
+    // Codex CLI wraps messages in: {"id":"0","msg":{...}}
+    const msg = parsed.msg || parsed;
+
+    // Handle different message types
+    if (msg.type) {
+      switch (msg.type) {
+        case 'agent_reasoning':
+          // Reasoning text from the agent
+          return {
+            type: 'reasoning',
+            text: msg.text || ''
+          };
+
+        case 'agent_message':
+          // Final assistant message
+          return {
+            type: 'assistant',
+            text: msg.message || msg.text || ''
+          };
+
+        case 'exec_command_begin':
+          // Tool call starting
+          return {
+            type: 'tool_call',
+            tool: 'bash',
+            command: Array.isArray(msg.command) ? msg.command.join(' ') : msg.command,
+            call_id: msg.call_id
+          };
+
+        case 'exec_command_output_delta':
+          // Streaming command output (chunk is byte array)
+          const text = msg.chunk ? Buffer.from(msg.chunk).toString('utf-8') : '';
+          return {
+            type: 'tool_output',
+            text: text,
+            call_id: msg.call_id,
+            stream: msg.stream // 'stdout' or 'stderr'
+          };
+
+        case 'exec_command_end':
+          // Command execution finished
+          return {
+            type: 'tool_result',
+            stdout: msg.stdout || '',
+            stderr: msg.stderr || '',
+            exit_code: msg.exit_code,
+            call_id: msg.call_id
+          };
+
+        case 'patch_apply_begin':
+        case 'patch_apply_end':
+          // File edit operations
+          return {
+            type: 'file_edit',
+            success: msg.success,
+            changes: msg.changes,
+            stdout: msg.stdout,
+            stderr: msg.stderr
+          };
+
+        case 'turn_diff':
+          // Git diff of changes
+          return {
+            type: 'diff',
+            text: msg.unified_diff || ''
+          };
+
+        case 'task_started':
+          return {
+            type: 'status',
+            text: 'Task started'
+          };
+
+        case 'token_count':
+          // Token usage info (can be ignored or logged)
+          return {
+            type: 'metadata',
+            tokens: msg
+          };
+
+        default:
+          // Unknown message type, return as-is
+          return {
+            type: 'unknown',
+            data: msg
+          };
+      }
+    }
+
+    // Fallback: Old OpenAI completion format (kept for compatibility)
     if (parsed.choices && Array.isArray(parsed.choices)) {
       const choice = parsed.choices[0];
 
       // Completion response
       if (choice.text !== undefined) {
-        return {
-          type: 'assistant',
-          text: choice.text,
-          model: parsed.model,
-          session_id: parsed.id,
-          finish_reason: choice.finish_reason
-        };
-      }
-
-      // Chat completion response
-      if (choice.message) {
-        return {
-          type: 'assistant',
-          text: choice.message.content,
-          model: parsed.model,
-          session_id: parsed.id,
-          finish_reason: choice.finish_reason,
-          role: choice.message.role
-        };
-      }
-
-      // Streaming delta
-      if (choice.delta) {
         return {
           type: 'streaming',
           text: choice.delta.content || '',
