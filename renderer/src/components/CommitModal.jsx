@@ -47,7 +47,7 @@ function CommitModal({
     setCommitOnCurrent(true);
     
     try {
-      const res = await window.cursovable.getGitBranches({ folderPath: folder });
+      const res = await window.termiAI.getGitBranches({ folderPath: folder });
       if (!res || res.ok === false) {
         setBranches([]);
         setCurrentBranch('');
@@ -70,7 +70,7 @@ function CommitModal({
     }
     
     try {
-      const reflogRes = await window.cursovable.getReflog({ folderPath: folder, limit: 50 });
+      const reflogRes = await window.termiAI.getReflog({ folderPath: folder, limit: 50 });
       if (reflogRes && reflogRes.ok) setReflogEntries(reflogRes.entries || []);
       else setReflogEntries([]);
     } catch { 
@@ -103,7 +103,7 @@ function CommitModal({
     setCommitError('');
     
     try {
-      const res = await window.cursovable.gitCommit({ 
+      const res = await window.termiAI.gitCommit({ 
         folderPath: folder, 
         message, 
         ...(mode ? { mode } : {}), 
@@ -136,7 +136,7 @@ function CommitModal({
     setRestoreError('');
     
     try {
-      const res = await window.cursovable.restoreLocalCommit({ 
+      const res = await window.termiAI.restoreLocalCommit({ 
         folderPath: folder, 
         action: 'reset-hard', 
         sha: sha 
@@ -155,7 +155,7 @@ function CommitModal({
 
   async function refreshReflog() {
     try {
-      const r = await window.cursovable.getReflog({ folderPath: folder, limit: 50 });
+      const r = await window.termiAI.getReflog({ folderPath: folder, limit: 50 });
       if (r && r.ok) setReflogEntries(r.entries || []);
     } catch {}
   }

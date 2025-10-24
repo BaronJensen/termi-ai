@@ -27,7 +27,7 @@ function LegacyApp() {
   const [agentInput, setAgentInput] = useState('');
 
   async function chooseFolder() {
-    const fp = await window.cursovable.selectFolder();
+    const fp = await window.termiAI.selectFolder();
     if (fp) setFolder(fp);
   }
 
@@ -35,7 +35,7 @@ function LegacyApp() {
     if (!folder) return alert('Select a folder first');
     setIsStarting(true);
     try {
-      const { url } = await window.cursovable.startVite({ folderPath: folder, manager });
+      const { url } = await window.termiAI.startVite({ folderPath: folder, manager });
       setPreviewUrl(url);
     } catch (e) {
       alert(e.message || String(e));
@@ -45,14 +45,14 @@ function LegacyApp() {
   }
 
   async function stopPreview() {
-    await window.cursovable.stopVite();
+    await window.termiAI.stopVite();
     setPreviewUrl(null);
   }
 
   async function toggleDebugMode() {
     try {
       const newDebugMode = !debugMode;
-      const { ok } = await window.cursovable.setDebugMode({ 
+      const { ok } = await window.termiAI.setDebugMode({ 
         enabled: newDebugMode,
         options: {
           mockTypingDelay: 100,
@@ -71,19 +71,19 @@ function LegacyApp() {
 
   // Subscribe to Vite and cursor-agent logs
   useEffect(() => {
-    const unsubV = window.cursovable.onViteLog((payload) => {
+    const unsubV = window.termiAI.onViteLog((payload) => {
       setViteLogs((prev) => {
         const next = [...prev, payload];
         return next.length > 1000 ? next.slice(-1000) : next;
       });
     });
-    const unsubC = window.cursovable.onCursorLog((payload) => {
+    const unsubC = window.termiAI.onCursorLog((payload) => {
       setCursorLogs((prev) => {
         const next = [...prev, payload];
         return next.length > 1000 ? next.slice(-1000) : next;
       });
     });
-    const unsubF = window.cursovable.folderSelected((folderPath) => {
+    const unsubF = window.termiAI.folderSelected((folderPath) => {
       setFolder(folderPath);
     });
     return () => { 
@@ -97,7 +97,7 @@ function LegacyApp() {
   useEffect(() => {
     async function checkDebugMode() {
       try {
-        const { debugMode: currentDebugMode } = await window.cursovable.getDebugMode();
+        const { debugMode: currentDebugMode } = await window.termiAI.getDebugMode();
         setDebugMode(currentDebugMode);
       } catch (err) {
         console.warn('Failed to get debug mode status:', err);
@@ -136,7 +136,7 @@ function LegacyApp() {
   useEffect(() => {
     const checkStatus = async () => {
       try {
-        const status = await window.cursovable.getTerminalStatus();
+        const status = await window.termiAI.getTerminalStatus();
         const statusEl = document.getElementById('terminal-status');
         if (statusEl) {
           statusEl.textContent = `${status.terminalType} (PTY: ${status.hasPty ? 'Yes' : 'No'})`;
@@ -245,7 +245,7 @@ function LegacyApp() {
                           const runId = last?.runId;
                           console.log('Sending input, runId:', runId, 'input:', agentInput);
                           // Always send input - persistent terminal will handle it if no agent running
-                          await window.cursovable.sendCursorInput({ runId, data: agentInput + '\n' });
+                          await window.termiAI.sendCursorInput({ runId, data: agentInput + '\n' });
                           setAgentInput('');
                         }
                         if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'c') {
@@ -253,7 +253,7 @@ function LegacyApp() {
                           const runId = last?.runId;
                           console.log('Sending SIGINT, runId:', runId);
                           // Always send signal - persistent terminal will handle it if no agent running
-                          await window.cursovable.sendCursorSignal({ runId, signal: 'SIGINT' });
+                          await window.termiAI.sendCursorSignal({ runId, signal: 'SIGINT' });
                         }
                       }}
                     />
@@ -262,7 +262,7 @@ function LegacyApp() {
                       const runId = last?.runId;
                       console.log('Send button clicked, runId:', runId, 'input:', agentInput);
                       // Always send input - persistent terminal will handle it if no agent running
-                      await window.cursovable.sendCursorInput({ runId, data: agentInput + '\n' });
+                      await window.termiAI.sendCursorInput({ runId, data: agentInput + '\n' });
                       setAgentInput('');
                     }}>Send</button>
                     <button className="secondary" onClick={async () => {
@@ -270,18 +270,18 @@ function LegacyApp() {
                       const runId = last?.runId;
                       console.log('Ctrl+C button clicked, runId:', runId);
                       // Always send signal - persistent terminal will handle it if no agent running
-                      await window.cursovable.sendCursorSignal({ runId, signal: 'SIGINT' });
+                      await window.termiAI.sendCursorSignal({ runId, signal: 'SIGINT' });
                     }}>Ctrl+C</button>
                     <button className="secondary" onClick={async () => {
                       console.log('Starting persistent terminal...');
                       try {
                         // Send a dummy input to trigger persistent terminal creation
-                        const result = await window.cursovable.sendCursorInput({ runId: null, data: '\n' });
+                        const result = await window.termiAI.sendCursorInput({ runId: null, data: '\n' });
                         console.log('Terminal start result:', result);
                         
                         // Wait a moment and check status
                         setTimeout(async () => {
-                          const status = await window.cursovable.getTerminalStatus();
+                          const status = await window.termiAI.getTerminalStatus();
                           console.log('Terminal status after start:', status);
                         }, 500);
                       } catch (err) {
@@ -308,7 +308,7 @@ function LegacyApp() {
           <span style={{ flex: 1, padding: '8px', color: '#6b7280', fontSize: '12px' }}>
             Legacy chat interface - Use projects for session management
           </span>
-          <button className="secondary" onClick={async () => { await window.cursovable.clearHistory(); location.reload(); }}>Clear</button>
+          <button className="secondary" onClick={async () => { await window.termiAI.clearHistory(); location.reload(); }}>Clear</button>
         </div>
         {/* Chat panel retained for legacy layout; new ProjectView uses its own */}
         <ProjectView projectId={null} onBack={() => {}} />

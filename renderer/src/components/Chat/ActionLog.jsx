@@ -187,15 +187,15 @@ export default function ActionLog({ toolCalls, isVisible = false, onToggle, isEx
                         const { defaultEditor } = require('../../store/settings');
                       } catch {}
                       try {
-                        const settings = JSON.parse(localStorage.getItem('cursovable-settings') || '{}');
+                        const settings = JSON.parse(localStorage.getItem('termi-ai-settings') || '{}');
                         const editor = settings.defaultEditor || '';
                         if (editor) {
-                          window.cursovable.openInEditor({ folderPath: cwd || '', editor, targetPath: fullPath });
+                          window.termiAI.openInEditor({ folderPath: cwd || '', editor, targetPath: fullPath });
                         } else {
-                          window.cursovable.openFolder(fullPath);
+                          window.termiAI.openFolder(fullPath);
                         }
                       } catch {
-                        try { window.cursovable.openFolder(fullPath); } catch {}
+                        try { window.termiAI.openFolder(fullPath); } catch {}
                       }
                     }}
                     onKeyDown={(e) => {
@@ -203,15 +203,15 @@ export default function ActionLog({ toolCalls, isVisible = false, onToggle, isEx
                         e.preventDefault();
                         e.stopPropagation();
                         try {
-                          const settings = JSON.parse(localStorage.getItem('cursovable-settings') || '{}');
+                          const settings = JSON.parse(localStorage.getItem('termi-ai-settings') || '{}');
                           const editor = settings.defaultEditor || '';
                           if (editor) {
-                            window.cursovable.openInEditor({ folderPath: cwd || '', editor, targetPath: fullPath });
+                            window.termiAI.openInEditor({ folderPath: cwd || '', editor, targetPath: fullPath });
                           } else {
-                            window.cursovable.openFolder(fullPath);
+                            window.termiAI.openFolder(fullPath);
                           }
                         } catch {
-                          try { window.cursovable.openFolder(fullPath); } catch {}
+                          try { window.termiAI.openFolder(fullPath); } catch {}
                         }
                       }
                     }}

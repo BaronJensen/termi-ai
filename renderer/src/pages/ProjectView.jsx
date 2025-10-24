@@ -284,7 +284,7 @@ function ProjectViewInner({ projectId, onBack }) {
         setIsInstalling(true);
         try {
           const { packageManager } = loadSettings();
-          const res = await window.cursovable.installPackages({ folderPath: folder, manager: packageManager || 'yarn' });
+          const res = await window.termiAI.installPackages({ folderPath: folder, manager: packageManager || 'yarn' });
           if (!res || !res.ok) {
             console.warn('Dependency install failed or returned error:', res?.error);
           }
@@ -298,10 +298,10 @@ function ProjectViewInner({ projectId, onBack }) {
       setIsStarting(true);
       let urlObj;
       if (projectType === 'html') {
-        urlObj = await window.cursovable.startHtml({ folderPath: folder });
+        urlObj = await window.termiAI.startHtml({ folderPath: folder });
       } else {
         const { packageManager } = loadSettings();
-        urlObj = await window.cursovable.startVite({ folderPath: folder, manager: packageManager || 'yarn' });
+        urlObj = await window.termiAI.startVite({ folderPath: folder, manager: packageManager || 'yarn' });
       }
       const { url } = urlObj;
       setPreviewUrl(url);
@@ -314,9 +314,9 @@ function ProjectViewInner({ projectId, onBack }) {
 
   async function stopPreview() {
     if (projectType === 'html') {
-      await window.cursovable.stopHtml();
+      await window.termiAI.stopHtml();
     } else {
-      await window.cursovable.stopVite();
+      await window.termiAI.stopVite();
     }
     setPreviewUrl(null);
   }
@@ -351,7 +351,7 @@ function ProjectViewInner({ projectId, onBack }) {
     (async () => {
       try {
         if (!folder) return;
-        const res = await window.cursovable.getProjectRoutes({ folderPath: folder, projectType });
+        const res = await window.termiAI.getProjectRoutes({ folderPath: folder, projectType });
         if (res && res.ok && Array.isArray(res.routes)) {
           setRoutes(res.routes);
         } else {
@@ -367,7 +367,7 @@ function ProjectViewInner({ projectId, onBack }) {
   useEffect(() => {
     (async () => {
       try {
-        const list = await window.cursovable.detectEditors();
+        const list = await window.termiAI.detectEditors();
         if (Array.isArray(list)) setEditors(list);
       } catch {}
     })();
@@ -440,10 +440,10 @@ function ProjectViewInner({ projectId, onBack }) {
 
   // Subscribe to preview and cursor logs (buffered to reduce re-renders)
   useEffect(() => {
-    const unsubV = window.cursovable.onViteLog((payload) => {
+    const unsubV = window.termiAI.onViteLog((payload) => {
       appendSanitizedLogsBuffered(viteBufferRef, payload);
     });
-    const unsubC = window.cursovable.onCursorLog((payload) => {
+    const unsubC = window.termiAI.onCursorLog((payload) => {
       appendSanitizedLogsBuffered(cursorBufferRef, payload);
       appendRawLogsBuffered(rawCursorBufferRef, payload);
     });
@@ -458,14 +458,14 @@ function ProjectViewInner({ projectId, onBack }) {
     let started = false;
     const onPerf = (payload) => setPerfStats(payload);
     try {
-      if (window.cursovable && window.cursovable.onPerfStats) {
-        unsub = window.cursovable.onPerfStats(onPerf);
+      if (window.termiAI && window.termiAI.onPerfStats) {
+        unsub = window.termiAI.onPerfStats(onPerf);
       }
     } catch {}
-    (async () => { try { if (window.cursovable && window.cursovable.startPerf) { await window.cursovable.startPerf(); started = true; } } catch {} })();
+    (async () => { try { if (window.termiAI && window.termiAI.startPerf) { await window.termiAI.startPerf(); started = true; } } catch {} })();
     return () => {
       try { unsub && unsub(); } catch {}
-      try { if (started && window.cursovable && window.cursovable.stopPerf) window.cursovable.stopPerf(); } catch {}
+      try { if (started && window.termiAI && window.termiAI.stopPerf) window.termiAI.stopPerf(); } catch {}
     };
   }, []);
 
@@ -495,7 +495,7 @@ function ProjectViewInner({ projectId, onBack }) {
     let mounted = true;
     const checkStatus = async () => {
       try {
-        const status = await window.cursovable.getTerminalStatus();
+        const status = await window.termiAI.getTerminalStatus();
         if (!mounted) return;
         const text = `${status.terminalType} (PTY: ${status.hasPty ? 'Yes' : 'No'})`;
         setTerminalStatusText(text);

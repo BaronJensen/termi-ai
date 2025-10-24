@@ -31,7 +31,7 @@ function SettingsModal({ initial, onClose, onSave }) {
     let mounted = true;
     (async () => {
       try {
-        const list = await window.cursovable.detectEditors();
+        const list = await window.termiAI.detectEditors();
         if (mounted && Array.isArray(list)) setAvailableEditors(list);
       } catch {
         if (mounted) setAvailableEditors([]);

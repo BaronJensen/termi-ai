@@ -180,7 +180,7 @@ function ProjectHeader({
                 disabled={!folder || !selectedEditor}
                 onClick={async () => { 
                   if (folder && selectedEditor) {
-                    await window.cursovable.openInEditor({ folderPath: folder, editor: selectedEditor });
+                    await window.termiAI.openInEditor({ folderPath: folder, editor: selectedEditor });
                     // Close menu after action
                     closeMenu();
                   }
@@ -228,7 +228,7 @@ function ProjectHeader({
                     // If URL parsing fails, use original URL
                     urlToOpen = previewUrl;
                   }
-                  await window.cursovable.openExternal(urlToOpen);
+                  await window.termiAI.openExternal(urlToOpen);
                   // Close menu after action
                   closeMenu();
                 }
@@ -253,7 +253,7 @@ function ProjectHeader({
               onMouseEnter={(e) => e.target.style.background = '#1a2331'}
               onMouseLeave={(e) => e.target.style.background = 'transparent'}
               onClick={async () => { 
-                if (folder) await window.cursovable.openFolder(folder); 
+                if (folder) await window.termiAI.openFolder(folder); 
                 // Close menu after action
                 closeMenu();
               }}

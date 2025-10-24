@@ -142,8 +142,8 @@ export const validateInput = ({ text, cwd, busy }) => {
  */
 export const logCursorDebugInfo = async ({ runId, cwd }) => {
   try {
-    const currentWd = await window.cursovable.getWorkingDirectory();
-    await window.cursovable.cursorDebugLog({ 
+    const currentWd = await window.termiAI.getWorkingDirectory();
+    await window.termiAI.cursorDebugLog({ 
       line: `[cursor-agent] Working directory: ${currentWd || '(none)'}`, 
       runId 
     });

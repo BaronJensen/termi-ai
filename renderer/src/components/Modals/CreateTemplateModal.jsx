@@ -16,7 +16,7 @@ function CreateTemplateModal({ onClose, onCreate, initialTemplate = 'react-vite'
   const [fixingPermissions, setFixingPermissions] = useState(false);
 
   async function browseParent() {
-    const fp = await window.cursovable.selectFolder();
+    const fp = await window.termiAI.selectFolder();
     if (fp) {
       setParentDir(fp);
       setPermissionStatus(null); // Reset permission status when folder changes
@@ -29,7 +29,7 @@ function CreateTemplateModal({ onClose, onCreate, initialTemplate = 'react-vite'
     try {
       setCheckingPermissions(true);
       setError('');
-      const result = await window.cursovable.checkDirectoryPermissions({ directoryPath: parentDir });
+      const result = await window.termiAI.checkDirectoryPermissions({ directoryPath: parentDir });
       setPermissionStatus(result);
     } catch (err) {
       setError(`Failed to check permissions: ${err.message}`);
@@ -44,7 +44,7 @@ function CreateTemplateModal({ onClose, onCreate, initialTemplate = 'react-vite'
     try {
       setFixingPermissions(true);
       setError('');
-      const result = await window.cursovable.fixDirectoryPermissions({ directoryPath: parentDir });
+      const result = await window.termiAI.fixDirectoryPermissions({ directoryPath: parentDir });
       if (result.ok) {
         // Re-check permissions after fixing
         await checkPermissions();
@@ -71,7 +71,7 @@ function CreateTemplateModal({ onClose, onCreate, initialTemplate = 'react-vite'
       if (!parentDir || !projectName.trim()) throw new Error('Choose folder and enter project name');
       
       // Check permissions before creating project
-      const permCheck = await window.cursovable.checkDirectoryPermissions({ directoryPath: parentDir });
+      const permCheck = await window.termiAI.checkDirectoryPermissions({ directoryPath: parentDir });
       if (!permCheck.ok) {
         throw new Error(`Permission check failed: ${permCheck.error}`);
       }
@@ -80,13 +80,13 @@ function CreateTemplateModal({ onClose, onCreate, initialTemplate = 'react-vite'
         throw new Error(`Insufficient permissions in selected folder. The folder needs read/write access for cursor-agent to work properly. Current permissions: ${permCheck.permissions.mode}`);
       }
       
-      const res = await window.cursovable.createProjectScaffold({ parentDir, projectName: projectName.trim(), template, prompt });
+      const res = await window.termiAI.createProjectScaffold({ parentDir, projectName: projectName.trim(), template, prompt });
       if (!res || !res.ok) throw new Error(res?.error || 'Failed to create project');
       
       const projectPath = res.path;
       
       // Verify the created project has proper permissions
-      const projectPermCheck = await window.cursovable.checkDirectoryPermissions({ directoryPath: projectPath });
+      const projectPermCheck = await window.termiAI.checkDirectoryPermissions({ directoryPath: projectPath });
       if (!projectPermCheck.ok || !projectPermCheck.permissions.createFiles) {
         throw new Error(`Project created but cursor-agent may not have sufficient permissions to work in: ${projectPath}. Please check folder permissions.`);
       }

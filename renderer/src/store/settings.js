@@ -1,6 +1,6 @@
 // Simple localStorage-backed app-wide settings
 
-const STORAGE_KEY = 'cursovable-settings';
+const STORAGE_KEY = 'termi-ai-settings';
 
 export function getDefaultSettings() {
   return {

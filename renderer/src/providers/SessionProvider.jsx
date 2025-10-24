@@ -39,8 +39,8 @@ export const SessionProvider = ({ children, projectId }) => {
   // Set up the log router and cursor log handling
   useEffect(() => {  
     // Subscribe to the global log stream once
-    if (window.cursovable?.onCursorLog) {
-      const unsubscribe = window.cursovable.onCursorLog((payload) => {
+    if (window.termiAI?.onCursorLog) {
+      const unsubscribe = window.termiAI.onCursorLog((payload) => {
         
         // Handle cursor logs (terminal output, etc.)
         sessionManager.handleCursorLog(payload);
@@ -74,9 +74,9 @@ export const SessionProvider = ({ children, projectId }) => {
       return () => {
         if (unsubscribe) unsubscribe();
         // Clean up the global router
-        if (window.cursovableLogRouter) {
-          window.cursovableLogRouter.handlers.clear();
-          delete window.cursovableLogRouter;
+        if (window.termiAILogRouter) {
+          window.termiAILogRouter.handlers.clear();
+          delete window.termiAILogRouter;
         }
       };
     }

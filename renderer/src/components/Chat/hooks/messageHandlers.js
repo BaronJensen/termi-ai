@@ -104,7 +104,7 @@ export const handleJsonLogLine = async (parsed, {
       
       // Get the session object from the log router (passed from the runner)
       // This tells us exactly which session started this terminal
-      const sessionObject = window.cursovableLogRouter?.getCurrentRunSession?.(runId);
+      const sessionObject = window.termiAILogRouter?.getCurrentRunSession?.(runId);
       
       if (sessionObject) {
         console.log(`🆔 Found session object from runner:`, sessionObject);
@@ -458,7 +458,7 @@ export const createLogStreamHandler = ({
           console.log(`🚀 Using ${getCurrentSessions ? 'fresh' : 'stale'} session state:`, currentSessions.map(s => ({ id: s.id, name: s.name, cursorSessionId: s.cursorSessionId })));
           
           // Get the session ID from the log router for this run
-          const sessionObject = window.cursovableLogRouter?.getCurrentRunSession?.(runId);
+          const sessionObject = window.termiAILogRouter?.getCurrentRunSession?.(runId);
           const internalSessionId = sessionObject?.id;
           
           const isComplete = await handleJsonLogLine(parsed, {
@@ -491,7 +491,7 @@ export const createLogStreamHandler = ({
       
       for (const line of lines) {
         // Get the session ID from the log router for this run
-        const sessionObject = window.cursovableLogRouter?.getCurrentRunSession?.(runId);
+        const sessionObject = window.termiAILogRouter?.getCurrentRunSession?.(runId);
         const internalSessionId = sessionObject?.id;
         
         const isComplete = await handleStreamLogLine(line, {

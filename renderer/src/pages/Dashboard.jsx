@@ -45,8 +45,8 @@ export default function Dashboard({ onOpenProject }) {
       const projectPrompt = idea || 'Create a starter app';
       const projectTemplate = template;
       
-      localStorage.setItem(`cursovable-new-project-${project.id}`, projectPrompt);
-      localStorage.setItem(`cursovable-new-project-template-${project.id}`, projectTemplate);
+      localStorage.setItem(`termi-ai-new-project-${project.id}`, projectPrompt);
+      localStorage.setItem(`termi-ai-new-project-template-${project.id}`, projectTemplate);
       
       console.log(`🚀 Stored new project info for auto-start:`, {
         projectId: project.id,
