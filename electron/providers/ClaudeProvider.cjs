@@ -1,0 +1,360 @@
+/**
+ * ClaudeProvider.cjs
+ *
+ * Provider implementation for Claude Code CLI
+ */
+
+const { exec } = require('child_process');
+const { promisify } = require('util');
+const path = require('path');
+const fs = require('fs');
+const BaseAgentProvider = require('./BaseAgentProvider.cjs');
+
+const execAsync = promisify(exec);
+
+class ClaudeProvider extends BaseAgentProvider {
+  constructor() {
+    super('claude', 'Claude Code');
+  }
+
+  /**
+   * Check if Claude Code CLI is available
+   */
+  async checkAvailability() {
+    try {
+      const cliPath = await this.resolveCliPath();
+      return {
+        available: true,
+        path: cliPath
+      };
+    } catch (error) {
+      return {
+        available: false,
+        error: error.message
+      };
+    }
+  }
+
+  /**
+   * Resolve Claude Code binary path
+   */
+  async resolveCliPath() {
+    // Common installation paths for Claude Code
+    const commonPaths = [
+      '/usr/local/bin/claude',
+      '/opt/homebrew/bin/claude',
+      path.join(process.env.HOME || '', '.local', 'bin', 'claude')
+    ];
+
+    // Check common paths
+    for (const p of commonPaths) {
+      if (fs.existsSync(p)) {
+        return p;
+      }
+    }
+
+    // Check in PATH
+    try {
+      const { stdout } = await execAsync(
+        process.platform === 'win32' ? 'where claude' : 'which claude'
+      );
+      const cliPath = stdout.trim().split('\n')[0];
+      if (cliPath && fs.existsSync(cliPath)) {
+        return cliPath;
+      }
+    } catch (error) {
+      // Not in PATH
+    }
+
+    throw new Error('Claude Code CLI not found. Please install it first: npm install -g @anthropic/claude-code');
+  }
+
+  /**
+   * Build arguments for Claude Code CLI
+   */
+  async buildArgs(options) {
+    const {
+      message,
+      sessionId,
+      model,
+      apiKey,
+      cwd
+    } = options;
+
+    const args = [];
+
+    // Claude Code CLI command structure
+    // Format: claude --print --output-format stream-json --verbose [options] <prompt>
+
+    // Non-interactive mode with streaming JSON output
+    args.push('--print');
+    args.push('--output-format', 'stream-json');
+    args.push('--verbose'); // Required for stream-json format
+    args.push('--include-partial-messages'); // Get streaming chunks
+
+    // Session resumption
+    if (sessionId) {
+      args.push('--resume', sessionId);
+    }
+
+    // Model selection
+    if (model) {
+      args.push('--model', model);
+    }
+
+    // Note: Claude CLI doesn't have --cwd flag
+    // Working directory is set via spawn options in agentRunner
+
+    // API key (Claude Code uses environment variable or config file)
+    const env = {
+      ...process.env
+    };
+
+    if (apiKey) {
+      env.ANTHROPIC_API_KEY = apiKey;
+    }
+
+    // Message handling - always add the prompt at the end
+    if (message) {
+      args.push(message);
+    }
+
+    return {
+      args,
+      env,
+      useStdin: false, // Claude CLI doesn't use stdin for prompts
+      stdinData: undefined
+    };
+  }
+
+  /**
+   * Parse Claude Code CLI output
+   * Claude Code outputs JSON-formatted messages
+   */
+  parseOutput(data, context) {
+    const messages = [];
+    context.buffer = context.buffer || '';
+    context.buffer += data;
+
+    // Split by newlines to process line-by-line JSON
+    const lines = context.buffer.split('\n');
+    context.buffer = lines.pop() || ''; // Keep incomplete line in buffer
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+
+      try {
+        const parsed = JSON.parse(trimmed);
+        messages.push({
+          type: 'json',
+          data: this.transformClaudeMessage(parsed)
+        });
+      } catch (error) {
+        // Not JSON, might be plain text output
+        if (trimmed.length > 0) {
+          messages.push({
+            type: 'text',
+            data: { text: trimmed }
+          });
+        }
+      }
+    }
+
+    // Buffer management
+    if (context.buffer.length > 500 * 1024) {
+      console.warn('⚠️  Buffer overflow detected, truncating');
+      context.buffer = context.buffer.slice(-250 * 1024);
+    }
+
+    return messages;
+  }
+
+  /**
+   * Transform Claude Code message format to common format
+   * This ensures compatibility with the existing UI
+   */
+  transformClaudeMessage(parsed) {
+    // Claude Code CLI format with stream-json
+
+    // Handle stream_event wrapper (unwrap the event)
+    if (parsed.type === 'stream_event' && parsed.event) {
+      // Recursively transform the inner event
+      return this.transformClaudeMessage(parsed.event);
+    }
+
+    // System initialization message
+    if (parsed.type === 'system' && parsed.subtype === 'init') {
+      return {
+        type: 'status',
+        subtype: 'init', // Preserve subtype for loading state detection
+        text: 'Claude Code initialized',
+        session_id: parsed.session_id,
+        model: parsed.model,
+        tools: parsed.tools
+      };
+    }
+
+    // Assistant message (streaming content, NOT final completion)
+    if (parsed.type === 'assistant') {
+      const content = parsed.message?.content || [];
+      const textContent = content.find(c => c.type === 'text');
+      return {
+        type: 'assistant',
+        text: textContent?.text || '',
+        model: parsed.message?.model,
+        session_id: parsed.session_id,
+        isStreaming: true // Mark as streaming, not final completion
+      };
+    }
+
+    // Tool use messages
+    if (parsed.type === 'tool_use') {
+      return {
+        type: 'tool_call',
+        tool: parsed.tool_name,
+        arguments: parsed.arguments,
+        tool_use_id: parsed.tool_use_id,
+        session_id: parsed.session_id
+      };
+    }
+
+    // Tool result messages
+    if (parsed.type === 'tool_result') {
+      return {
+        type: 'tool_result',
+        result: parsed.result,
+        tool_use_id: parsed.tool_use_id,
+        session_id: parsed.session_id
+      };
+    }
+
+    // Result summary (final message with complete text)
+    if (parsed.type === 'result') {
+      return {
+        type: 'result',
+        result: parsed.text || '', // Use 'text' field from Claude result
+        text: parsed.text || '', // Also keep as 'text' for compatibility
+        success: parsed.success !== false, // Default to true if not specified
+        duration_ms: parsed.duration_ms,
+        cost_usd: parsed.cost_usd
+      };
+    }
+
+    // Older Claude API streaming format (for backwards compatibility)
+    if (parsed.type === 'message') {
+      return {
+        type: 'assistant',
+        text: parsed.content?.[0]?.text || '',
+        model: parsed.model,
+        session_id: parsed.id
+      };
+    }
+
+    if (parsed.type === 'content_block_start') {
+      return {
+        type: 'streaming_start',
+        index: parsed.index
+      };
+    }
+
+    if (parsed.type === 'content_block_delta') {
+      return {
+        type: 'streaming',
+        text: parsed.delta?.text || '',
+        index: parsed.index
+      };
+    }
+
+    if (parsed.type === 'content_block_stop') {
+      return {
+        type: 'streaming_end',
+        index: parsed.index
+      };
+    }
+
+    if (parsed.type === 'message_start') {
+      return {
+        type: 'session_start',
+        session_id: parsed.message?.id,
+        model: parsed.message?.model
+      };
+    }
+
+    if (parsed.type === 'message_stop') {
+      return {
+        type: 'session_end'
+      };
+    }
+
+    // Legacy tool_use format
+    if (parsed.type === 'tool_use_legacy') {
+      return {
+        type: 'tool_call',
+        tool_calls: [{
+          id: parsed.id,
+          name: parsed.name,
+          args: parsed.input
+        }]
+      };
+    }
+
+    // Pass through if already in common format
+    return parsed;
+  }
+
+  /**
+   * Extract session ID from Claude Code output
+   */
+  extractSessionId(parsedData) {
+    return parsedData.session_id || parsedData.id || parsedData.message?.id || null;
+  }
+
+  /**
+   * Get provider capabilities
+   */
+  getCapabilities() {
+    return {
+      supportsSessionResumption: true,
+      supportsStreaming: true,
+      supportsToolCalls: true,
+      supportsModelSelection: true,
+      requiresApiKey: false // Optional - uses terminal auth if already authenticated
+    };
+  }
+
+  /**
+   * Validate Claude-specific options
+   */
+  validateOptions(options) {
+    const baseValidation = super.validateOptions(options);
+    if (!baseValidation.valid) {
+      return baseValidation;
+    }
+
+    // API key is optional - will use terminal auth if not provided
+    return { valid: true };
+  }
+
+  /**
+   * Get provider metadata
+   */
+  getMetadata() {
+    return {
+      ...super.getMetadata(),
+      version: '1.0.0',
+      description: 'Claude Code - AI pair programmer powered by Anthropic Claude',
+      website: 'https://claude.ai',
+      requiresCli: true,
+      cliCommand: 'claude',
+      supportedModels: [
+        'claude-3-5-sonnet-20241022',
+        'claude-3-opus-20240229',
+        'claude-3-sonnet-20240229',
+        'claude-3-haiku-20240307'
+      ]
+    };
+  }
+}
+
+module.exports = ClaudeProvider;

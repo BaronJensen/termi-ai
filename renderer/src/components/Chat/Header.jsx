@@ -34,6 +34,26 @@ export default function Header({
           <span style={{ fontWeight: '500', color: '#3c6df0' }}>
             💬 {sessionName || 'No Session'}
           </span>
+          {/* Provider Badge */}
+          {currentSession?.provider && (
+            <span style={{
+              fontSize: '9px',
+              padding: '2px 6px',
+              backgroundColor: currentSession.provider === 'cursor' ? '#3b82f6' :
+                              currentSession.provider === 'claude' ? '#f97316' :
+                              currentSession.provider === 'codex' ? '#10b981' : '#374151',
+              color: '#fff',
+              borderRadius: '3px',
+              fontWeight: '600',
+              textTransform: 'uppercase',
+              letterSpacing: '0.5px'
+            }}>
+              {currentSession.provider === 'cursor' ? '⚡ Cursor' :
+               currentSession.provider === 'claude' ? '🤖 Claude' :
+               currentSession.provider === 'codex' ? '🔥 Codex' :
+               currentSession.provider}
+            </span>
+          )}
           <button
             onClick={() => setShowSessionInfo(!showSessionInfo)}
             style={{

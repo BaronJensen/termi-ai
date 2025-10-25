@@ -29,6 +29,9 @@ const { startHtmlServer } = require('./htmlServer.cjs');
 const { startCursorAgent, setDebugMode, getDebugMode } = require('./runner.cjs');
 const { HistoryStore } = require('./historyStore.cjs');
 
+// Multi-provider agent system
+const { startAgent, getAvailableProviders, getProviderMetadata, registry } = require('./agentRunner.cjs');
+
 // Ensure PATH includes common Homebrew locations (helps find cursor-agent)
 function ensureDarwinPath(originalPath) {
   if (process.platform !== 'darwin') return originalPath;
@@ -782,13 +785,70 @@ process.on('SIGINT', () => {
   app.quit();
 });
 
+/**
+ * Check if a directory is a git repository and initialize if not
+ * This is required for Codex CLI to work properly
+ */
+async function ensureGitRepository(folderPath) {
+  const gitDir = path.join(folderPath, '.git');
+
+  try {
+    // Check if .git directory exists
+    if (fs.existsSync(gitDir)) {
+      console.log(`Git repository already exists in: ${folderPath}`);
+      return { initialized: false, message: 'Git repository already exists' };
+    }
+
+    console.log(`Initializing git repository in: ${folderPath}`);
+
+    // Initialize git repository
+    await new Promise((resolve, reject) => {
+      exec('git init', { cwd: folderPath }, (error, stdout, stderr) => {
+        if (error) {
+          console.error('Git init error:', error);
+          reject(error);
+        } else {
+          console.log('Git init success:', stdout);
+          resolve(stdout);
+        }
+      });
+    });
+
+    // Create initial .gitignore if it doesn't exist
+    const gitignorePath = path.join(folderPath, '.gitignore');
+    if (!fs.existsSync(gitignorePath)) {
+      const defaultGitignore = `node_modules/
+dist/
+build/
+.DS_Store
+*.log
+.env
+.env.local
+`;
+      fs.writeFileSync(gitignorePath, defaultGitignore, 'utf8');
+      console.log('Created .gitignore file');
+    }
+
+    return { initialized: true, message: 'Git repository initialized successfully' };
+  } catch (error) {
+    console.error('Failed to initialize git repository:', error);
+    return { initialized: false, error: error.message };
+  }
+}
+
 // IPC handlers
 ipcMain.handle('select-folder', async () => {
   const res = await dialog.showOpenDialog(win, {
     properties: ['openDirectory']
   });
   if (res.canceled || res.filePaths.length === 0) return null;
-  return res.filePaths[0];
+
+  const folderPath = res.filePaths[0];
+
+  // Ensure git repository exists for Codex compatibility
+  await ensureGitRepository(folderPath);
+
+  return folderPath;
 });
 
 ipcMain.handle('folder-selected', async () => {
@@ -796,7 +856,13 @@ ipcMain.handle('folder-selected', async () => {
     properties: ['openDirectory']
   });
   if (res.canceled || res.filePaths.length === 0) return null;
-  return res.filePaths[0];
+
+  const folderPath = res.filePaths[0];
+
+  // Ensure git repository exists for Codex compatibility
+  await ensureGitRepository(folderPath);
+
+  return folderPath;
 });
 
 ipcMain.handle('vite-start', async (_e, { folderPath, manager }) => {
@@ -1026,6 +1092,197 @@ ipcMain.handle('cursor-run', async (_e, { message, cwd, runId: clientRunId, sess
   history.push(enriched);
   return enriched;
 });
+
+// ===== MULTI-PROVIDER AGENT SYSTEM =====
+
+/**
+ * Run any AI agent provider (cursor, claude, codex)
+ */
+ipcMain.handle('agent-run', async (_e, { provider = 'cursor', message, cwd, runId: clientRunId, sessionObject, model, apiKey, debugMode }) => {
+  if (!message || !message.trim()) {
+    throw new Error('Empty message');
+  }
+
+  const runId = clientRunId || `${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
+  const workingDir = cwd || lastViteFolder || process.cwd();
+
+  // Verify the working directory exists and is accessible
+  try {
+    if (!fs.existsSync(workingDir)) {
+      throw new Error(`Working directory does not exist: ${workingDir}`);
+    }
+    if (!fs.statSync(workingDir).isDirectory()) {
+      throw new Error(`Working directory is not a directory: ${workingDir}`);
+    }
+
+    // Check permissions
+    try {
+      fs.accessSync(workingDir, fs.constants.R_OK | fs.constants.W_OK);
+    } catch (permErr) {
+      throw new Error(`Insufficient permissions to read/write in working directory: ${workingDir}`);
+    }
+
+    // Ensure git repository exists (required for all agents)
+    console.log(`Ensuring git repository for ${provider} in: ${workingDir}`);
+    await ensureGitRepository(workingDir);
+
+    // Test file creation (required for agents)
+    const testFile = path.join(workingDir, `.${provider}-agent-permission-test`);
+    try {
+      fs.writeFileSync(testFile, 'test', 'utf8');
+      fs.unlinkSync(testFile);
+    } catch (testErr) {
+      throw new Error(`Working directory exists but agent cannot create/delete files. Please check write permissions for: ${workingDir}`);
+    }
+
+    console.log(`✅ Working directory permissions verified: ${workingDir}`);
+  } catch (err) {
+    throw new Error(`Invalid working directory: ${err.message}`);
+  }
+
+  // Clean up any existing process with this runId
+  const existingProc = agentProcs.get(runId);
+  if (existingProc) {
+    try {
+      if (typeof existingProc.kill === 'function') {
+        existingProc.kill('SIGTERM');
+      }
+    } catch (err) {
+      console.warn('Failed to kill existing process:', err.message);
+    }
+    agentProcs.delete(runId);
+  }
+
+  console.log(`🚀 Starting ${provider} agent in directory: ${workingDir}`);
+  console.log(`📱 Session: ${sessionObject.id ? `Session ${sessionObject.id.slice(0, 8)}` : 'Default'}`);
+
+  // Start the agent using the universal runner
+  const agentProcess = await startAgent(
+    provider,
+    {
+      message,
+      cwd: workingDir,
+      sessionId: sessionObject.cursorSessionId || sessionObject.providerId,
+      model,
+      apiKey,
+      sessionObject,
+      debugMode
+    },
+    (level, line, metadata) => {
+      try {
+        if (line) perfAccumLogBytes.cursor += Buffer.byteLength(String(line));
+
+        const logPayload = {
+          runId,
+          level,
+          line,
+          ts: Date.now(),
+          provider,
+          cursorSessionId: metadata.cursorSessionId || sessionObject.cursorSessionId,
+          id: sessionObject.id,
+          ...metadata
+        };
+
+        if (win && !win.isDestroyed()) {
+          win.webContents.send('cursor-log', logPayload);
+        }
+      } catch (err) {
+        console.error('Error sending log:', err);
+      }
+    }
+  );
+
+  // Track the process
+  if (agentProcess) {
+    agentProcs.set(runId, agentProcess);
+    addSessionProcess(sessionObject.id, runId);
+  }
+
+  updateMenuStatus();
+
+  const sessionLabel = sessionObject.id ? `Session ${sessionObject.id.slice(0, 8)}` : 'Default';
+  console.log(`📱 [${sessionLabel}] ${provider} agent started - run ${runId.slice(0, 8)}`);
+
+  // Return process reference
+  return {
+    runId,
+    provider,
+    sessionId: sessionObject.id
+  };
+});
+
+/**
+ * Get all available AI agent providers
+ */
+ipcMain.handle('agent-get-providers', async () => {
+  try {
+    const providers = await getAvailableProviders();
+    return providers;
+  } catch (error) {
+    console.error('Error getting providers:', error);
+    return [];
+  }
+});
+
+/**
+ * Get metadata for a specific provider
+ */
+ipcMain.handle('agent-get-provider-info', async (_e, { provider }) => {
+  try {
+    const metadata = getProviderMetadata(provider);
+    return metadata;
+  } catch (error) {
+    console.error(`Error getting provider info for ${provider}:`, error);
+    return null;
+  }
+});
+
+/**
+ * Send input to a running agent process
+ */
+ipcMain.handle('agent-input', async (_e, { runId, data }) => {
+  const process = agentProcs.get(runId);
+  if (!process) {
+    throw new Error(`No agent process found for runId: ${runId}`);
+  }
+
+  try {
+    if (typeof process.write === 'function') {
+      process.write(data);
+      return { ok: true };
+    } else {
+      throw new Error('Process does not support write operation');
+    }
+  } catch (error) {
+    console.error('Error sending input to agent:', error);
+    throw error;
+  }
+});
+
+/**
+ * Send signal to a running agent process
+ */
+ipcMain.handle('agent-signal', async (_e, { runId, signal = 'SIGTERM' }) => {
+  const process = agentProcs.get(runId);
+  if (!process) {
+    throw new Error(`No agent process found for runId: ${runId}`);
+  }
+
+  try {
+    if (typeof process.kill === 'function') {
+      process.kill(signal);
+      agentProcs.delete(runId);
+      return { ok: true };
+    } else {
+      throw new Error('Process does not support kill operation');
+    }
+  } catch (error) {
+    console.error('Error sending signal to agent:', error);
+    throw error;
+  }
+});
+
+// ===== END MULTI-PROVIDER AGENT SYSTEM =====
 
 ipcMain.handle('get-working-directory', async () => {
   return lastViteFolder || process.cwd();

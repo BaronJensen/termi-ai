@@ -3,27 +3,29 @@ import { normalizeToolCallData } from './chatUtils';
 
 /**
  * Hook for handling different types of parsed messages from cursor sessions
- * 
+ *
  * This hook processes various message types and converts them into chat messages
  * that can be displayed in the UI. It handles session management, tool calls,
  * file operations, and other cursor agent activities.
- * 
+ *
  * @param {Function} addMessageToSession - Function to add messages to a session
  * @param {Function} updateSessionWithCursorId - Function to update session with cursor session ID
  * @param {Function} setSessionToolCalls - Function to set tool calls for a session
  * @param {Function} setSessionHideToolCallIndicators - Function to hide tool call indicators
  * @param {Function} setSessionBusy - Function to set session busy state
  * @param {Function} setSessionStreamingText - Function to set streaming text for a session
+ * @param {Function} removeToolCallMessages - Function to remove all tool call messages from a session
  * @param {Object} toolCallsRef - Optional ref to store tool calls for final snapshot
  * @returns {Object} Object with message handling functions
  */
 export const useMessageHandler = (
-  addMessageToSession, 
+  addMessageToSession,
   updateSessionWithCursorId,
   setSessionToolCalls,
   setSessionHideToolCallIndicators,
   setSessionBusy,
   setSessionStreamingText,
+  removeToolCallMessages,
   toolCallsRef = null
 ) => {
   
@@ -39,30 +41,68 @@ export const useMessageHandler = (
     });
     
     switch (parsed.type) {
-        
+
+      case 'prompt':
+        // Codex/provider prompt message - start loading
+        handlePromptMessage(parsed, sessionId);
+        break;
+
+      case 'config':
+      case 'section_break':
+        // Hidden messages - don't display
+        if (!parsed.hidden) {
+          console.log(`🔧 Config/section message for session ${sessionId}:`, parsed);
+        }
+        break;
+
       case 'system':
+      case 'status':
         handleSystemMessage(parsed, sessionId);
         break;
-        
+
       case 'assistant':
         handleAssistantMessage(parsed, sessionId);
         break;
-        
+
       case 'result':
         handleResultMessage(parsed, sessionId);
         break;
-        
+
+      case 'metadata':
+        // Token count and completion signal
+        handleMetadataMessage(parsed, sessionId);
+        break;
+
       case 'tool_call':
       case 'tool':
       case 'function_call':
         console.log(`🔧 Handling tool call message for session ${sessionId}`);
         handleToolCall(parsed, sessionId);
         break;
-        
+
+      case 'tool_output':
+      case 'tool_result':
+        handleToolResult(parsed, sessionId);
+        break;
+
+      case 'reasoning':
+        handleReasoningMessage(parsed, sessionId);
+        break;
+
+      case 'file_edit':
+      case 'diff':
+        // Hide diff and file edit messages (too noisy)
+        console.log(`🔧 File edit/diff for session ${sessionId} (hidden):`, parsed);
+        break;
+
+      case 'streaming':
+        handleStreamingDelta(parsed, sessionId);
+        break;
+
       case 'error':
         handleErrorMessage(parsed, sessionId);
         break;
-        
+
       default:
         // Check for tool call indicators in other message types
         if (parsed.tool_call || parsed.tool || parsed.name === 'tool') {
@@ -74,17 +114,22 @@ export const useMessageHandler = (
     }
   }, [addMessageToSession, updateSessionWithCursorId, setSessionToolCalls, setSessionHideToolCallIndicators, setSessionBusy, setSessionStreamingText, toolCallsRef]);
 
-  // Handle system messages (including init subtype for starting streaming)
+  // Handle system/status messages (including init subtype)
   const handleSystemMessage = useCallback((parsed, sessionId) => {
-    console.log(`🔧 System message for session ${sessionId}:`, parsed);
-    
-    // If this is an init message, start streaming text accumulation
+    console.log(`🔧 System/status message for session ${sessionId}:`, parsed);
+
+    // Init message starts loading for both Cursor and Claude Code
     if (parsed.subtype === 'init') {
-      console.log(`🔧 Starting streaming text accumulation for session ${sessionId}`);
+      console.log(`🔧 Process starting for session ${sessionId}`);
+
+      // Start loading state
+      setSessionBusy(sessionId, true);
+
+      // Initialize empty streaming text
       setSessionStreamingText(sessionId, '');
     }
-  
-  }, [addMessageToSession, setSessionStreamingText]);
+
+  }, [setSessionBusy, setSessionStreamingText]);
 
   // Handle session start messages
   const handleSessionStart = useCallback((parsed, sessionId) => {
@@ -109,24 +154,58 @@ export const useMessageHandler = (
   // Handle assistant messages with streaming text accumulation
   const handleAssistantMessage = useCallback((parsed, sessionId) => {
     console.log(`🔧 Assistant message for session ${sessionId}:`, parsed);
-    
-    if (parsed.message?.content?.[0]?.text) {
-      const assistantContent = parsed.message.content[0].text;
-      
-      // Accumulate streaming text for this session
-      setSessionStreamingText(sessionId, prev => {
-        const newText = prev + assistantContent;
-        console.log(`🔧 Accumulated streaming text for session ${sessionId}:`, newText.length, 'characters');
-        return newText;
-      });
-      
+
+    // Handle Claude streaming format: isStreaming flag indicates streaming content
+    if (parsed.isStreaming && parsed.text) {
+      console.log(`🔧 Claude complete message for session ${sessionId}`);
+
+      // This is the full message from Claude - add it as a permanent message
+      const assistantMessage = {
+        id: `msg-${Date.now()}-${Math.random().toString(36).slice(2,8)}`,
+        who: 'assistant',
+        text: parsed.text,
+        timestamp: Date.now(),
+        rawData: parsed
+      };
+
+      addMessageToSession(sessionId, assistantMessage);
+
+      // Clear any accumulated streaming text since we have the full message
+      setSessionStreamingText(sessionId, '');
     }
-  }, [addMessageToSession, setSessionStreamingText]);
+    // Handle Codex format: parsed.text directly (final completion)
+    else if (parsed.text && !parsed.isStreaming) {
+      const assistantMessage = {
+        id: `msg-${Date.now()}-${Math.random().toString(36).slice(2,8)}`,
+        who: 'assistant',
+        text: parsed.text,
+        timestamp: Date.now(),
+        rawData: parsed
+      };
+
+      addMessageToSession(sessionId, assistantMessage);
+
+      // Codex assistant message signals process completion
+      console.log(`🔧 Codex process complete for session ${sessionId}`);
+
+      // Stop loading state
+      setSessionBusy(sessionId, false);
+
+      // Clear streaming text
+      setSessionStreamingText(sessionId, '');
+
+      // Hide tool call indicators
+      setSessionHideToolCallIndicators(sessionId, true);
+
+      // Remove all tool call messages from UI using the removeToolCallMessages helper
+      removeToolCallMessages(sessionId);
+    }
+  }, [addMessageToSession, setSessionStreamingText, setSessionBusy, setSessionHideToolCallIndicators, removeToolCallMessages]);
 
   // Handle result messages with comprehensive tool call completion and streaming cleanup
   const handleResultMessage = useCallback((parsed, sessionId) => {
     console.log(`🔧 Result message for session ${sessionId}:`, parsed);
-    
+
     // Mark all tool calls as completed
     setSessionToolCalls(sessionId, prev => {
       const newMap = new Map();
@@ -140,27 +219,37 @@ export const useMessageHandler = (
       }
       return newMap;
     });
-    
+
     // Hide tool call indicators
     setSessionHideToolCallIndicators(sessionId, true);
-    
+
     // Set session as not busy
     setSessionBusy(sessionId, false);
-    
-    // Clear streaming text state for this session
+
+    // Remove all tool call messages from UI (Cursor/Claude completion cleanup)
+    console.log(`🔧 Process complete for session ${sessionId}, cleaning up tool calls`);
+    removeToolCallMessages(sessionId);
+
+    // Display the result text as a permanent message
+    const resultText = parsed.result || parsed.text;
+    if (resultText && resultText.trim().length > 0) {
+      const resultMessage = {
+        id: `msg-${Date.now()}-${Math.random().toString(36).slice(2,8)}`,
+        who: 'assistant',
+        text: resultText,
+        timestamp: Date.now(),
+        isResult: true,
+        rawData: parsed
+      };
+
+      addMessageToSession(sessionId, resultMessage);
+    } else {
+      console.log(`🔧 Result message has no text, skipping display`);
+    }
+
+    // Clear streaming text AFTER adding the permanent message
     setSessionStreamingText(sessionId, '');
-    
-    const resultMessage = {
-      id: `msg-${Date.now()}-${Math.random().toString(36).slice(2,8)}`,
-      who: 'assistant',
-      text: parsed.result || 'Command completed',
-      timestamp: Date.now(),
-      isResult: true,
-      rawData: parsed
-    };
-    
-    addMessageToSession(sessionId, resultMessage);
-  }, [addMessageToSession, setSessionToolCalls, setSessionHideToolCallIndicators, setSessionBusy, setSessionStreamingText]);
+  }, [addMessageToSession, setSessionToolCalls, setSessionHideToolCallIndicators, setSessionBusy, setSessionStreamingText, removeToolCallMessages]);
 
   // Handle tool calls with comprehensive state management
   const handleToolCall = useCallback((parsed, sessionId) => {
@@ -272,19 +361,81 @@ export const useMessageHandler = (
     }
   }, [addMessageToSession, setSessionToolCalls, toolCallsRef]);
 
-  // Handle tool results
+  // Handle tool results and tool output
   const handleToolResult = useCallback((parsed, sessionId) => {
-    const toolResultMessage = {
-      id: `msg-${Date.now()}-${Math.random().toString(36).slice(2,8)}`,
-      who: 'assistant',
-      text: parsed.content?.[0]?.text || 'Tool execution completed',
-      timestamp: Date.now(),
-      isToolResult: true,
-      rawData: parsed
-    };
-    
-    addMessageToSession(sessionId, toolResultMessage);
-  }, [addMessageToSession]);
+    // Handle Codex tool_output format - use to mark tool call as completed
+    // Don't display the output as it's too noisy and irrelevant
+    if (parsed.type === 'tool_output' && parsed.call_id) {
+      console.log(`🔧 Tool output for call_id ${parsed.call_id}, marking as completed`);
+
+      // Get the existing tool call data BEFORE updating state
+      let existingToolCallData = null;
+
+      setSessionToolCalls(sessionId, prev => {
+        const existing = prev.get(parsed.call_id);
+
+        if (existing) {
+          existingToolCallData = existing.toolCall; // Capture before creating new map
+          console.log(`🔧 Found existing tool call data:`, existingToolCallData);
+        } else {
+          console.warn(`🔧 No existing tool call found for call_id ${parsed.call_id}`);
+        }
+
+        const newMap = new Map(prev);
+        if (existing) {
+          newMap.set(parsed.call_id, {
+            ...existing,
+            isCompleted: true,
+            completedAt: Date.now(),
+            lastUpdated: Date.now()
+          });
+        }
+
+        return newMap;
+      });
+
+      // Update the tool call message to show as completed (preserve original data)
+      if (existingToolCallData) {
+        console.log(`🔧 Updating message with completed status for call_id ${parsed.call_id}`);
+        const completedToolCallMessage = {
+          id: `tool-${parsed.call_id}`,
+          who: 'tool',
+          text: `Running ${existingToolCallData.name || existingToolCallData.command || 'tool'}...`,
+          timestamp: Date.now(),
+          isToolCall: true,
+          toolCallId: parsed.call_id,
+          toolCallData: existingToolCallData, // Preserve original tool call data
+          toolCallSubtype: 'completed',
+          rawData: parsed
+        };
+
+        // Update the message with completed status
+        addMessageToSession(sessionId, completedToolCallMessage, true);
+      } else {
+        console.warn(`🔧 Cannot update message - no existing tool call data for call_id ${parsed.call_id}`);
+      }
+    }
+    // Handle standard tool_result format - only display if has meaningful content
+    else if (parsed.type === 'tool_result') {
+      const resultText = parsed.content?.[0]?.text || parsed.result;
+
+      // Only add message if there's actual content, skip generic "Tool execution completed"
+      if (resultText && resultText.trim().length > 0) {
+        const toolResultMessage = {
+          id: `msg-${Date.now()}-${Math.random().toString(36).slice(2,8)}`,
+          who: 'assistant',
+          text: resultText,
+          timestamp: Date.now(),
+          isToolResult: true,
+          rawData: parsed
+        };
+
+        addMessageToSession(sessionId, toolResultMessage);
+      } else {
+        console.log(`🔧 Tool result with no content for session ${sessionId}, skipping message`);
+      }
+    }
+  }, [addMessageToSession, setSessionToolCalls]);
 
   // Handle session end messages
   const handleSessionEnd = useCallback((parsed, sessionId) => {
@@ -382,9 +533,61 @@ export const useMessageHandler = (
       isError: true,
       rawData: parsed
     };
-    
+
     addMessageToSession(sessionId, errorMessage);
   }, [addMessageToSession]);
+
+  // Handle reasoning messages (from Codex) - show as temporary streaming text
+  const handleReasoningMessage = useCallback((parsed, sessionId) => {
+    console.log(`🔧 Reasoning for session ${sessionId}: ${parsed.text}`);
+
+    // Show reasoning text as temporary streaming text (will be cleared when response completes)
+    setSessionStreamingText(sessionId, parsed.text || 'Thinking...');
+  }, [setSessionStreamingText]);
+
+  // Handle streaming delta messages
+  const handleStreamingDelta = useCallback((parsed, sessionId) => {
+    // Accumulate streaming text for this session
+    setSessionStreamingText(sessionId, prev => {
+      const newText = prev + (parsed.text || '');
+      return newText;
+    });
+  }, [setSessionStreamingText]);
+
+  // Handle file edit messages (from Codex patch operations)
+  const handleFileEditMessage = useCallback((parsed, sessionId) => {
+    const fileEditMessage = {
+      id: `msg-${Date.now()}-${Math.random().toString(36).slice(2,8)}`,
+      who: 'assistant',
+      text: parsed.type === 'diff'
+        ? `\`\`\`diff\n${parsed.text}\n\`\`\``
+        : `File edit: ${parsed.success ? 'Success' : 'Failed'}\n${parsed.stdout || ''}`,
+      timestamp: Date.now(),
+      isFileEdit: true,
+      rawData: parsed
+    };
+
+    addMessageToSession(sessionId, fileEditMessage);
+  }, [addMessageToSession]);
+
+  // Handle prompt messages - START loading state
+  const handlePromptMessage = useCallback((parsed, sessionId) => {
+    console.log(`🔧 Prompt received for session ${sessionId}, starting loading:`, parsed.text);
+
+    // Start loading state
+    setSessionBusy(sessionId, true);
+
+    // Initialize empty streaming text
+    setSessionStreamingText(sessionId, '');
+  }, [setSessionBusy, setSessionStreamingText]);
+
+  // Handle metadata messages - token count info only, don't stop loading
+  const handleMetadataMessage = useCallback((parsed, sessionId) => {
+    console.log(`🔧 Metadata for session ${sessionId}:`, parsed);
+
+    // Don't use token_count to stop loading - it fires after each tool, not process end
+    // Process end is signaled by the agent when it's truly finished
+  }, []);
 
   return {
     handleParsedMessage,
@@ -401,6 +604,11 @@ export const useMessageHandler = (
     handleFileOperation,
     handleCommandMessage,
     handleThinkingMessage,
-    handleErrorMessage
+    handleErrorMessage,
+    handleReasoningMessage,
+    handleStreamingDelta,
+    handleFileEditMessage,
+    handlePromptMessage,
+    handleMetadataMessage
   };
 };

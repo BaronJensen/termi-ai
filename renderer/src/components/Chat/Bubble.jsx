@@ -12,7 +12,9 @@ export default function Bubble({
   messageType = 'user',
   isToolCall = false,
   toolCallData = null,
-  toolCallSubtype = null
+  toolCallSubtype = null,
+  isReasoning = false,
+  isFileEdit = false
 }) {
   const [isActionLogExpanded, setIsActionLogExpanded] = useState(false);
   
@@ -32,6 +34,28 @@ export default function Bubble({
       margin: '8px 0'
     };
 
+    // Handle reasoning messages (Codex agent thinking)
+    if (isReasoning) {
+      return {
+        ...baseStyle,
+        background: 'linear-gradient(135deg, rgba(168, 85, 247, 0.08) 0%, rgba(139, 92, 246, 0.08) 100%)',
+        color: '#c4b5fd',
+        borderLeft: '3px solid #a855f7',
+        fontStyle: 'italic',
+        opacity: 0.9
+      };
+    }
+
+    // Handle file edit messages
+    if (isFileEdit) {
+      return {
+        ...baseStyle,
+        background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, rgba(5, 150, 105, 0.08) 100%)',
+        color: '#6ee7b7',
+        borderLeft: '3px solid #10b981'
+      };
+    }
+
     switch (messageType) {
       case 'user':
         return {
@@ -41,15 +65,15 @@ export default function Bubble({
           padding: '6px 16px',
           border: '1px solid #4b5563'
         };
-     
+
       case 'result':
         return {
           ...baseStyle,
           background: 'transparent',
-          color: '#f0fdf4', 
+          color: '#f0fdf4',
           border: 'none'
         };
-        
+
       case 'tool':
         return {
           ...baseStyle,
