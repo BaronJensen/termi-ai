@@ -684,14 +684,14 @@ export const useSessionManager = (projectId) => {
       replaceToolCalls,
       messageId: message.id
     });
-    
+
     setSessions(prev => {
       const updated = prev.map(s => {
         if (s.id !== sessionId) return s;
-        
+
         let newMessages = [...(s.messages || [])];
         const existingToolCallCount = newMessages.filter(msg => msg.isToolCall).length;
-        
+
         if (replaceToolCalls && message.isToolCall) {
           // Remove any existing tool call messages and add the new one
           newMessages = newMessages.filter(msg => !msg.isToolCall);
@@ -703,13 +703,34 @@ export const useSessionManager = (projectId) => {
             newMessageText: message.text
           });
         }
-        
+
         // Add the new message
         newMessages.push(message);
-        
+
         return { ...s, messages: newMessages, updatedAt: Date.now() };
       });
-      
+
+      saveSessions(updated);
+      return updated;
+    });
+  }, [saveSessions]);
+
+  // Remove all tool call messages from a session
+  const removeToolCallMessages = useCallback((sessionId) => {
+    console.log(`🧹 Removing all tool call messages from session ${sessionId}`);
+
+    setSessions(prev => {
+      const updated = prev.map(s => {
+        if (s.id !== sessionId) return s;
+
+        const newMessages = (s.messages || []).filter(msg => !msg.isToolCall);
+        const removedCount = (s.messages || []).length - newMessages.length;
+
+        console.log(`🧹 Removed ${removedCount} tool call messages from session ${sessionId}`);
+
+        return { ...s, messages: newMessages, updatedAt: Date.now() };
+      });
+
       saveSessions(updated);
       return updated;
     });
@@ -913,12 +934,13 @@ export const useSessionManager = (projectId) => {
   
   // Initialize the message handler hook
   const messageHandler = useMessageHandler(
-    addMessageToSession, 
+    addMessageToSession,
     updateSessionWithCursorId,
     setSessionToolCalls,
     setSessionHideToolCallIndicators,
     setSessionBusy,
-    setSessionStreamingText
+    setSessionStreamingText,
+    removeToolCallMessages
   );
   
 

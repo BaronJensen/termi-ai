@@ -114,13 +114,25 @@ export const createCursorAgentTimeout = (timeoutMs, runId, onTimeout) => {
  */
 export const normalizeToolCallData = (parsed) => {
   console.log('🔧 normalizeToolCallData input:', parsed);
-  
+
   let callId = null;
   let toolCallData = null;
   let subtype = 'started';
-  
+
+  // Handle Codex format: {type: "tool_call", tool: "bash", command: "...", call_id: "..."}
+  if (parsed.type === 'tool_call' && parsed.tool && parsed.command) {
+    callId = parsed.call_id || generateRunId();
+    toolCallData = {
+      name: parsed.command, // Use command as the display name
+      tool: parsed.tool,
+      command: parsed.command,
+      args: {}
+    };
+    subtype = 'started';
+    console.log('🔧 Using Codex tool_call format:', { callId, toolCallData, subtype });
+  }
   // Handle tool_calls array format (most common)
-  if (parsed.tool_calls && Array.isArray(parsed.tool_calls) && parsed.tool_calls.length > 0) {
+  else if (parsed.tool_calls && Array.isArray(parsed.tool_calls) && parsed.tool_calls.length > 0) {
     const firstToolCall = parsed.tool_calls[0];
     callId = firstToolCall.id || firstToolCall.call_id || generateRunId();
     toolCallData = firstToolCall;
@@ -154,18 +166,18 @@ export const normalizeToolCallData = (parsed) => {
     subtype = parsed.subtype || parsed.status || (parsed.result ? 'completed' : 'started');
     console.log('🔧 Using direct properties format:', { callId, toolCallData, subtype });
   }
-  
+
   // Determine subtype based on message content or type
   if (parsed.type === 'result' || parsed.completed) {
     subtype = 'completed';
   } else if (parsed.started) {
     subtype = 'started';
   }
-  
+
   if (!callId) {
     callId = generateRunId();
   }
-  
+
   const result = { callId, toolCallData, subtype };
   console.log('🔧 normalizeToolCallData result:', result);
   return result;

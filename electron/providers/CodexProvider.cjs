@@ -189,6 +189,26 @@ class CodexProvider extends BaseAgentProvider {
    * Maps Codex CLI JSON format to our internal format
    */
   transformCodexMessage(parsed) {
+    // Handle top-level prompt message (signals start)
+    if (parsed.prompt) {
+      return {
+        type: 'prompt',
+        text: parsed.prompt,
+        isStart: true
+      };
+    }
+
+    // Handle top-level config/settings (first message)
+    if (parsed.workdir && parsed.model && !parsed.msg) {
+      return {
+        type: 'config',
+        workdir: parsed.workdir,
+        model: parsed.model,
+        provider: parsed.provider,
+        hidden: true // Don't display in UI
+      };
+    }
+
     // Codex CLI wraps messages in: {"id":"0","msg":{...}}
     const msg = parsed.msg || parsed;
 
@@ -262,8 +282,15 @@ class CodexProvider extends BaseAgentProvider {
             text: 'Task started'
           };
 
+        case 'agent_reasoning_section_break':
+          // Section breaks between reasoning steps (can be ignored in UI)
+          return {
+            type: 'section_break',
+            hidden: true
+          };
+
         case 'token_count':
-          // Token usage info (can be ignored or logged)
+          // Token usage info - fires after each tool, NOT process end
           return {
             type: 'metadata',
             tokens: msg
