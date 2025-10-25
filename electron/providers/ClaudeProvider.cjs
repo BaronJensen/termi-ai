@@ -177,10 +177,17 @@ class ClaudeProvider extends BaseAgentProvider {
   transformClaudeMessage(parsed) {
     // Claude Code CLI format with stream-json
 
+    // Handle stream_event wrapper (unwrap the event)
+    if (parsed.type === 'stream_event' && parsed.event) {
+      // Recursively transform the inner event
+      return this.transformClaudeMessage(parsed.event);
+    }
+
     // System initialization message
     if (parsed.type === 'system' && parsed.subtype === 'init') {
       return {
         type: 'status',
+        subtype: 'init', // Preserve subtype for loading state detection
         text: 'Claude Code initialized',
         session_id: parsed.session_id,
         model: parsed.model,
@@ -188,7 +195,7 @@ class ClaudeProvider extends BaseAgentProvider {
       };
     }
 
-    // Assistant message (final response)
+    // Assistant message (streaming content, NOT final completion)
     if (parsed.type === 'assistant') {
       const content = parsed.message?.content || [];
       const textContent = content.find(c => c.type === 'text');
@@ -196,7 +203,8 @@ class ClaudeProvider extends BaseAgentProvider {
         type: 'assistant',
         text: textContent?.text || '',
         model: parsed.message?.model,
-        session_id: parsed.session_id
+        session_id: parsed.session_id,
+        isStreaming: true // Mark as streaming, not final completion
       };
     }
 
@@ -221,14 +229,15 @@ class ClaudeProvider extends BaseAgentProvider {
       };
     }
 
-    // Result summary
+    // Result summary (final message with complete text)
     if (parsed.type === 'result') {
       return {
         type: 'result',
-        text: parsed.result || '',
-        success: parsed.subtype === 'success',
+        result: parsed.text || '', // Use 'text' field from Claude result
+        text: parsed.text || '', // Also keep as 'text' for compatibility
+        success: parsed.success !== false, // Default to true if not specified
         duration_ms: parsed.duration_ms,
-        cost_usd: parsed.total_cost_usd
+        cost_usd: parsed.cost_usd
       };
     }
 

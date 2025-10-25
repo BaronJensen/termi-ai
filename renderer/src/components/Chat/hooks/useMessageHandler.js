@@ -114,13 +114,13 @@ export const useMessageHandler = (
     }
   }, [addMessageToSession, updateSessionWithCursorId, setSessionToolCalls, setSessionHideToolCallIndicators, setSessionBusy, setSessionStreamingText, toolCallsRef]);
 
-  // Handle system messages (including init subtype for starting streaming)
+  // Handle system/status messages (including init subtype)
   const handleSystemMessage = useCallback((parsed, sessionId) => {
-    console.log(`🔧 System message for session ${sessionId}:`, parsed);
+    console.log(`🔧 System/status message for session ${sessionId}:`, parsed);
 
-    // If this is an init message, start loading and streaming text accumulation
+    // Init message starts loading for both Cursor and Claude Code
     if (parsed.subtype === 'init') {
-      console.log(`🔧 Cursor process starting for session ${sessionId}`);
+      console.log(`🔧 Process starting for session ${sessionId}`);
 
       // Start loading state
       setSessionBusy(sessionId, true);
@@ -155,19 +155,26 @@ export const useMessageHandler = (
   const handleAssistantMessage = useCallback((parsed, sessionId) => {
     console.log(`🔧 Assistant message for session ${sessionId}:`, parsed);
 
-    // Handle Claude format: parsed.message?.content?.[0]?.text
-    if (parsed.message?.content?.[0]?.text) {
-      const assistantContent = parsed.message.content[0].text;
+    // Handle Claude streaming format: isStreaming flag indicates streaming content
+    if (parsed.isStreaming && parsed.text) {
+      console.log(`🔧 Claude complete message for session ${sessionId}`);
 
-      // Accumulate streaming text for this session
-      setSessionStreamingText(sessionId, prev => {
-        const newText = prev + assistantContent;
-        console.log(`🔧 Accumulated streaming text for session ${sessionId}:`, newText.length, 'characters');
-        return newText;
-      });
+      // This is the full message from Claude - add it as a permanent message
+      const assistantMessage = {
+        id: `msg-${Date.now()}-${Math.random().toString(36).slice(2,8)}`,
+        who: 'assistant',
+        text: parsed.text,
+        timestamp: Date.now(),
+        rawData: parsed
+      };
+
+      addMessageToSession(sessionId, assistantMessage);
+
+      // Clear any accumulated streaming text since we have the full message
+      setSessionStreamingText(sessionId, '');
     }
-    // Handle Codex format: parsed.text directly
-    else if (parsed.text) {
+    // Handle Codex format: parsed.text directly (final completion)
+    else if (parsed.text && !parsed.isStreaming) {
       const assistantMessage = {
         id: `msg-${Date.now()}-${Math.random().toString(36).slice(2,8)}`,
         who: 'assistant',
@@ -219,23 +226,29 @@ export const useMessageHandler = (
     // Set session as not busy
     setSessionBusy(sessionId, false);
 
-    // Clear streaming text state for this session
-    setSessionStreamingText(sessionId, '');
-
-    // Remove all tool call messages from UI (Cursor completion cleanup)
-    console.log(`🔧 Cursor process complete for session ${sessionId}, cleaning up tool calls`);
+    // Remove all tool call messages from UI (Cursor/Claude completion cleanup)
+    console.log(`🔧 Process complete for session ${sessionId}, cleaning up tool calls`);
     removeToolCallMessages(sessionId);
 
-    const resultMessage = {
-      id: `msg-${Date.now()}-${Math.random().toString(36).slice(2,8)}`,
-      who: 'assistant',
-      text: parsed.result || 'Command completed',
-      timestamp: Date.now(),
-      isResult: true,
-      rawData: parsed
-    };
+    // Display the result text as a permanent message
+    const resultText = parsed.result || parsed.text;
+    if (resultText && resultText.trim().length > 0) {
+      const resultMessage = {
+        id: `msg-${Date.now()}-${Math.random().toString(36).slice(2,8)}`,
+        who: 'assistant',
+        text: resultText,
+        timestamp: Date.now(),
+        isResult: true,
+        rawData: parsed
+      };
 
-    addMessageToSession(sessionId, resultMessage);
+      addMessageToSession(sessionId, resultMessage);
+    } else {
+      console.log(`🔧 Result message has no text, skipping display`);
+    }
+
+    // Clear streaming text AFTER adding the permanent message
+    setSessionStreamingText(sessionId, '');
   }, [addMessageToSession, setSessionToolCalls, setSessionHideToolCallIndicators, setSessionBusy, setSessionStreamingText, removeToolCallMessages]);
 
   // Handle tool calls with comprehensive state management
