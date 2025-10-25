@@ -785,13 +785,70 @@ process.on('SIGINT', () => {
   app.quit();
 });
 
+/**
+ * Check if a directory is a git repository and initialize if not
+ * This is required for Codex CLI to work properly
+ */
+async function ensureGitRepository(folderPath) {
+  const gitDir = path.join(folderPath, '.git');
+
+  try {
+    // Check if .git directory exists
+    if (fs.existsSync(gitDir)) {
+      console.log(`Git repository already exists in: ${folderPath}`);
+      return { initialized: false, message: 'Git repository already exists' };
+    }
+
+    console.log(`Initializing git repository in: ${folderPath}`);
+
+    // Initialize git repository
+    await new Promise((resolve, reject) => {
+      exec('git init', { cwd: folderPath }, (error, stdout, stderr) => {
+        if (error) {
+          console.error('Git init error:', error);
+          reject(error);
+        } else {
+          console.log('Git init success:', stdout);
+          resolve(stdout);
+        }
+      });
+    });
+
+    // Create initial .gitignore if it doesn't exist
+    const gitignorePath = path.join(folderPath, '.gitignore');
+    if (!fs.existsSync(gitignorePath)) {
+      const defaultGitignore = `node_modules/
+dist/
+build/
+.DS_Store
+*.log
+.env
+.env.local
+`;
+      fs.writeFileSync(gitignorePath, defaultGitignore, 'utf8');
+      console.log('Created .gitignore file');
+    }
+
+    return { initialized: true, message: 'Git repository initialized successfully' };
+  } catch (error) {
+    console.error('Failed to initialize git repository:', error);
+    return { initialized: false, error: error.message };
+  }
+}
+
 // IPC handlers
 ipcMain.handle('select-folder', async () => {
   const res = await dialog.showOpenDialog(win, {
     properties: ['openDirectory']
   });
   if (res.canceled || res.filePaths.length === 0) return null;
-  return res.filePaths[0];
+
+  const folderPath = res.filePaths[0];
+
+  // Ensure git repository exists for Codex compatibility
+  await ensureGitRepository(folderPath);
+
+  return folderPath;
 });
 
 ipcMain.handle('folder-selected', async () => {
@@ -799,7 +856,13 @@ ipcMain.handle('folder-selected', async () => {
     properties: ['openDirectory']
   });
   if (res.canceled || res.filePaths.length === 0) return null;
-  return res.filePaths[0];
+
+  const folderPath = res.filePaths[0];
+
+  // Ensure git repository exists for Codex compatibility
+  await ensureGitRepository(folderPath);
+
+  return folderPath;
 });
 
 ipcMain.handle('vite-start', async (_e, { folderPath, manager }) => {
@@ -1058,6 +1121,10 @@ ipcMain.handle('agent-run', async (_e, { provider = 'cursor', message, cwd, runI
     } catch (permErr) {
       throw new Error(`Insufficient permissions to read/write in working directory: ${workingDir}`);
     }
+
+    // Ensure git repository exists (required for all agents)
+    console.log(`Ensuring git repository for ${provider} in: ${workingDir}`);
+    await ensureGitRepository(workingDir);
 
     // Test file creation (required for agents)
     const testFile = path.join(workingDir, `.${provider}-agent-permission-test`);

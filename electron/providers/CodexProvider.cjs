@@ -119,6 +119,9 @@ class CodexProvider extends BaseAgentProvider {
     // Enable automatic approval for tool calls (similar to cursor-agent --force)
     args.push('--full-auto');
 
+    // Skip git repository check (bypass trusted directory requirement)
+    args.push('--skip-git-repo-check');
+
     // Environment variables for API key
     const env = {
       ...process.env
