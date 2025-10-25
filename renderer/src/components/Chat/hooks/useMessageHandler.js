@@ -117,14 +117,19 @@ export const useMessageHandler = (
   // Handle system messages (including init subtype for starting streaming)
   const handleSystemMessage = useCallback((parsed, sessionId) => {
     console.log(`🔧 System message for session ${sessionId}:`, parsed);
-    
-    // If this is an init message, start streaming text accumulation
+
+    // If this is an init message, start loading and streaming text accumulation
     if (parsed.subtype === 'init') {
-      console.log(`🔧 Starting streaming text accumulation for session ${sessionId}`);
+      console.log(`🔧 Cursor process starting for session ${sessionId}`);
+
+      // Start loading state
+      setSessionBusy(sessionId, true);
+
+      // Initialize empty streaming text
       setSessionStreamingText(sessionId, '');
     }
-  
-  }, [addMessageToSession, setSessionStreamingText]);
+
+  }, [setSessionBusy, setSessionStreamingText]);
 
   // Handle session start messages
   const handleSessionStart = useCallback((parsed, sessionId) => {
@@ -193,7 +198,7 @@ export const useMessageHandler = (
   // Handle result messages with comprehensive tool call completion and streaming cleanup
   const handleResultMessage = useCallback((parsed, sessionId) => {
     console.log(`🔧 Result message for session ${sessionId}:`, parsed);
-    
+
     // Mark all tool calls as completed
     setSessionToolCalls(sessionId, prev => {
       const newMap = new Map();
@@ -207,16 +212,20 @@ export const useMessageHandler = (
       }
       return newMap;
     });
-    
+
     // Hide tool call indicators
     setSessionHideToolCallIndicators(sessionId, true);
-    
+
     // Set session as not busy
     setSessionBusy(sessionId, false);
-    
+
     // Clear streaming text state for this session
     setSessionStreamingText(sessionId, '');
-    
+
+    // Remove all tool call messages from UI (Cursor completion cleanup)
+    console.log(`🔧 Cursor process complete for session ${sessionId}, cleaning up tool calls`);
+    removeToolCallMessages(sessionId);
+
     const resultMessage = {
       id: `msg-${Date.now()}-${Math.random().toString(36).slice(2,8)}`,
       who: 'assistant',
@@ -225,9 +234,9 @@ export const useMessageHandler = (
       isResult: true,
       rawData: parsed
     };
-    
+
     addMessageToSession(sessionId, resultMessage);
-  }, [addMessageToSession, setSessionToolCalls, setSessionHideToolCallIndicators, setSessionBusy, setSessionStreamingText]);
+  }, [addMessageToSession, setSessionToolCalls, setSessionHideToolCallIndicators, setSessionBusy, setSessionStreamingText, removeToolCallMessages]);
 
   // Handle tool calls with comprehensive state management
   const handleToolCall = useCallback((parsed, sessionId) => {
