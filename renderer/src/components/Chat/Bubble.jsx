@@ -14,9 +14,35 @@ export default function Bubble({
   toolCallData = null,
   toolCallSubtype = null,
   isReasoning = false,
-  isFileEdit = false
+  isFileEdit = false,
+  provider = null
 }) {
   const [isActionLogExpanded, setIsActionLogExpanded] = useState(false);
+
+  // Debug logging for provider
+  if (who === 'assistant' && provider) {
+    console.log(`🎯 [Bubble] Rendering assistant message with provider:`, provider);
+  }
+
+  // Get provider display name
+  const getProviderDisplayName = (providerName) => {
+    const providers = {
+      'cursor': 'Cursor',
+      'claude': 'Claude',
+      'codex': 'Codex'
+    };
+    return providers[providerName?.toLowerCase()] || providerName || '';
+  };
+
+  // Get provider badge color
+  const getProviderBadgeColor = (providerName) => {
+    const colors = {
+      'cursor': '#3b82f6', // Blue
+      'claude': '#8b5cf6', // Purple
+      'codex': '#10b981'   // Green
+    };
+    return colors[providerName?.toLowerCase()] || '#6b7280';
+  };
   
   // Define background colors for different message types
   const getMessageStyle = () => {
@@ -148,6 +174,26 @@ export default function Bubble({
       // Do not block the native context menu or key events here
       tabIndex={0}
     >
+      {/* Provider badge */}
+      {provider && who === 'assistant' && (
+        <div
+          style={{
+            display: 'inline-block',
+            fontSize: '10px',
+            fontWeight: '600',
+            color: getProviderBadgeColor(provider),
+            backgroundColor: `${getProviderBadgeColor(provider)}15`,
+            padding: '2px 6px',
+            borderRadius: '4px',
+            marginBottom: '4px',
+            textTransform: 'uppercase',
+            letterSpacing: '0.5px'
+          }}
+        >
+          {getProviderDisplayName(provider)}
+        </div>
+      )}
+
       {/* Render tool call content or regular content */}
       {renderToolCallContent()}
       {renderRegularContent()}

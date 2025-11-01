@@ -26,7 +26,7 @@ export function getDefaultSettings() {
     // Per-provider model preferences
     providerModels: {
       cursor: '', // Empty means auto/default
-      claude: 'claude-3-5-sonnet-20241022',
+      claude: 'claude-sonnet-4-5-20250929',
       codex: 'gpt-5-codex'
     },
     // Provider-specific settings

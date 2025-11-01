@@ -49,6 +49,7 @@ export default function MessageList({
                 toolCallSubtype={m.toolCallSubtype}
                 isReasoning={m.isReasoning}
                 isFileEdit={m.isFileEdit}
+                provider={m.provider}
               >
                 {m.text}
               </Bubble>
