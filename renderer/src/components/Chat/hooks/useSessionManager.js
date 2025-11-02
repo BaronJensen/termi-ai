@@ -30,9 +30,30 @@ export const useSessionManager = (projectId) => {
       const storedSessions = localStorage.getItem(`termi-ai-sessions-${projectId || 'legacy'}`);
       if (storedSessions) {
         const parsedSessions = JSON.parse(storedSessions);
-        console.log(`🔍 loadSessions: Loaded ${parsedSessions.length} sessions from localStorage:`, 
-          parsedSessions.map(s => ({ id: s.id, name: s.name, cursorSessionId: s.cursorSessionId })));
-        return Array.isArray(parsedSessions) ? parsedSessions : [];
+
+        // Migration: Add provider field to old sessions that don't have it
+        const migratedSessions = parsedSessions.map(session => {
+          if (!session.provider) {
+            console.log(`🔧 Migrating session ${session.id} - adding default provider 'cursor'`);
+            return {
+              ...session,
+              provider: 'cursor', // Default to cursor for legacy sessions
+              providerId: session.cursorSessionId || null
+            };
+          }
+          return session;
+        });
+
+        console.log(`🔍 loadSessions: Loaded ${migratedSessions.length} sessions from localStorage:`,
+          migratedSessions.map(s => ({ id: s.id, name: s.name, provider: s.provider, cursorSessionId: s.cursorSessionId })));
+
+        // Save migrated sessions back to localStorage
+        if (migratedSessions.some((s, i) => s.provider !== parsedSessions[i]?.provider)) {
+          console.log('💾 Saving migrated sessions back to localStorage');
+          localStorage.setItem(`termi-ai-sessions-${projectId || 'legacy'}`, JSON.stringify(migratedSessions));
+        }
+
+        return Array.isArray(migratedSessions) ? migratedSessions : [];
       }
     } catch (e) {
       console.warn('Failed to load sessions from localStorage:', e);
@@ -173,10 +194,21 @@ export const useSessionManager = (projectId) => {
 
   // ===== SESSION MANAGEMENT =====
   
-  const createNewSession = useCallback(async (existingSessions = null, initialMessage = null) => {
+  const createNewSession = useCallback(async (existingSessions = null, initialMessage = null, provider = null) => {
     const currentSessions = existingSessions || sessions;
     const newSessionId = `session-${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
     const isFirstSession = currentSessions.length === 0;
+
+    // Get default provider from settings if not specified
+    const settings = loadSettings();
+    const sessionProvider = provider || settings.defaultProvider || 'cursor';
+
+    console.log(`✨ Creating new session with provider: ${sessionProvider}`, {
+      providedProvider: provider,
+      settingsDefaultProvider: settings.defaultProvider,
+      finalProvider: sessionProvider
+    });
+
     const newSession = {
       id: newSessionId,
       name: `Session ${new Date().toLocaleString()}`,
@@ -185,13 +217,17 @@ export const useSessionManager = (projectId) => {
       updatedAt: Date.now(),
       isFirstSession: isFirstSession,
       cursorSessionId: null,
-      runningTerminal: false
+      runningTerminal: false,
+      provider: sessionProvider,  // Track which provider this session uses
+      providerId: null            // Provider-specific session ID
     };
-    
+
     const updatedSessions = [...currentSessions, newSession];
     setSessions(updatedSessions);
     saveSessions(updatedSessions);
     setCurrentSessionId(newSessionId);
+
+    console.log(`💾 Session ${newSessionId.slice(0, 8)} created and saved with provider: ${sessionProvider}`);
     
     // Initialize state for new session
     setToolCallsBySession(prev => {
@@ -611,16 +647,32 @@ export const useSessionManager = (projectId) => {
       // Get project information and settings
       const project = getProject(projectId);
       const settings = loadSettings();
-      
-      // Call the cursor-agent CLI
-      const result = await window.termiAI.runCursor({
+
+      // Get provider for this session
+      const provider = fullSessionObj.provider || settings.defaultProvider || 'cursor';
+
+      console.log(`🤖 Running agent with provider: ${provider}`, {
+        sessionProvider: fullSessionObj.provider,
+        settingsProvider: settings.defaultProvider,
+        finalProvider: provider,
+        sessionId: sessionId.slice(0, 8)
+      });
+
+      // Get provider-specific API key and model
+      const providerApiKey = settings.providerApiKeys?.[provider] ||
+                            (provider === 'cursor' ? settings.apiKey : '');
+      const providerModel = settings.providerModels?.[provider] ||
+                           (provider === 'cursor' ? settings.defaultModel : '');
+
+      // Call the agent with the session's provider
+      const result = await window.termiAI.runAgent({
+        provider: provider,
         message: text,
         sessionObject,
         cwd: project?.path || await window.termiAI.getWorkingDirectory(),
-        apiKey: settings.apiKey || undefined,
-        // No timeout - cursor-agent can run for hours depending on complexity
-        model: settings.defaultModel || undefined, // Use default model from settings
-        debugMode: false // Could be added to settings later
+        apiKey: providerApiKey || undefined,
+        model: providerModel || undefined,
+        debugMode: false
       });
       
     } catch (error) {
@@ -662,20 +714,23 @@ export const useSessionManager = (projectId) => {
   // Helper function to add messages to sessions
   const addMessageToSession = useCallback((sessionId, message, replaceToolCalls = false) => {
     console.log(`📝 addMessageToSession called:`, {
-      sessionId,
+      sessionId: sessionId?.slice(0, 8),
       messageType: message.who,
+      provider: message.provider,
       isToolCall: message.isToolCall,
       replaceToolCalls,
       messageId: message.id
     });
-    
+
+    console.log(`🎯 [addMessageToSession] Full message object:`, message);
+
     setSessions(prev => {
       const updated = prev.map(s => {
         if (s.id !== sessionId) return s;
-        
+
         let newMessages = [...(s.messages || [])];
         const existingToolCallCount = newMessages.filter(msg => msg.isToolCall).length;
-        
+
         if (replaceToolCalls && message.isToolCall) {
           // Remove any existing tool call messages and add the new one
           newMessages = newMessages.filter(msg => !msg.isToolCall);
@@ -687,13 +742,41 @@ export const useSessionManager = (projectId) => {
             newMessageText: message.text
           });
         }
-        
+
         // Add the new message
         newMessages.push(message);
-        
+
+        console.log(`🎯 [addMessageToSession] Message added. Last message provider:`, newMessages[newMessages.length - 1]?.provider);
+
         return { ...s, messages: newMessages, updatedAt: Date.now() };
       });
-      
+
+      saveSessions(updated);
+
+      // Log what was actually saved
+      const updatedSession = updated.find(s => s.id === sessionId);
+      console.log(`🎯 [addMessageToSession] Session saved with ${updatedSession?.messages?.length} messages. Latest provider:`, updatedSession?.messages?.[updatedSession.messages.length - 1]?.provider);
+
+      return updated;
+    });
+  }, [saveSessions]);
+
+  // Remove all tool call messages from a session
+  const removeToolCallMessages = useCallback((sessionId) => {
+    console.log(`🧹 Removing all tool call messages from session ${sessionId}`);
+
+    setSessions(prev => {
+      const updated = prev.map(s => {
+        if (s.id !== sessionId) return s;
+
+        const newMessages = (s.messages || []).filter(msg => !msg.isToolCall);
+        const removedCount = (s.messages || []).length - newMessages.length;
+
+        console.log(`🧹 Removed ${removedCount} tool call messages from session ${sessionId}`);
+
+        return { ...s, messages: newMessages, updatedAt: Date.now() };
+      });
+
       saveSessions(updated);
       return updated;
     });
@@ -897,12 +980,13 @@ export const useSessionManager = (projectId) => {
   
   // Initialize the message handler hook
   const messageHandler = useMessageHandler(
-    addMessageToSession, 
+    addMessageToSession,
     updateSessionWithCursorId,
     setSessionToolCalls,
     setSessionHideToolCallIndicators,
     setSessionBusy,
-    setSessionStreamingText
+    setSessionStreamingText,
+    removeToolCallMessages
   );
   
 
@@ -1038,15 +1122,30 @@ export const useSessionManager = (projectId) => {
 
   // Helper function to create message handlers for each run
   const createMessageHandler = useCallback((runId, sessionId) => {
-    return (payload) => {      
+    return (payload) => {
       if (payload && payload.line) {
         try {
           // Try to parse JSON logs
           if (payload.level === 'json') {
             const parsed = JSON.parse(payload.line);
+
+            // Get the session to determine which provider to use
+            // Prioritize payload.provider (from backend) over session.provider (from frontend)
+            // This ensures we use the correct provider even if session state is stale
+            const session = sessions.find(s => s.id === sessionId);
+            const provider = payload.provider || session?.provider || 'cursor';
+
+            console.log(`🔍 createMessageHandler: Using provider "${provider}" for session ${sessionId.slice(0, 8)}`, {
+              payloadProvider: payload.provider,
+              sessionProvider: session?.provider,
+              fallback: 'cursor',
+              messageType: parsed.type,
+              finalProvider: provider
+            });
+
             // Use the message handler hook to process the message
-            messageHandler.handleParsedMessage(parsed, sessionId);
-            
+            messageHandler.handleParsedMessage(parsed, sessionId, provider);
+
             // Handle tool calls separately (they need to update tool state)
             if (parsed.type === 'tool_call' && parsed.tool_calls) {
               // Update tool calls for this session
@@ -1061,7 +1160,7 @@ export const useSessionManager = (projectId) => {
         }
       }
     };
-  }, [messageHandler, setSessionToolCalls, getSessionToolCalls]);
+  }, [messageHandler, setSessionToolCalls, getSessionToolCalls, sessions]);
 
   // ===== RETURN VALUES =====
 

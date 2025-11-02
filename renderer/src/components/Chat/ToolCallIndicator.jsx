@@ -3,6 +3,54 @@ import React from 'react';
 export default function ToolCallIndicator({ toolCall, isCompleted = false, rawData = null, animationDelay = 0, cwd = '' }) {
   if (!toolCall) return null;
 
+  // Handle Codex format where toolCall.name contains the command
+  if (toolCall.command) {
+    const toolName = toolCall.tool || 'bash';
+    const absoluteText = toolCall.command;
+
+    const makeRelative = (input) => {
+      if (!input) return '';
+      if (!cwd) return input;
+      const normalizedCwd = cwd.endsWith('/') ? cwd : `${cwd}/`;
+      // Remove absolute cwd prefix wherever it appears
+      let output = input.startsWith(normalizedCwd)
+        ? input.slice(normalizedCwd.length)
+        : input.replaceAll(normalizedCwd, '');
+      // Also handle the case without trailing slash
+      const noSlash = cwd.endsWith('/') ? cwd.slice(0, -1) : cwd;
+      if (output.startsWith(noSlash + '/')) output = output.slice(noSlash.length + 1);
+      return output;
+    };
+
+    const fullText = makeRelative(absoluteText);
+
+    return (
+      <div
+        className="tool-call-indicator"
+        style={{ position: 'relative', '--animation-delay': `${animationDelay}s` }}
+      >
+        {isCompleted ? <div className="tool-call-check">✓</div> : <div className="tool-call-spinner"></div>}
+        <span style={{ color: '#3c6df0', fontWeight: '500' }}>{toolName}</span>
+        {fullText && (
+          <>
+            <span style={{ color: '#6b7280' }}>-</span>
+            <span
+              className="path-text truncate-with-popover"
+              style={{ color: '#e5e7eb' }}
+              title={fullText}
+              data-full={fullText}
+            >
+              {fullText}
+            </span>
+          </>
+        )}
+        <span style={{ color: isCompleted ? '#4ade80' : '#fbbf24', fontSize: '10px', marginLeft: 'auto' }}>
+          {isCompleted ? 'Completed' : 'Running...'}
+        </span>
+      </div>
+    );
+  }
+
   const getToolName = (toolCallData) => {
     if (!toolCallData) return 'Unknown';
     const keys = Object.keys(toolCallData);

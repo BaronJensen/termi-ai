@@ -640,8 +640,8 @@
             console.log('Simulating response:', response);
             
             // This would normally go through the log router
-            if (window.cursovableLogRouter) {
-                window.cursovableLogRouter.routeLog(response);
+            if (window.termiAILogRouter) {
+                window.termiAILogRouter.routeLog(response);
             } else {
                 console.warn('Log router not available in test environment');
             }
@@ -657,7 +657,7 @@
             const state = {
                 mockSessions: mockSessions || 'Not loaded',
                 timestamp: new Date().toISOString(),
-                logRouterAvailable: !!window.cursovableLogRouter,
+                logRouterAvailable: !!window.termiAILogRouter,
                 testFunctionsAvailable: {
                     testSessionMapping: !!window.testSessionMapping,
                     testLogRouter: !!window.testLogRouter

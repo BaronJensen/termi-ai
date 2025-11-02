@@ -8,6 +8,7 @@ import SessionList from './Chat/SessionList';
 import StatusIndicators from './Chat/StatusIndicators';
 import SearchBar from './Chat/SearchBar';
 import MessagesContainer from './Chat/MessagesContainer';
+import ProviderSelectionModal from './Modals/ProviderSelectionModal';
 import { useChatSend } from './Chat/hooks/useChatSend';
 import { useSession } from '../providers/SessionProvider.jsx';
 import { loadSettings } from '../store/settings';
@@ -71,6 +72,19 @@ export default function Chat({ cwd, projectId, onPlayMiniGame, onCloseMiniGame, 
     const [currentSearchIndex, setCurrentSearchIndex] = useState(0); // Track current search result
     const [showSessionList, setShowSessionList] = useState(false); // Toggle session list UI
     const [isCreatingNewSession, setIsCreatingNewSession] = useState(false); // Creating new session state
+    const [showProviderSelection, setShowProviderSelection] = useState(false); // Provider selection modal
+
+    // Handler for new session button
+    const handleNewSession = useCallback(() => {
+      setShowProviderSelection(true);
+      setShowSessionList(false);
+    }, []);
+
+    // Handler for provider selection
+    const handleProviderSelect = useCallback((provider) => {
+      createNewSession(null, null, provider);
+      setShowProviderSelection(false);
+    }, [createNewSession]);
     
     // Filter messages for search functionality (moved after state declarations)
     const filteredMessages = searchQuery 
@@ -327,7 +341,7 @@ export default function Chat({ cwd, projectId, onPlayMiniGame, onCloseMiniGame, 
           onToggleSearch={() => setShowSearch(!showSearch)}
           showSessionList={showSessionList}
           onToggleSessionList={() => setShowSessionList(!showSessionList)}
-          onNewSession={() => { createNewSession(); setShowSessionList(false); }}
+          onNewSession={handleNewSession}
           currentSession={sessions.find(s => s.id === currentSessionId)}
           allSessions={sessions}
         />
@@ -343,7 +357,14 @@ export default function Chat({ cwd, projectId, onPlayMiniGame, onCloseMiniGame, 
           busyBySession={busyBySession} // Pass busy state to show which sessions are active
         />
 
-        
+        {/* Provider Selection Modal */}
+        {showProviderSelection && (
+          <ProviderSelectionModal
+            onClose={() => setShowProviderSelection(false)}
+            onSelect={handleProviderSelect}
+          />
+        )}
+
         {/* Search bar */}
         <SearchBar
           showSearch={showSearch}

@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Provider Parser Test</title>
+  <style>
+    body {
+      font-family: 'Monaco', 'Courier New', monospace;
+      background: #0a0e14;
+      color: #e6e6e6;
+      padding: 20px;
+      font-size: 13px;
+    }
+    h1, h2 {
+      color: #3c6df0;
+    }
+    .test-section {
+      margin: 20px 0;
+      padding: 15px;
+      background: #1a1f2e;
+      border-radius: 8px;
+      border: 1px solid #2d3748;
+    }
+    .success {
+      color: #10b981;
+    }
+    .error {
+      color: #ef4444;
+    }
+    .warning {
+      color: #f59e0b;
+    }
+    pre {
+      background: #0f1419;
+      padding: 10px;
+      border-radius: 4px;
+      overflow-x: auto;
+      border: 1px solid #374151;
+    }
+    .badge {
+      display: inline-block;
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+      margin-right: 8px;
+    }
+    .badge-codex { background: #10b981; color: white; }
+    .badge-claude { background: #8b5cf6; color: white; }
+    .badge-cursor { background: #3b82f6; color: white; }
+  </style>
+</head>
+<body>
+  <h1>🧪 Provider Message Parser Tests</h1>
+  <p>Testing Codex, Claude, and Cursor parsers with sample messages</p>
+
+  <div id="test-results"></div>
+
+  <script type="module">
+    import { parserRegistry, MessageType } from './src/lib/providers/index.js';
+
+    const results = document.getElementById('test-results');
+
+    function addTest(provider, testName, message, expectedType, shouldStartLoading = false) {
+      const section = document.createElement('div');
+      section.className = 'test-section';
+
+      const badge = `<span class="badge badge-${provider}">${provider.toUpperCase()}</span>`;
+      section.innerHTML = `<h2>${badge}${testName}</h2>`;
+
+      // Parse message
+      try {
+        const parsed = parserRegistry.parse(message, provider);
+
+        if (!parsed) {
+          section.innerHTML += `<p class="error">❌ Parser returned null</p>`;
+          results.appendChild(section);
+          return;
+        }
+
+        // Check type
+        const typeMatch = parsed.type === expectedType;
+        const typeStatus = typeMatch ? '✅' : '❌';
+        section.innerHTML += `<p>${typeStatus} Type: <code>${parsed.type}</code> ${typeMatch ? '(expected)' : `(expected: ${expectedType})`}</p>`;
+
+        // Check loading trigger
+        if (shouldStartLoading) {
+          const hasLoadingTrigger =
+            (parsed.metadata?.isStart === true) ||
+            (parsed.data?.subtype === 'init');
+          const loadingStatus = hasLoadingTrigger ? '✅' : '❌';
+          section.innerHTML += `<p>${loadingStatus} Loading trigger: ${hasLoadingTrigger ? 'YES' : 'NO'}</p>`;
+        }
+
+        // Show parsed result
+        section.innerHTML += `<p><strong>Parsed Message:</strong></p>`;
+        section.innerHTML += `<pre>${JSON.stringify(parsed, null, 2)}</pre>`;
+
+        // Show original message
+        section.innerHTML += `<p><strong>Original Message:</strong></p>`;
+        section.innerHTML += `<pre>${JSON.stringify(message, null, 2)}</pre>`;
+
+      } catch (error) {
+        section.innerHTML += `<p class="error">❌ Error: ${error.message}</p>`;
+        section.innerHTML += `<pre>${error.stack}</pre>`;
+      }
+
+      results.appendChild(section);
+    }
+
+    // ===== CODEX TESTS =====
+
+    addTest(
+      'codex',
+      'Loading Trigger (Prompt Message)',
+      { type: 'prompt', text: 'Create a React app', isStart: true },
+      MessageType.USER_PROMPT,
+      true  // Should trigger loading
+    );
+
+    addTest(
+      'codex',
+      'Reasoning Message',
+      { msg: { type: 'agent_reasoning', text: 'Analyzing the request...' } },
+      MessageType.REASONING
+    );
+
+    addTest(
+      'codex',
+      'Tool Call Begin',
+      {
+        msg: {
+          type: 'exec_command_begin',
+          command: ['npm', 'install', 'react'],
+          call_id: 'call_123'
+        }
+      },
+      MessageType.TOOL_CALL
+    );
+
+    addTest(
+      'codex',
+      'Final Assistant Message',
+      { msg: { type: 'agent_message', message: 'React app created successfully!' } },
+      MessageType.ASSISTANT
+    );
+
+    // ===== CLAUDE TESTS =====
+
+    addTest(
+      'claude',
+      'Loading Trigger (Status Init)',
+      { type: 'status', subtype: 'init', text: 'Claude Code initialized' },
+      MessageType.SYSTEM,
+      true  // Should trigger loading
+    );
+
+    addTest(
+      'claude',
+      'Assistant Message (Streaming)',
+      {
+        type: 'assistant',
+        message: {
+          content: [{ type: 'text', text: 'Processing your request...' }]
+        },
+        session_id: 'session_123'
+      },
+      MessageType.ASSISTANT
+    );
+
+    addTest(
+      'claude',
+      'Tool Use',
+      {
+        type: 'tool_use',
+        tool_name: 'bash',
+        arguments: { command: 'ls -la' },
+        tool_use_id: 'tool_123'
+      },
+      MessageType.TOOL_CALL
+    );
+
+    addTest(
+      'claude',
+      'Result Message',
+      {
+        type: 'result',
+        text: 'Task completed successfully!',
+        success: true,
+        duration_ms: 5000
+      },
+      MessageType.RESULT
+    );
+
+    // ===== CURSOR TESTS =====
+
+    addTest(
+      'cursor',
+      'Loading Trigger (Status Init)',
+      { type: 'status', subtype: 'init', text: 'Cursor agent initialized' },
+      MessageType.SYSTEM,
+      true  // Should trigger loading
+    );
+
+    addTest(
+      'cursor',
+      'Tool Call',
+      {
+        type: 'tool_call',
+        tool_calls: [{
+          id: 'call_456',
+          name: 'bash',
+          args: { command: 'git status' }
+        }]
+      },
+      MessageType.TOOL_CALL
+    );
+
+    addTest(
+      'cursor',
+      'Result Message',
+      { type: 'result', result: 'All changes committed successfully' },
+      MessageType.RESULT
+    );
+
+  </script>
+</body>
+</html>

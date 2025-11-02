@@ -12,9 +12,37 @@ export default function Bubble({
   messageType = 'user',
   isToolCall = false,
   toolCallData = null,
-  toolCallSubtype = null
+  toolCallSubtype = null,
+  isReasoning = false,
+  isFileEdit = false,
+  provider = null
 }) {
   const [isActionLogExpanded, setIsActionLogExpanded] = useState(false);
+
+  // Debug logging for provider
+  if (who === 'assistant' && provider) {
+    console.log(`🎯 [Bubble] Rendering assistant message with provider:`, provider);
+  }
+
+  // Get provider display name
+  const getProviderDisplayName = (providerName) => {
+    const providers = {
+      'cursor': 'Cursor',
+      'claude': 'Claude',
+      'codex': 'Codex'
+    };
+    return providers[providerName?.toLowerCase()] || providerName || '';
+  };
+
+  // Get provider badge color
+  const getProviderBadgeColor = (providerName) => {
+    const colors = {
+      'cursor': '#3b82f6', // Blue
+      'claude': '#8b5cf6', // Purple
+      'codex': '#10b981'   // Green
+    };
+    return colors[providerName?.toLowerCase()] || '#6b7280';
+  };
   
   // Define background colors for different message types
   const getMessageStyle = () => {
@@ -32,6 +60,28 @@ export default function Bubble({
       margin: '8px 0'
     };
 
+    // Handle reasoning messages (Codex agent thinking)
+    if (isReasoning) {
+      return {
+        ...baseStyle,
+        background: 'linear-gradient(135deg, rgba(168, 85, 247, 0.08) 0%, rgba(139, 92, 246, 0.08) 100%)',
+        color: '#c4b5fd',
+        borderLeft: '3px solid #a855f7',
+        fontStyle: 'italic',
+        opacity: 0.9
+      };
+    }
+
+    // Handle file edit messages
+    if (isFileEdit) {
+      return {
+        ...baseStyle,
+        background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, rgba(5, 150, 105, 0.08) 100%)',
+        color: '#6ee7b7',
+        borderLeft: '3px solid #10b981'
+      };
+    }
+
     switch (messageType) {
       case 'user':
         return {
@@ -41,15 +91,15 @@ export default function Bubble({
           padding: '6px 16px',
           border: '1px solid #4b5563'
         };
-     
+
       case 'result':
         return {
           ...baseStyle,
           background: 'transparent',
-          color: '#f0fdf4', 
+          color: '#f0fdf4',
           border: 'none'
         };
-        
+
       case 'tool':
         return {
           ...baseStyle,
@@ -124,6 +174,26 @@ export default function Bubble({
       // Do not block the native context menu or key events here
       tabIndex={0}
     >
+      {/* Provider badge */}
+      {provider && who === 'assistant' && (
+        <div
+          style={{
+            display: 'inline-block',
+            fontSize: '10px',
+            fontWeight: '600',
+            color: getProviderBadgeColor(provider),
+            backgroundColor: `${getProviderBadgeColor(provider)}15`,
+            padding: '2px 6px',
+            borderRadius: '4px',
+            marginBottom: '4px',
+            textTransform: 'uppercase',
+            letterSpacing: '0.5px'
+          }}
+        >
+          {getProviderDisplayName(provider)}
+        </div>
+      )}
+
       {/* Render tool call content or regular content */}
       {renderToolCallContent()}
       {renderRegularContent()}

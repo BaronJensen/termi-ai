@@ -106,14 +106,14 @@ Process names now include session context:
 
 ```javascript
 // Session 1
-const session1 = await window.cursovable.runCursor({
+const session1 = await window.termiAI.runCursor({
   message: "Hello from session 1",
   sessionId: "session-1",
   cwd: "/path/to/project1",
 });
 
 // Session 2 (concurrent)
-const session2 = await window.cursovable.runCursor({
+const session2 = await window.termiAI.runCursor({
   message: "Hello from session 2",
   sessionId: "session-2",
   cwd: "/path/to/project2",
@@ -123,14 +123,14 @@ const session2 = await window.cursovable.runCursor({
 ### Getting Session Information
 
 ```javascript
-const sessionInfo = await window.cursovable.getSessionInfo();
+const sessionInfo = await window.termiAI.getSessionInfo();
 console.log("Active sessions:", sessionInfo);
 ```
 
 ### Killing Session Processes
 
 ```javascript
-const result = await window.cursovable.killSessionProcesses("session-1");
+const result = await window.termiAI.killSessionProcesses("session-1");
 console.log(`Killed ${result.killed}/${result.total} processes`);
 ```
 
