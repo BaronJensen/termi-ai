@@ -314,11 +314,16 @@ function isPrivateHost(hostname) {
 }
 
 function createWindow() {
+  // Select best icon per platform
+  const windowIconPath = process.platform === 'win32'
+    ? path.join(__dirname, 'images', 'icon.ico')
+    : path.join(__dirname, 'images', 'icon_512x512.png');
+
   win = new BrowserWindow({
     width: 1400,
     height: 900,
-    // Set window icon (used on Windows/Linux; ignored on macOS)
-    icon: path.join(__dirname, 'images', 'icon_square.png'),
+    // Set window icon (Windows/Linux use this; macOS ignores)
+    icon: windowIconPath,
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
@@ -351,14 +356,14 @@ function createWindow() {
   try {
     if (process.platform === 'darwin' && app.dock) {
       const { nativeImage } = require('electron');
-      const dockIcon = nativeImage.createFromPath(path.join(__dirname, 'images', 'icon_rounded.png'));
+      const dockIcon = nativeImage.createFromPath(path.join(__dirname, 'images', 'icon_1024x1024.png'));
       if (!dockIcon.isEmpty()) app.dock.setIcon(dockIcon);
     }
   } catch {}
 
   // Inject favicon into the document at runtime using data URI (works in dev and prod)
   try {
-    const iconPath = path.join(__dirname, 'images', 'icon_square.png');
+    const iconPath = path.join(__dirname, 'images', 'icon_256x256.png');
     const iconBytes = fs.readFileSync(iconPath);
     const dataUri = `data:image/png;base64,${iconBytes.toString('base64')}`;
     win.webContents.on('dom-ready', () => {
