@@ -4,6 +4,12 @@ const path = require('path');
 const { spawn } = require('child_process');
 const fs = require('fs');
 const os = require('os');
+const {
+  getNodeBinary,
+  getBinDirs,
+  prependPaths,
+  resolveBundledBin,
+} = require('./runtimePaths.cjs');
 const { stripAnsiAndControls: stripAnsi } = require('./utils/ansi.cjs');
 
 // PTY module - will be loaded lazily when needed
@@ -33,24 +39,24 @@ const { HistoryStore } = require('./historyStore.cjs');
 function ensureDarwinPath(originalPath) {
   if (process.platform !== 'darwin') return originalPath;
   const extras = ['/usr/local/bin', '/opt/homebrew/bin'];
-  const parts = (originalPath || '').split(':');
+  const parts = (originalPath || '').split(path.delimiter);
   for (const p of extras) {
     if (!parts.includes(p)) parts.unshift(p);
   }
-  return parts.filter(Boolean).join(':');
+  return parts.filter(Boolean).join(path.delimiter);
 }
 
 function resolveCommandPath(command, envPath) {
   const fs = require('fs');
   const path = require('path');
   const candidates = new Set();
-  const parts = (envPath || '').split(':').filter(Boolean);
+  const parts = (envPath || '').split(path.delimiter).filter(Boolean);
   for (const dir of parts) {
     candidates.add(path.join(dir, command));
   }
   // Common Homebrew paths first
-  candidates.add('/opt/homebrew/bin/cursor-agent');
-  candidates.add('/usr/local/bin/cursor-agent');
+  candidates.add(`/opt/homebrew/bin/${command}`);
+  candidates.add(`/usr/local/bin/${command}`);
   for (const candidate of candidates) {
     try {
       fs.accessSync(candidate, fs.constants.X_OK);
@@ -1656,9 +1662,15 @@ function runCursorAgentRaw(args, onData) {
   return new Promise((resolve) => {
     try {
       const env = { ...process.env };
-      env.PATH = ensureDarwinPath(env.PATH);
-      const resolved = resolveCommandPath('cursor-agent', env.PATH) || 'cursor-agent';
-      const child = spawn(resolved, args, { shell: process.platform === 'win32', env });
+      const binDirs = getBinDirs();
+      env.PATH = prependPaths(ensureDarwinPath(env.PATH), binDirs);
+      const bundledAgent = resolveBundledBin('cursor-agent', { binDirs });
+      const resolved = bundledAgent || resolveCommandPath('cursor-agent', env.PATH) || 'cursor-agent';
+      const useBundledNode = !!bundledAgent;
+      const spawnCmd = useBundledNode ? getNodeBinary() : resolved;
+      const spawnArgs = useBundledNode ? [resolved, ...args] : args;
+      if (useBundledNode) env.ELECTRON_RUN_AS_NODE = '1';
+      const child = spawn(spawnCmd, spawnArgs, { shell: process.platform === 'win32' && !useBundledNode, env });
       let stdout = '';
       let stderr = '';
       child.stdout.on('data', (d) => {

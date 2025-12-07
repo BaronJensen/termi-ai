@@ -5,6 +5,12 @@ let pty = null;
 try { pty = require('node-pty'); } catch {}
 const fs = require('fs');
 const path = require('path');
+const {
+  getNodeBinary,
+  getBinDirs,
+  prependPaths,
+  resolveBundledBin,
+} = require('./runtimePaths.cjs');
 
 // Properly escape shell arguments to handle quotes, newlines, and other special characters
 function escapeShellArg(arg) {
@@ -248,22 +254,22 @@ function isDebugModeEnabled(options = {}) {
 function ensureDarwinPath(originalPath) {
   if (process.platform !== 'darwin') return originalPath;
   const extras = ['/usr/local/bin', '/opt/homebrew/bin'];
-  const parts = (originalPath || '').split(':');
+  const parts = (originalPath || '').split(path.delimiter);
   for (const p of extras) {
     if (!parts.includes(p)) parts.unshift(p);
   }
-  return parts.filter(Boolean).join(':');
+  return parts.filter(Boolean).join(path.delimiter);
 }
 
 function resolveCommandPath(command, envPath) {
   const candidates = new Set();
-  const parts = (envPath || '').split(':').filter(Boolean);
+  const parts = (envPath || '').split(path.delimiter).filter(Boolean);
   for (const dir of parts) {
     candidates.add(path.join(dir, command));
   }
   // Common Homebrew paths first
-  candidates.add('/opt/homebrew/bin/cursor-agent');
-  candidates.add('/usr/local/bin/cursor-agent');
+  candidates.add(`/opt/homebrew/bin/${command}`);
+  candidates.add(`/usr/local/bin/${command}`);
   for (const candidate of candidates) {
     try {
       fs.accessSync(candidate, fs.constants.X_OK);
@@ -462,13 +468,13 @@ function startCursorAgent(message, sessionObject, onLog, options = {}) {
     
     // Safe display of args (mask API token if present)
     const displayArgs = args.map(a => (options && options.apiKey && a === String(options.apiKey)) ? '********' : a);
-    if (onLog) onLog('info', `[${sessionLabel}] Running: cursor-agent ${displayArgs.map(a => escapeShellArg(a)).join(' ')}`);
     if (onLog) onLog('info', `[${sessionLabel}] Working directory: ${options.cwd || process.cwd()}`);
     
     // Log the session information being used for this run
     if (onLog) onLog('info', `[${sessionLabel}] Internal Session ID: ${internalSessionId || 'none'}`);
     if (onLog) onLog('info', `[${sessionLabel}] Cursor Session ID: ${sessionId || 'none'}`);
     
+    const binDirs = getBinDirs({ cwd: options.cwd });
     const env = { ...process.env };
     // If apiKey provided, pass as OPENAI_API_KEY to the child process only
     if (options.apiKey && typeof options.apiKey === 'string') {
@@ -481,8 +487,18 @@ function startCursorAgent(message, sessionObject, onLog, options = {}) {
       const tokenTail = token ? token.slice(-4) : '';
       if (onLog) onLog('info', `[${sessionLabel}] [auth] Using token auth (-a ********). OPENAI_API_KEY set (${token.length} chars), token ends with …${tokenTail}`);
     }
-    env.PATH = ensureDarwinPath(env.PATH);
-    const resolved = resolveCommandPath('cursor-agent', env.PATH) || 'cursor-agent';
+    env.PATH = prependPaths(ensureDarwinPath(env.PATH), binDirs);
+    const bundledAgent = resolveBundledBin('cursor-agent', { binDirs });
+    const resolved = bundledAgent || resolveCommandPath('cursor-agent', env.PATH) || 'cursor-agent';
+    const useBundledNode = !!bundledAgent;
+    const spawnCmd = useBundledNode ? getNodeBinary() : resolved;
+    const spawnArgs = useBundledNode ? [resolved, ...args] : args;
+    if (useBundledNode) env.ELECTRON_RUN_AS_NODE = '1';
+    if (bundledAgent && onLog) onLog('info', `[${sessionLabel}] Using bundled cursor-agent: ${bundledAgent}`);
+    if (onLog) {
+      const cmdLabel = useBundledNode ? `[bundled node] ${resolved}` : resolved;
+      onLog('info', `[${sessionLabel}] Running: ${cmdLabel} ${displayArgs.map(a => escapeShellArg(a)).join(' ')}`);
+    }
 
     // Define buffer and handlers before wiring streams so references are valid
     let buffer = '';
@@ -682,7 +698,7 @@ function startCursorAgent(message, sessionObject, onLog, options = {}) {
     if (pty && !ptyFailed) {
       try {
         const shell = process.platform === 'win32' ? 'powershell.exe' : (process.env.SHELL || '/bin/zsh');
-        const cmdLine = `${escapeShellArg(resolved)} ${args.map(a => escapeShellArg(a)).join(' ')}`;
+        const cmdLine = `${escapeShellArg(spawnCmd)} ${spawnArgs.map(a => escapeShellArg(a)).join(' ')}`;
         if (onLog) onLog('info', `[${sessionLabel}] Using PTY with shell: ${shell}`);
         
         const p = pty.spawn(shell, [], {
@@ -725,8 +741,8 @@ function startCursorAgent(message, sessionObject, onLog, options = {}) {
     if (!pty || ptyFailed) {
       if (onLog) onLog('info', `[${sessionLabel}] Using spawn fallback for terminal`);
       
-      const child = spawn(resolved, args, {
-        shell: process.platform === 'win32', // support Windows
+      const child = spawn(spawnCmd, spawnArgs, {
+        shell: process.platform === 'win32' && !useBundledNode, // support Windows
         env,
         cwd: options.cwd || process.cwd()
       });

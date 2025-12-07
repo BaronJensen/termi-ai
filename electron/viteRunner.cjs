@@ -2,15 +2,21 @@
 const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
+const {
+  getNodeBinary,
+  getBinDirs,
+  prependPaths,
+  resolveBundledBin,
+} = require('./runtimePaths.cjs');
 
 function ensureDarwinPath(originalPath) {
   if (process.platform !== 'darwin') return originalPath;
   const extras = ['/usr/local/bin', '/opt/homebrew/bin'];
-  const parts = (originalPath || '').split(':');
+  const parts = (originalPath || '').split(path.delimiter);
   for (const p of extras) {
     if (!parts.includes(p)) parts.unshift(p);
   }
-  return parts.filter(Boolean).join(':');
+  return parts.filter(Boolean).join(path.delimiter);
 }
 
 function splitCommandLine(cmd) {
@@ -45,7 +51,7 @@ function splitCommandLine(cmd) {
 
 function resolveExecutable(command, envPath) {
   const candidates = new Set();
-  const parts = (envPath || '').split(':').filter(Boolean);
+  const parts = (envPath || '').split(path.delimiter).filter(Boolean);
   for (const dir of parts) {
     candidates.add(path.join(dir, command));
   }
@@ -108,7 +114,7 @@ function ensureDevEnv(env) {
   return out;
 }
 
-function runInstallIfNeeded(folderPath, manager, env, onLog) {
+function runInstallIfNeeded(folderPath, manager, env, onLog, binDirs = []) {
   return new Promise((resolve) => {
     try {
       const nodeModules = path.join(folderPath, 'node_modules');
@@ -118,8 +124,17 @@ function runInstallIfNeeded(folderPath, manager, env, onLog) {
       if (!needsInstall) return resolve(true);
       const cmd = manager === 'npm' ? 'npm' : manager === 'pnpm' ? 'pnpm' : 'yarn';
       const args = manager === 'npm' ? ['install', '--include=dev'] : manager === 'pnpm' ? ['install', '--prod=false'] : ['install', '--production=false'];
-      if (onLog) onLog('info', `Installing dependencies: ${cmd} ${args.join(' ')}`);
-      const child = spawn(cmd, args, { cwd: folderPath, shell: process.platform === 'win32', env });
+      const bundledPm = resolveBundledBin(cmd, { binDirs });
+      const useBundledNode = !!bundledPm;
+      const spawnCmd = useBundledNode ? getNodeBinary() : cmd;
+      const spawnArgs = useBundledNode ? [bundledPm, ...args] : args;
+      if (onLog) {
+        const prefix = useBundledNode ? '[bundled node]' : '';
+        onLog('info', `Installing dependencies: ${prefix} ${cmd} ${args.join(' ')}`);
+      }
+      const spawnEnv = { ...env };
+      if (useBundledNode) spawnEnv.ELECTRON_RUN_AS_NODE = '1';
+      const child = spawn(spawnCmd, spawnArgs, { cwd: folderPath, shell: process.platform === 'win32' && !useBundledNode, env: spawnEnv });
       child.stdout.on('data', (d) => onLog && onLog('stdout', d.toString()));
       child.stderr.on('data', (d) => onLog && onLog('stderr', d.toString()));
       child.on('exit', (code) => resolve(code === 0));
@@ -138,20 +153,18 @@ async function startVite(folderPath, manager='yarn', onLog) {
     'pnpm'
   ]));
 
+  const binDirs = getBinDirs({ cwd: folderPath });
   let env = { ...process.env };
   env.PATH = ensureDarwinPath(env.PATH);
   // Prepend local node_modules/.bin so scripts can find local binaries regardless of manager quirks
   try {
-    const localBin = path.join(folderPath, 'node_modules', '.bin');
-    if (fs.existsSync(localBin)) {
-      env.PATH = `${localBin}:${env.PATH}`;
-    }
+    env.PATH = prependPaths(env.PATH, binDirs);
   } catch {}
   // Force dev-like environment so devDependencies are available
   env = ensureDevEnv(env);
 
   // Ensure dependencies present before running scripts
-  await runInstallIfNeeded(folderPath, manager, env, onLog);
+  await runInstallIfNeeded(folderPath, manager, env, onLog, binDirs);
 
   // Resolve script key from package.json
   const pkg = readProjectPackageJson(folderPath);
@@ -169,14 +182,16 @@ async function startVite(folderPath, manager='yarn', onLog) {
     restArgs = [];
   }
 
-  // Try local .bin first
+  // Try bundled/local .bin first (project bin takes precedence, then app-level bin)
   let execCmd = null;
   let execArgs = restArgs;
+  let useBundledNode = false;
   try {
-    const binName = process.platform === 'win32' ? `${primary}.cmd` : primary;
-    const localBinPath = path.join(folderPath, 'node_modules', '.bin', binName);
-    fs.accessSync(localBinPath, fs.constants.X_OK);
-    execCmd = localBinPath;
+    const localBinPath = resolveBundledBin(primary, { binDirs });
+    if (localBinPath) {
+      execCmd = localBinPath;
+      useBundledNode = true;
+    }
   } catch {}
 
   // If no local bin, fallback to package manager run
@@ -208,17 +223,22 @@ async function startVite(folderPath, manager='yarn', onLog) {
     }
 
     // Best-effort: ensure dependencies present
-    try { runInstallIfNeeded(folderPath, resolvedManager, env, onLog).then(() => {}).catch(() => {}); } catch {}
+    try { runInstallIfNeeded(folderPath, resolvedManager, env, onLog, binDirs).then(() => {}).catch(() => {}); } catch {}
 
     execCmd = resolvedCommand;
     execArgs = (resolvedManager === 'npm') ? ['run', scriptKey] : ['run', scriptKey];
   }
 
   // Run the chosen command
-  const child = spawn(execCmd, execArgs, {
+  const spawnEnv = { ...env };
+  const spawnCmd = useBundledNode ? getNodeBinary() : execCmd;
+  const spawnArgs = useBundledNode ? [execCmd, ...execArgs] : execArgs;
+  if (useBundledNode) spawnEnv.ELECTRON_RUN_AS_NODE = '1';
+
+  const child = spawn(spawnCmd, spawnArgs, {
     cwd: folderPath,
-    shell: process.platform === 'win32',
-    env
+    shell: process.platform === 'win32' && !useBundledNode,
+    env: spawnEnv
   });
 
   let resolved = false;
@@ -252,11 +272,14 @@ async function startVite(folderPath, manager='yarn', onLog) {
     }
   };
 
-  if (onLog) onLog('info', `Running: ${execCmd} ${execArgs.join(' ')}\nCWD: ${folderPath}`);
+  if (onLog) {
+    const prefix = useBundledNode ? '[bundled node]' : '';
+    onLog('info', `Running: ${prefix} ${execCmd} ${execArgs.join(' ')}\nCWD: ${folderPath}`);
+  }
   child.stdout.on('data', onStdout);
   child.stderr.on('data', onStderr);
   child.on('error', (err) => {
-    if (!resolved) urlReject(new Error(`Failed to start dev server: ${err.message}\nCommand: ${resolvedCommand} ${args.join(' ')}\nCWD: ${folderPath}\nPATH: ${env.PATH}`));
+    if (!resolved) urlReject(new Error(`Failed to start dev server: ${err.message}\nCommand: ${spawnCmd} ${spawnArgs.join(' ')}\nCWD: ${folderPath}\nPATH: ${spawnEnv.PATH}`));
   });
   child.on('exit', (code) => {
     if (!resolved) {
