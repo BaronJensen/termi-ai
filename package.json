@@ -53,14 +53,14 @@
     "directories": {
       "buildResources": "assets"
     },
-    "icon": "electron/images/icon_square.png",
+    "icon": "electron/images/icon_512x512.png",
     "mac": {
       "target": [
         "dmg",
         "zip"
       ],
       "category": "public.app-category.developer-tools",
-      "icon": "electron/images/icon_rounded.png"
+      "icon": "electron/images/icon_1024x1024.png"
     },
     "dmg": {
       "artifactName": "${productName}-${version}-${arch}.${ext}"
@@ -70,7 +70,7 @@
         "nsis",
         "zip"
       ],
-      "icon": "electron/images/icon_square.png"
+      "icon": "electron/images/icon.ico"
     },
     "linux": {
       "target": [
@@ -79,7 +79,7 @@
         "tar.gz"
       ],
       "category": "Development",
-      "icon": "electron/images/icon_square.png"
+      "icon": "electron/images/icon_512x512.png"
     }
   }
 }
