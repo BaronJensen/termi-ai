@@ -1,3 +1,5 @@
+
+
 # 🚀 Termi AI
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -47,7 +49,7 @@ Before you begin, ensure you have the following installed:
 
 - **Node.js 18+** and npm/yarn/pnpm
 - **Cursor Agent CLI** installed and available in your PATH
-- **On macOS**: Xcode Command Line Tools (for native dependencies)
+- **On macOS**: Xcode Command Line Tools (for native dependencies; install with `xcode-select --install`)
 
 ## 📦 Installation
 
